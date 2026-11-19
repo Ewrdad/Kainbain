@@ -37,6 +37,7 @@ describe("projectStore barrel surface", () => {
 		ProjectStore: "function",
 		RETRY_SETTING_KEYS: "object",
 		assertValidDocsRepoForWrite: "function",
+		assertDocsRepoSeparateFromMain: "function",
 		createDefaultWorkflow: "function",
 		detectGitRemote: "function",
 		docsRepoPointerFor: "function",

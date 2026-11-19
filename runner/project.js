@@ -541,6 +541,10 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
 					const list = (await runGit(owner, ["worktree", "list", "--porcelain"])).stdout;
 					if (list.split("\n").some((line) => line.trim() === `worktree ${docsTwin}`)) {
 						await runGit(owner, ["worktree", "remove", "--force", docsTwin]).catch(() => {});
+						// Prune this owner too: the docs mirror usually differs
+						// from the code repo, so its admin entries need their
+						// own prune to avoid stale registrations.
+						await runGit(owner, ["worktree", "prune"]).catch(() => {});
 					}
 				} catch {
 					// Try the next owner.
@@ -1005,6 +1009,19 @@ export async function ensureRepoHooksPath(repoDir) {
 export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS, docsRepoUrl = null, docsLocalPath = null }) {
 	if (!repoUrl && !localPath) {
 		throw new Error("prepareWorkdir needs repoUrl (clone) or localPath (adopt).");
+	}
+	// Stealth guard (defense in depth — the backend 400s this at write time):
+	// the docs repo URL must differ from the main repo URL, otherwise the
+	// paired docs worktree would push `kb/<taskId>` docs branches to the
+	// shared MAIN remote. Compared loosely (.git suffix / trailing slash
+	// ignored) so spelling variants cannot sneak through.
+	if (docsRepoUrl && repoUrl) {
+		const normalize = (u) => String(u).trim().replace(/\.git$/i, "").replace(/\/+$/, "");
+		if (normalize(docsRepoUrl) === normalize(repoUrl)) {
+			throw new Error(
+				`docsRepoUrl must differ from the main repoUrl ('${repoUrl}') — the same remote would receive KainBain docs branches`,
+			);
+		}
 	}
 	fs.mkdirSync(workRoot, { recursive: true });
 	const branch = `kb/${taskId}`;

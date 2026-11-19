@@ -43,6 +43,7 @@ import {
 } from "./project/projectConfigDiscovery.js";
 import {
 	assertValidDocsRepoForWrite,
+	assertDocsRepoSeparateFromMain,
 	hasDocsRepo,
 	normalizeDocsRepoSettings,
 	resolveDocsRepoLocalPath,
@@ -931,6 +932,14 @@ export class ProjectStore {
 		let docsRepoLocalPath = null;
 		if (docsRepo) {
 			docsRepoLocalPath = docsRepo.localPath || this._defaultDocsRepoLocalPath(projectDir);
+			// Stealth guard: the docs checkout must live outside the main repo
+			// and its URL must differ from the main remote — checked BEFORE
+			// anything is created on disk.
+			assertDocsRepoSeparateFromMain({
+				docsRepo: { ...docsRepo, localPath: docsRepoLocalPath },
+				projectCwd: projectDir,
+				mainRepoUrls: [gitUrl, gitRepoOpt, repoUrlOpt, detectGitRemote(projectDir).repoUrl],
+			});
 			this._assertDocsRepoUnclaimed(docsRepo, docsRepoLocalPath, null);
 		}
 
@@ -2008,6 +2017,14 @@ export class ProjectStore {
 				if (!updates.docsRepo.localPath) {
 					updates.docsRepo.localPath = this._defaultDocsRepoLocalPath(project.cwd);
 				}
+				// Stealth guard: the docs checkout must live outside the main
+				// repo and its URL must differ from the main remote — checked
+				// before provisioning or saving anything.
+				assertDocsRepoSeparateFromMain({
+					docsRepo: updates.docsRepo,
+					projectCwd: project.cwd,
+					mainRepoUrls: [project.gitUrl, project.repoUrl, detectGitRemote(project.cwd).repoUrl],
+				});
 				this._assertDocsRepoUnclaimed(
 					updates.docsRepo,
 					updates.docsRepo.localPath,

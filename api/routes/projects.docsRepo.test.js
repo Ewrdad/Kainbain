@@ -151,6 +151,40 @@ describe("POST /projects with docsRepo", () => {
 		expect(res.statusCode).toBe(409);
 		expect(JSON.parse(res.payload).error).toMatch(/already claimed/i);
 	});
+
+	it("400s when docsRepo.localPath sits inside the main repo (stealth guard)", async () => {
+		const adopted = path.join(tempRoot, "nested-docs-repo");
+		fs.mkdirSync(adopted, { recursive: true });
+		const res = await app.inject({
+			method: "POST",
+			url: "/projects/register",
+			payload: {
+				path: adopted,
+				name: "Nested Docs App",
+				docsRepo: { localPath: path.join(adopted, "kb-docs") },
+			},
+		});
+		expect(res.statusCode).toBe(400);
+		expect(JSON.parse(res.payload).error).toMatch(/OUTSIDE the main project repo/i);
+		// Nothing was provisioned inside the main repo.
+		expect(fs.existsSync(path.join(adopted, "kb-docs"))).toBe(false);
+		expect(fs.existsSync(path.join(adopted, ".kainbain"))).toBe(false);
+	});
+
+	it("400s when docsRepo.url is the main repo URL (docs branches would hit the shared remote)", async () => {
+		const mainUrl = "https://git.example.com/team/app-nested-url.git";
+		const res = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Same Url App",
+				gitUrl: mainUrl,
+				docsRepo: { url: `${mainUrl.replace(/\.git$/, "")}/` }, // spelling variant, same remote
+			},
+		});
+		expect(res.statusCode).toBe(400);
+		expect(JSON.parse(res.payload).error).toMatch(/DIFFERENT repository/i);
+	});
 });
 
 /***

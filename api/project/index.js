@@ -26,6 +26,7 @@ export {
 	resolveKainbainHome,
 	normalizeDocsRepoSettings,
 	assertValidDocsRepoForWrite,
+	assertDocsRepoSeparateFromMain,
 } from './docsRepo.js';
 export {
 	DOCS_REPO_POINTERS_FILENAME,

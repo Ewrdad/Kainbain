@@ -153,6 +153,22 @@ describe("prepareWorkdir with a separate docs repo (clone mode)", () => {
 		assert.ok(!fs.existsSync(`${out.workdir}-docs`));
 	});
 
+	it("refuses a docsRepoUrl that is the main repoUrl (would push docs branches to the shared remote)", async () => {
+		await assert.rejects(
+			() =>
+				prepareWorkdir({
+					repoUrl: codeOrigin,
+					docsRepoUrl: `${codeOrigin}.git`, // spelling variant, same remote
+					workRoot: tmp,
+					taskId: "t-same",
+				}),
+			/must differ from the main repoUrl/,
+		);
+		// Nothing was prepared.
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-t-same")));
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-t-same-docs")));
+	});
+
 	it("commitAndPush pushes BOTH worktrees docs-first and reports both shas", async () => {
 		const out = await prepareWorkdir({
 			repoUrl: codeOrigin,

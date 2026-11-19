@@ -22,3 +22,4 @@ export { docsRepoUrlFor } from "./docsRepoUrlFor.js";
 export { resolveKainbainHome } from "./resolveKainbainHome.js";
 export { normalizeDocsRepoSettings } from "./normalizeDocsRepoSettings.js";
 export { assertValidDocsRepoForWrite } from "./assertValidDocsRepoForWrite.js";
+export { assertDocsRepoSeparateFromMain } from "./assertDocsRepoSeparateFromMain.js";

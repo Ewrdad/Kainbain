@@ -50,4 +50,4 @@ The backend test suite includes a snapshot gate that fails if provisioning or a 
 
 - One docs repo per project (no sharing across projects yet).
 - Code still works on `kb/<taskId>` branches in the main repo — only docs and state move. Keeping working branches out of the shared repo too is a planned follow-up.
-- Switching the docs repo off is refused while docs branches are ahead/unpushed; push them first.
+- Switching the docs repo off (clearing the URL in settings) never deletes anything: the docs checkout stays on disk exactly as it was, and the project simply goes back to keeping docs/state in the main repo. Task docs already pushed live on `kb/*` branches of the docs remote — merge or push them there first if you want them on the docs repo's main branch; the engine does not merge docs branches automatically in v1.
