@@ -92,6 +92,49 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Everything Kainbain: task docs, plans, reports and Kainbain settings"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Tucked under an 'Advanced' section (keeps the form simple)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Use the same login as the main project repo"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Ask me each time"
+      ],
+      "notes": "Can trigger a migration of some kind"
+    },
+    "q5": {
+      "selected": [
+        "Yes – nothing Kainbain-related in the main repo, not even a small settings file"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "No – branches in the main repo are fine, only the docs need to be separate"
+      ],
+      "notes": "Branches and such are fine just need to make sure we don't commit any files to main/master on the main"
+    },
+    "q7": {
+      "selected": [
+        "One docs repo per project only (simpler, keeps things separate)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
