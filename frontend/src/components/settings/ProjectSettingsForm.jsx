@@ -81,6 +81,11 @@ export function ProjectSettingsForm({
   const [docsDirName, setDocsDirName] = useState(project?.docsDirName || '');
   const [kainbainDirName, setKainbainDirName] = useState(project?.kainbainDirName || '');
   const [centralizedDocs, setCentralizedDocs] = useState(project?.centralizedDocs !== false);
+  // Separate docs repo (advanced): all KainBain docs/state live in that
+  // repo's checkout and nothing KainBain-related is written into the main
+  // repo. Drafts are raw strings; blank URL = disabled.
+  const [docsRepoUrl, setDocsRepoUrl] = useState(project?.docsRepo?.url || '');
+  const [docsRepoLocalPath, setDocsRepoLocalPath] = useState(project?.docsRepo?.localPath || '');
   const [gitRepo, setGitRepo] = useState(project?.gitRepo || project?.gitUrl || '');
   // Per-task branch support (kb/<taskId> branches + merge-to-main stage).
   // Opt-in: defaults off so existing single-branch projects are unaffected.
@@ -163,6 +168,8 @@ export function ProjectSettingsForm({
     setDocsDirName(project?.docsDirName || '');
     setKainbainDirName(project?.kainbainDirName || '');
     setCentralizedDocs(project?.centralizedDocs !== false);
+    setDocsRepoUrl(project?.docsRepo?.url || '');
+    setDocsRepoLocalPath(project?.docsRepo?.localPath || '');
     setGitRepo(project?.gitRepo || project?.gitUrl || '');
     setAccentColor(project?.accentColor || '#7bdb85');
     setUseBranches(project?.useBranches === true);
@@ -436,6 +443,30 @@ export function ProjectSettingsForm({
         return;
       }
     }
+    // Guard: docsRepo validation mirrors the backend (api/project/docsRepo.js)
+    // — the URL must look like a git remote with no whitespace, and the
+    // optional local checkout path must be absolute. The API re-validates and
+    // 400s, so this only saves a round trip.
+    const trimmedDocsRepoUrl = docsRepoUrl.trim();
+    const trimmedDocsRepoPath = docsRepoLocalPath.trim();
+    const DOCS_REPO_URL_PATTERN = /^(?:[^/@\s]+@[^/@\s]+:.+|.*:\/\/.*|\/.*)$/;
+    if (
+      trimmedDocsRepoUrl &&
+      (/\s/.test(trimmedDocsRepoUrl) || !DOCS_REPO_URL_PATTERN.test(trimmedDocsRepoUrl))
+    ) {
+      setValidationError(
+        'Docs repository URL must be a git remote (https://…, ssh://…, git@host:path, or an absolute local path) with no whitespace.',
+      );
+      setSaveState('error');
+      notifyError?.('Invalid docs repository URL', 'Invalid Docs Repo');
+      return;
+    }
+    if (trimmedDocsRepoPath && !trimmedDocsRepoPath.startsWith('/')) {
+      setValidationError('Docs repo local path must be an absolute path on this machine.');
+      setSaveState('error');
+      notifyError?.('Invalid docs repo local path', 'Invalid Docs Repo');
+      return;
+    }
     // Alias table validation: refuse to save while a row is invalid (the
     // section shows the same per-row errors inline).
     const aliasErrors = validateAliasList(modelAliases, harnesses, fleetCounts);
@@ -478,6 +509,23 @@ export function ProjectSettingsForm({
         root.style.setProperty('--accent-glow', tokens.glow);
         root.style.setProperty('--accent-hex', tokens.hex);
       }
+      // Docs-repo payload: sent only when the draft differs from the stored
+      // value — blank URL with a stored repo clears it (null); blank with no
+      // repo omits the key so unrelated saves never re-trigger provisioning.
+      const storedDocsRepo =
+        project?.docsRepo && typeof project.docsRepo === 'object' ? project.docsRepo : null;
+      let docsRepoPayload = {};
+      if (trimmedDocsRepoUrl) {
+        const next = { url: trimmedDocsRepoUrl };
+        if (trimmedDocsRepoPath) next.localPath = trimmedDocsRepoPath;
+        const unchanged =
+          storedDocsRepo &&
+          storedDocsRepo.url === next.url &&
+          (storedDocsRepo.localPath || '') === (next.localPath || '');
+        if (!unchanged) docsRepoPayload = { docsRepo: next };
+      } else if (storedDocsRepo) {
+        docsRepoPayload = { docsRepo: null };
+      }
       // Optimistic concurrency: a rival save from another tab/browser
       // surfaces HTTP 409 instead of silently clobbering this page's
       // fields (or vice versa).
@@ -506,6 +554,10 @@ export function ProjectSettingsForm({
         docsDirName: trimmedDocsName || '',
         kainbainDirName: trimmedKainbainName || '',
         centralizedDocs,
+        // Separate docs repo: sent only when the draft differs from the
+        // stored value (blank URL + stored repo = clear with null; blank +
+        // no repo = omit so unrelated saves never touch provisioning).
+        ...docsRepoPayload,
         accentColor: accentTokens(accentColor).hex,
         // Harness choice: selecting the server's default harness saves as ''
         // so the project keeps following the configured default (the backend
@@ -672,6 +724,10 @@ export function ProjectSettingsForm({
           setKainbainDirName={touch(setKainbainDirName)}
           centralizedDocs={centralizedDocs}
           setCentralizedDocs={touch(setCentralizedDocs)}
+          docsRepoUrl={docsRepoUrl}
+          setDocsRepoUrl={touch(setDocsRepoUrl)}
+          docsRepoLocalPath={docsRepoLocalPath}
+          setDocsRepoLocalPath={touch(setDocsRepoLocalPath)}
           gitRepo={gitRepo}
           setGitRepo={touch(setGitRepo)}
           useBranches={useBranches}

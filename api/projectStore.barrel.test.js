@@ -3,6 +3,8 @@ import * as barrel from "./projectStore.js";
 import * as aliasRenames from "./project/aliasRenames.js";
 import * as appStatus from "./project/appStatus.js";
 import * as deployCommands from "./project/deployCommands.js";
+import * as docsRepo from "./project/docsRepo.js";
+import * as docsRepoPointer from "./project/docsRepoPointer.js";
 import * as gitRemote from "./project/gitRemote.js";
 import * as projectSlug from "./project/projectSlug.js";
 import * as retrySettings from "./project/retrySettings.js";
@@ -26,18 +28,30 @@ describe("projectStore barrel surface", () => {
 		DEFAULT_WORKFLOW_ID: "string",
 		DEFAULT_WORKFLOW_NAME: "string",
 		DEPLOY_COMMAND_PATTERN: "object",
+		DOCS_REPO_BRANCH_MODE_SYNCED: "string",
+		DOCS_REPO_PATH_MAX_LENGTH: "number",
+		DOCS_REPO_POINTERS_FILENAME: "string",
+		DOCS_REPO_URL_MAX_LENGTH: "number",
 		HOST_COMMAND_PATTERN: "object",
 		PUBLISH_COMMAND_PATTERN: "object",
 		ProjectStore: "function",
 		RETRY_SETTING_KEYS: "object",
+		assertValidDocsRepoForWrite: "function",
 		createDefaultWorkflow: "function",
 		detectGitRemote: "function",
+		docsRepoPointerFor: "function",
+		docsRepoUrlFor: "function",
+		hasDocsRepo: "function",
 		inferAliasRenames: "function",
 		isDeployCommand: "function",
 		isHostCommand: "function",
 		isPublishCommand: "function",
+		isValidDocsRepoLocalPath: "function",
+		isValidDocsRepoUrl: "function",
 		migrateMergeDeployStages: "function",
 		normalizeAppStatus: "function",
+		normalizeDocsRepoPointers: "function",
+		normalizeDocsRepoSettings: "function",
 		normalizeProjectRetrySettings: "function",
 		normalizeRetryCount: "function",
 		normalizeRetryEnabled: "function",
@@ -49,8 +63,15 @@ describe("projectStore barrel surface", () => {
 		normalizeTimeoutMs: "function",
 		normalizeWorkflow: "function",
 		normalizeWorkflows: "function",
+		readDocsRepoPointers: "function",
+		rememberDocsRepoPointer: "function",
+		removeDocsRepoPointer: "function",
 		resolveDefaultGitRemote: "function",
+		resolveDocsRepoLocalPath: "function",
+		resolveDocsRepoPointersPath: "function",
+		resolveKainbainHome: "function",
 		slugifyProjectName: "function",
+		writeDocsRepoPointers: "function",
 	};
 
 	it("exposes the full public surface with stable types", () => {
@@ -65,6 +86,8 @@ describe("projectStore barrel surface", () => {
 			aliasRenames,
 			appStatus,
 			deployCommands,
+			docsRepo,
+			docsRepoPointer,
 			gitRemote,
 			projectSlug,
 			retrySettings,

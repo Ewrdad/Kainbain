@@ -119,4 +119,42 @@ describe('PathsAndReposSection', () => {
     // The folder name renders inside a <code> hint, so it must break anywhere.
     expect(screen.getByText(longFolderName, { exact: false })).toHaveClass('break-all');
   });
+
+  it('renders the separate docs repo fields and disables the local path while the URL is blank', () => {
+    const setDocsRepoUrl = vi.fn();
+    const setDocsRepoLocalPath = vi.fn();
+    renderWithKainBain(
+      <PathsAndReposSection
+        {...baseProps}
+        docsRepoUrl=""
+        setDocsRepoUrl={setDocsRepoUrl}
+        docsRepoLocalPath=""
+        setDocsRepoLocalPath={setDocsRepoLocalPath}
+      />,
+    );
+    const urlInput = screen.getByLabelText('Separate Docs Repository URL (optional)');
+    const pathInput = screen.getByLabelText('Docs Repository Local Path (optional)');
+    expect(urlInput).toHaveValue('');
+    expect(pathInput).toBeDisabled();
+    fireEvent.change(urlInput, { target: { value: 'git@github.com:me/proj-docs.git' } });
+    expect(setDocsRepoUrl).toHaveBeenCalledWith('git@github.com:me/proj-docs.git');
+  });
+
+  it('enables the local path field when a docs repo URL is set and forwards edits', () => {
+    const setDocsRepoLocalPath = vi.fn();
+    renderWithKainBain(
+      <PathsAndReposSection
+        {...baseProps}
+        docsRepoUrl="git@github.com:me/proj-docs.git"
+        setDocsRepoUrl={vi.fn()}
+        docsRepoLocalPath="/srv/kb/proj"
+        setDocsRepoLocalPath={setDocsRepoLocalPath}
+      />,
+    );
+    const pathInput = screen.getByLabelText('Docs Repository Local Path (optional)');
+    expect(pathInput).toBeEnabled();
+    expect(pathInput).toHaveValue('/srv/kb/proj');
+    fireEvent.change(pathInput, { target: { value: '/srv/kb/other' } });
+    expect(setDocsRepoLocalPath).toHaveBeenCalledWith('/srv/kb/other');
+  });
 });
