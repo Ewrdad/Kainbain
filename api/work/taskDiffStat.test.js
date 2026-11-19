@@ -212,6 +212,59 @@ describe("The Work: task diff stat", () => {
 			expect(seen.diff).toEqual(["/repo", "main", "kb/task-1"]);
 		});
 
+		it("diffs against the pinned pipeline base when one is set (badges agree with the review view)", async () => {
+			let base = null;
+			const stat = await getTaskDiffStat(
+				"/repo",
+				{ ...task, baseBranch: "feature/big-thing" },
+				{
+					useBranches: true,
+					defaultBranchFn: async () => "main",
+					branchExistsFn: async () => true,
+					diffFilesFn: async (cwd, b, head) => {
+						base = b;
+						expect(head).toBe("kb/task-1");
+						return [{ path: "a.js", additions: 2, deletions: 1, binary: false }];
+					},
+				},
+			);
+			expect(stat).toEqual({ additions: 2, deletions: 1 });
+			expect(base).toBe("feature/big-thing");
+		});
+
+		it("falls back to the repo default when the pinned base is missing, invalid, or self-referential", async () => {
+			const diffFilesFn = async (cwd, base) => {
+				expect(base).toBe("main");
+				return [{ path: "a.js", additions: 1, deletions: 0, binary: false }];
+			};
+			const opts = {
+				useBranches: true,
+				defaultBranchFn: async () => "main",
+				branchExistsFn: async () => false,
+				diffFilesFn,
+			};
+			// Missing ref.
+			await expect(
+				getTaskDiffStat("/repo", { ...task, baseBranch: "feature/gone" }, opts),
+			).resolves.toEqual({ additions: 1, deletions: 0 });
+			// Invalid git name (branchExists must not even run for it).
+			let existsCalled = false;
+			await expect(
+				getTaskDiffStat("/repo", { ...task, baseBranch: "not a branch" }, {
+					...opts,
+					branchExistsFn: async () => {
+						existsCalled = true;
+						return true;
+					},
+				}),
+			).resolves.toEqual({ additions: 1, deletions: 0 });
+			expect(existsCalled).toBe(false);
+			// Self-referential (pinned base equals the task branch).
+			await expect(
+				getTaskDiffStat("/repo", { ...task, baseBranch: "kb/task-1" }, opts),
+			).resolves.toEqual({ additions: 1, deletions: 0 });
+		});
+
 		it("derives kb/<id> when the task has no stored branch", async () => {
 			let head = null;
 			const stat = await getTaskDiffStat("/repo", { id: "abc" }, {

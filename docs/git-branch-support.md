@@ -46,6 +46,12 @@ exist yet is auto-created from the repo default tip (adopting
 fresh feature branch just works. An invalid git name refuses loudly (400 at
 the API, inline error in the UI) and is never silently replaced with `main`.
 
+One deliberate exception: the KainBain self-deploy continuity path
+(`deploy.sh --prod` stages) always tracks the repo default branch, never a
+pipeline base — a feature pipeline must never redirect a production deploy
+onto a feature branch. Merge-then-deploy pipelines that run on a custom base
+therefore deploy the repo default tip, not the just-merged feature work.
+
 ## Workspace Isolation
 
 ### Quarantine mode (default)
