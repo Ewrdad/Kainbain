@@ -14,4 +14,27 @@ export { APP_STATUS_VALUES, normalizeAppStatus } from './appStatus.js';
 export { DEFAULT_WORKFLOW_ID, DEFAULT_WORKFLOW_NAME, createDefaultWorkflow, normalizeWorkflow, normalizeWorkflows } from './workflowDefaults.js';
 export { slugifyProjectName } from './projectSlug.js';
 export { resolveDefaultGitRemote, detectGitRemote } from './gitRemote.js';
+export {
+	DOCS_REPO_URL_MAX_LENGTH,
+	DOCS_REPO_PATH_MAX_LENGTH,
+	DOCS_REPO_BRANCH_MODE_SYNCED,
+	isValidDocsRepoUrl,
+	isValidDocsRepoLocalPath,
+	hasDocsRepo,
+	resolveDocsRepoLocalPath,
+	docsRepoUrlFor,
+	resolveKainbainHome,
+	normalizeDocsRepoSettings,
+	assertValidDocsRepoForWrite,
+} from './docsRepo.js';
+export {
+	DOCS_REPO_POINTERS_FILENAME,
+	resolveDocsRepoPointersPath,
+	normalizeDocsRepoPointers,
+	readDocsRepoPointers,
+	writeDocsRepoPointers,
+	rememberDocsRepoPointer,
+	removeDocsRepoPointer,
+	docsRepoPointerFor,
+} from './docsRepoPointer.js';
 

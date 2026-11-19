@@ -37,7 +37,21 @@ import {
 // `./project/index.js` and re-exported to preserve the public surface.
 // Private/internal helpers stay unexported to prevent internal leakage.
 import { warnLegacyNoneHarnessModel } from "./project/aliasRenames.js";
-import { _isKainbainConfig, _findProjectConfigFile } from "./project/projectConfigDiscovery.js";
+import {
+	_isKainbainConfig,
+	_findProjectConfigFile,
+} from "./project/projectConfigDiscovery.js";
+import {
+	assertValidDocsRepoForWrite,
+	hasDocsRepo,
+	normalizeDocsRepoSettings,
+	resolveDocsRepoLocalPath,
+} from "./project/docsRepo.js";
+import {
+	docsRepoPointerFor,
+	rememberDocsRepoPointer,
+	removeDocsRepoPointer,
+} from "./project/docsRepoPointer.js";
 import * as project from "./project/index.js";
 
 // Alias the project namespace for cleaner usage within the class
@@ -318,6 +332,14 @@ export class ProjectStore {
 				// (undefined keys are dropped by JSON, so default and legacy
 				// projects keep their existing file shape).
 				...normalizeKainbainDirSettings(project),
+				// Separate docs repo: persisted only when set (undefined keys
+				// are dropped by JSON, so legacy projects keep their existing
+				// file shape). The URL is credential-redacted (normalize
+				// re-redacts), and the KainBain home for a docs-repo project is
+				// the docs checkout itself, so this file lands in
+				// `<docsRepo.localPath>/<kainbainDirName>/project.json` — never
+				// inside the main repo.
+				...normalizeDocsRepoSettings(project),
 				// Per-project model aliases (`[{ name, harness, model }]`, each
 				// a harness + model binding referenced as harness "alias" +
 				// model <name>): normalized on write, persisted only when
@@ -364,8 +386,32 @@ export class ProjectStore {
 	_loadProjectFile(projectDir) {
 		try {
 			/* eslint-disable security/detect-non-literal-fs-filename */
-			const configFile = _findProjectConfigFile(projectDir);
+			// A docs-repo project keeps zero KainBain files in the main repo,
+			// so its authoritative config lives in the docs checkout; the
+			// engine-global pointer map (never stored in the main repo) says
+			// where. The pointer wins over any stale local config left behind
+			// when the project was switched onto a docs repo.
+			let configFile = null;
+			let pointerLoaded = false;
+			const pointer = docsRepoPointerFor(projectDir, this._registryOverrides());
+			if (pointer) {
+				const docsConfig = _findProjectConfigFile(pointer);
+				if (docsConfig && fs.existsSync(docsConfig)) {
+					configFile = docsConfig;
+					pointerLoaded = true;
+				}
+			}
+			if (!configFile) {
+				configFile = _findProjectConfigFile(projectDir);
+			}
 			if (configFile && fs.existsSync(configFile)) {
+				if (pointerLoaded) {
+					// The pointer-loaded config must actually describe THIS
+					// directory (a moved checkout or a hand-edited pointer must
+					// not adopt a foreign project).
+					const probe = JSON.parse(fs.readFileSync(configFile, "utf8"));
+					if (!_isKainbainConfig(probe, projectDir)) return null;
+				}
 				const content = fs.readFileSync(configFile, "utf8");
 				const parsed = JSON.parse(content);
 				// Self-describing folders: a config discovered under a
@@ -413,6 +459,11 @@ export class ProjectStore {
 					// never a broken project; absent stays absent (legacy
 					// files load exactly as today).
 					Object.assign(parsed, normalizeKainbainDirSettings(parsed));
+					// Same for a hand-edited docs-repo setting: an invalid URL
+					// or relative local path degrades to absent (and the URL is
+					// re-redacted so a token in a hand edit never echoes back),
+					// never a broken project; absent stays absent.
+					Object.assign(parsed, normalizeDocsRepoSettings(parsed));
 					// Same for a hand-edited "Go to App" link: garbage degrades
 					// to no link, never a broken project.
 					if (parsed.appStatus !== undefined) {
@@ -661,6 +712,7 @@ export class ProjectStore {
 		for (const [key, value] of Object.entries({
 			...normalizeDocsSettings(savedData),
 			...normalizeKainbainDirSettings(savedData),
+			...normalizeDocsRepoSettings(savedData),
 		})) {
 			if (value !== undefined) restoredLinkSettings[key] = value;
 		}
@@ -760,6 +812,7 @@ export class ProjectStore {
 	 * @param {string} [opts.docsDirName] - Custom docs link-folder name (default "docs"); blank clears to the default.
 	 * @param {boolean} [opts.centralizedDocs] - False opts out of centralised docs (plain local directory, no symlink). Default true.
 	 * @param {string} [opts.kainbainDirName] - Custom state-folder name (default ".kainbain"); blank clears to the default.
+	 * @param {Object} [opts.docsRepo] - Separate docs repo ({ url, localPath }): all KainBain docs/state live in that repo's checkout, and NOTHING KainBain-related is written into the main repo (no docs symlink, no state folder, no .gitignore entries). Blank/null clears. One docs repo per project (409 when already claimed).
 	 * @param {Array}  [opts.stages] - Custom workflow stages (defaults to DEFAULT_STAGES).
 	 * @param {Array}  [opts.workflows] - Custom workflows array.
 	 * @param {string} [opts.activeWorkflowId] - ID of active workflow.
@@ -774,6 +827,7 @@ export class ProjectStore {
 		docsDirName: docsDirNameOpt,
 		centralizedDocs: centralizedDocsOpt,
 		kainbainDirName: kainbainDirNameOpt,
+		docsRepo: docsRepoOpt,
 		gitUrl,
 		gitRepo: gitRepoOpt,
 		defaultModel,
@@ -867,6 +921,19 @@ export class ProjectStore {
 		}
 		const kainbainLinkName = kainbainDirName || ".kainbain";
 
+		// Separate docs repo: strict on write (invalid URL/path throws 400
+		// before anything is created); blank clears. When set, the docs
+		// checkout becomes the KainBain home and the main repo stays free of
+		// KainBain traces. One docs repo per project: a localPath or URL
+		// already claimed by another project is a 409.
+		const docsRepoRaw = docsRepoOpt;
+		const docsRepo = assertValidDocsRepoForWrite(docsRepoOpt);
+		let docsRepoLocalPath = null;
+		if (docsRepo) {
+			docsRepoLocalPath = docsRepo.localPath || this._defaultDocsRepoLocalPath(projectDir);
+			this._assertDocsRepoUnclaimed(docsRepo, docsRepoLocalPath, null);
+		}
+
 		/* eslint-disable security/detect-non-literal-fs-filename */
 		// 1. Create project directory
 		if (!fs.existsSync(projectDir)) {
@@ -880,33 +947,51 @@ export class ProjectStore {
 			fs.mkdirSync(notesDir, { recursive: true });
 		}
 
-		// 3. Create symbolic link: <projectRoot>/<docsDirName> -> notes space
-		// directory — or a plain local directory when opted out.
-		const docsLink = path.join(projectDir, docsLinkName);
-		try {
-			let linkExists = false;
-			try {
-				const stat = fs.lstatSync(docsLink);
-				linkExists = stat.isSymbolicLink() || stat.isDirectory();
-			} catch (e) {
-				linkExists = false;
-			}
-
-			if (!linkExists) {
-				if (centralizedDocs === false) {
-					fs.mkdirSync(docsLink, { recursive: true });
-				} else {
-					fs.symlinkSync(notesDir, docsLink, "dir");
-				}
-			}
-		} catch (symlinkErr) {
-			// Non-blocking symlink creation failure
+		// 2b. Provision the separate docs repo when configured. Nothing here
+		// touches the main repo: the docs checkout gets its own git repo,
+		// skeleton, and .gitignore.
+		if (docsRepo) {
+			docsRepoLocalPath = this._provisionDocsRepo({
+				docsRepo,
+				rawUrl: typeof docsRepoRaw?.url === "string" ? docsRepoRaw.url.trim() : null,
+				localPath: docsRepoLocalPath,
+				docsLinkName,
+				kainbainLinkName,
+			});
+			docsRepo.localPath = docsRepoLocalPath;
 		}
 
-		// 4. Create the state directory (default `.kainbain`, custom when set)
-		const kainbainDir = path.join(projectDir, kainbainLinkName);
-		if (!fs.existsSync(kainbainDir)) {
-			fs.mkdirSync(kainbainDir, { recursive: true });
+		// 3. Create symbolic link: <projectRoot>/<docsDirName> -> notes space
+		// directory — or a plain local directory when opted out. SKIPPED for
+		// docs-repo projects: the main repo must stay free of KainBain traces
+		// (the docs live in the docs repo, not in a symlink).
+		const docsLink = path.join(projectDir, docsLinkName);
+		if (!docsRepo) {
+			try {
+				let linkExists = false;
+				try {
+					const stat = fs.lstatSync(docsLink);
+					linkExists = stat.isSymbolicLink() || stat.isDirectory();
+				} catch (e) {
+					linkExists = false;
+				}
+
+				if (!linkExists) {
+					if (centralizedDocs === false) {
+						fs.mkdirSync(docsLink, { recursive: true });
+					} else {
+						fs.symlinkSync(notesDir, docsLink, "dir");
+					}
+				}
+			} catch (symlinkErr) {
+				// Non-blocking symlink creation failure
+			}
+
+			// 4. Create the state directory (default `.kainbain`, custom when set)
+			const kainbainDir = path.join(projectDir, kainbainLinkName);
+			if (!fs.existsSync(kainbainDir)) {
+				fs.mkdirSync(kainbainDir, { recursive: true });
+			}
 		}
 
 		// 5. Initialize Git repository
@@ -919,21 +1004,26 @@ export class ProjectStore {
 			// Non-blocking git init failure (e.g. git binary not available)
 		}
 
-		// 6. Create standard .gitignore
-		try {
-			const gitignorePath = path.join(projectDir, ".gitignore");
-			if (!fs.existsSync(gitignorePath)) {
-				const gitignoreContent = [
-					`${kainbainLinkName}/sessions`,
-					"node_modules",
-					".env",
-					"*.log",
-					"",
-				].join("\n");
-				fs.writeFileSync(gitignorePath, gitignoreContent, "utf8");
+		// 6. Create standard .gitignore — SKIPPED for docs-repo projects: no
+		// KainBain-related entries (not even an ignore line) may be written
+		// into the main repo; the equivalent .gitignore lives in the docs
+		// checkout (see _provisionDocsRepo).
+		if (!docsRepo) {
+			try {
+				const gitignorePath = path.join(projectDir, ".gitignore");
+				if (!fs.existsSync(gitignorePath)) {
+					const gitignoreContent = [
+						`${kainbainLinkName}/sessions`,
+						"node_modules",
+						".env",
+						"*.log",
+						"",
+					].join("\n");
+					fs.writeFileSync(gitignorePath, gitignoreContent, "utf8");
+				}
+			} catch (ignoreErr) {
+				// Non-blocking gitignore creation failure
 			}
-		} catch (ignoreErr) {
-			// Non-blocking gitignore creation failure
 		}
 
 		// 7. Configure Git remote (explicit URL or template; none when unconfigured)
@@ -1007,6 +1097,11 @@ export class ProjectStore {
 			// Centralised-docs opt-out — persisted only when opted out, so
 			// legacy and default projects load unchanged (absent means enabled).
 			...(centralizedDocs === false ? { centralizedDocs: false } : {}),
+			// Separate docs repo — persisted only when set (undefined keys are
+			// dropped by JSON, so legacy projects keep their existing file shape).
+			// The stored URL is credential-redacted; the live remote lives in
+			// the docs checkout's own .git/config (see _provisionDocsRepo).
+			...(docsRepo ? { docsRepo } : {}),
 			// Per-task branch support — opt-in, default off (backwards compatible).
 			useBranches: useBranchesOpt === true,
 			workspaceIsolation:
@@ -1059,11 +1154,179 @@ export class ProjectStore {
 		this._saveProjectFile(project);
 		this.projects.set(id, project);
 
+		// Docs-repo projects are rediscovered after a restart via the
+		// engine-global pointer (the main repo intentionally carries no
+		// config file), so record it now.
+		if (docsRepo && docsRepo.localPath) {
+			rememberDocsRepoPointer(projectDir, docsRepo.localPath, this._registryOverrides());
+		}
+
 		if (!this.activeProjectId) {
 			this.activeProjectId = id;
 		}
 
 		return project;
+	}
+
+	/***
+	 * MARK: _defaultDocsRepoLocalPath
+	 * @description Default local checkout path for a project's docs repo when
+	 *   the caller gives only a URL: a sibling directory of the main checkout
+	 *   named `<basename>-kainbain-docs` (e.g. `/repos/app` →
+	 *   `/repos/app-kainbain-docs`). Never inside the main repo.
+	 * @example projectStore._defaultDocsRepoLocalPath('/repos/app') => '/repos/app-kainbain-docs'
+	 * @param {string} projectDir - Absolute main-checkout path.
+	 * @returns {string}
+	 ***/
+	_defaultDocsRepoLocalPath(projectDir) {
+		return path.join(
+			path.dirname(projectDir),
+			`${path.basename(projectDir)}-kainbain-docs`,
+		);
+	}
+
+	/***
+	 * MARK: _assertDocsRepoUnclaimed
+	 * @description One-docs-repo-per-project guard (v1): refuses a docs repo
+	 *   whose resolved `localPath` OR redacted `url` is already claimed by a
+	 *   different project, with a 409 `DOCS_REPO_CLAIMED` naming the owner.
+	 *   Thrown before the record is touched. `excludeId` skips the project
+	 *   being updated itself.
+	 * @example projectStore._assertDocsRepoUnclaimed({ url: 'https://h/kb.git' }, '/srv/kb', 'p1')
+	 * @param {Object} docsRepo - Normalized docsRepo ({ url?, localPath? }).
+	 * @param {string} resolvedLocalPath - Resolved localPath (defaulted).
+	 * @param {string|null} excludeId - Project id to exclude (self).
+	 * @returns {void}
+	 ***/
+	_assertDocsRepoUnclaimed(docsRepo, resolvedLocalPath, excludeId) {
+		const claimUrl = docsRepo?.url || null;
+		const claimPath = resolvedLocalPath ? path.resolve(resolvedLocalPath) : null;
+		for (const other of this.projects.values()) {
+			if (excludeId && other.id === excludeId) continue;
+			const otherRepo = other?.docsRepo;
+			if (!otherRepo || typeof otherRepo !== "object") continue;
+			const otherPath = resolveDocsRepoLocalPath(other);
+			const otherUrl =
+				typeof otherRepo.url === "string" && otherRepo.url.trim()
+					? otherRepo.url.trim()
+					: null;
+			if (claimPath && otherPath && otherPath === claimPath) {
+				const err = new Error(
+					`Docs repo path '${claimPath}' is already claimed by project '${other.name || other.id}' — one docs repo per project (v1)`,
+				);
+				err.statusCode = 409;
+				err.code = "DOCS_REPO_CLAIMED";
+				throw err;
+			}
+			if (claimUrl && otherUrl && otherUrl === claimUrl) {
+				const err = new Error(
+					`Docs repo URL '${claimUrl}' is already claimed by project '${other.name || other.id}' — one docs repo per project (v1)`,
+				);
+				err.statusCode = 409;
+				err.code = "DOCS_REPO_CLAIMED";
+				throw err;
+			}
+		}
+	}
+
+	/***
+	 * MARK: _provisionDocsRepo
+	 * @description Provisions (or adopts) the docs-repo checkout at
+	 *   `localPath`: clones `url` into an empty directory (falling back to
+	 *   `git init` when the clone fails, e.g. offline first boot), adopts an
+	 *   existing git repo and points its origin at `url`, or `git init`s an
+	 *   empty directory. A non-empty directory that is not a git repo is
+	 *   refused loudly (400) — KainBain never adopts a foreign folder as the
+	 *   docs home. Lays out the `<docsLinkName>/tasks` skeleton and writes the
+	 *   standard `.gitignore` INSIDE the docs repo. Never touches the main
+	 *   repo. Returns the resolved localPath.
+	 * @example projectStore._provisionDocsRepo({ docsRepo: { url: 'https://h/kb.git' }, rawUrl: 'https://h/kb.git', localPath: '/srv/kb/app', docsLinkName: 'docs', kainbainLinkName: '.kainbain' }) => '/srv/kb/app'
+	 * @param {Object} opts
+	 * @param {Object} opts.docsRepo - Normalized docsRepo ({ url?, localPath? }).
+	 * @param {string|null} opts.rawUrl - Raw (unredacted) URL for git clone/remote only; never persisted.
+	 * @param {string} opts.localPath - Target checkout path.
+	 * @param {string} opts.docsLinkName - Effective docs folder name.
+	 * @param {string} opts.kainbainLinkName - Effective state folder name.
+	 * @returns {string} The resolved docs-repo checkout path.
+	 ***/
+	_provisionDocsRepo({ docsRepo, rawUrl, localPath, docsLinkName, kainbainLinkName }) {
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		const resolved = path.resolve(localPath);
+		const url = rawUrl || docsRepo?.url || null;
+		let entries = [];
+		let existed = fs.existsSync(resolved);
+		if (existed) {
+			try {
+				entries = fs.readdirSync(resolved);
+			} catch {
+				entries = [];
+			}
+		}
+		const isGit = fs.existsSync(path.join(resolved, ".git"));
+		if (!existed) {
+			fs.mkdirSync(resolved, { recursive: true });
+			existed = true;
+		}
+		if (url && !isGit && entries.length === 0) {
+			// Clone the (possibly private) docs remote; on failure (offline,
+			// auth) fall back to a local init so the project still works — the
+			// remote is attached below and the next sync fetches.
+			try {
+				execFileSync("git", ["clone", url, resolved], { stdio: "ignore" });
+			} catch {
+				try {
+					execFileSync("git", ["init"], { cwd: resolved, stdio: "ignore" });
+				} catch {
+					// Non-blocking git failure (e.g. git binary unavailable).
+				}
+			}
+		} else if (!isGit) {
+			if (entries.length > 0) {
+				const err = new Error(
+					`docsRepo.localPath '${resolved}' is not empty and not a git repository — refusing to adopt a foreign directory as the docs home; point it at an empty or git directory`,
+				);
+				err.statusCode = 400;
+				err.code = "INVALID_DOCS_REPO_PATH";
+				throw err;
+			}
+			try {
+				execFileSync("git", ["init"], { cwd: resolved, stdio: "ignore" });
+			} catch {
+				// Non-blocking git init failure (e.g. git binary unavailable).
+			}
+		}
+		if (url) {
+			try {
+				execFileSync("git", ["remote", "add", "origin", url], {
+					cwd: resolved,
+					stdio: "ignore",
+				});
+			} catch {
+				// Non-blocking remote add failure (origin already exists or offline).
+			}
+		}
+		// Skeleton: the docs layout inside the docs repo mirrors a normal
+		// project root, so every resolver works unchanged with the docs
+		// checkout as KainBain home.
+		try {
+			fs.mkdirSync(path.join(resolved, docsLinkName, "tasks"), { recursive: true });
+		} catch {
+			// Non-blocking skeleton failure.
+		}
+		try {
+			const gitignorePath = path.join(resolved, ".gitignore");
+			if (!fs.existsSync(gitignorePath)) {
+				fs.writeFileSync(
+					gitignorePath,
+					[`${kainbainLinkName}/sessions`, "node_modules", ".env", "*.log", ""].join("\n"),
+					"utf8",
+				);
+			}
+		} catch {
+			// Non-blocking gitignore failure.
+		}
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		return resolved;
 	}
 
 	/***
@@ -1080,9 +1343,10 @@ export class ProjectStore {
 	 * @param {string} opts.path - Existing project directory to adopt.
 	 * @param {string} [opts.name] - Display name (defaults to the directory basename).
 	 * @param {string} [opts.kainbainDirName] - Custom state-folder name for provisioning.
+	 * @param {Object} [opts.docsRepo] - Separate docs repo ({ url, localPath }) for the adopted project: KainBain docs/state live in that repo's checkout, nothing KainBain-related is written into the adopted repo.
 	 * @returns {Object} The adopted project.
 	 ***/
-	registerProject({ path: dirPath, name, kainbainDirName } = {}) {
+	registerProject({ path: dirPath, name, kainbainDirName, docsRepo } = {}) {
 		const resolved =
 			typeof dirPath === "string" && dirPath.trim()
 				? path.resolve(dirPath.trim())
@@ -1119,7 +1383,14 @@ export class ProjectStore {
 		const known = Array.from(this.projects.values()).find(
 			(p) => path.resolve(String(p.cwd || "")) === resolved,
 		);
-		if (known) return known;
+		if (known) {
+			// Idempotent re-registration — unless an explicit docsRepo arrives:
+			// that switches the known project's KainBain home (or clears it).
+			if (docsRepo !== undefined) {
+				return this.updateProject(known.id, { docsRepo });
+			}
+			return known;
+		}
 		const savedData = this._loadProjectFile(resolved);
 		if (savedData) {
 			const project = this._buildScannedProject(
@@ -1130,6 +1401,12 @@ export class ProjectStore {
 			this.projects.set(project.id, project);
 			if (!this.activeProjectId) this.activeProjectId = project.id;
 			this._rememberRegisteredPath(resolved);
+			// Adopting with an explicit docsRepo switches the project's
+			// KainBain home onto the docs checkout (provisioned + pointer
+			// recorded by updateProject); absent leaves the saved setting.
+			if (docsRepo !== undefined) {
+				return this.updateProject(project.id, { docsRepo });
+			}
 			return project;
 		}
 		const project = this.createProject({
@@ -1139,6 +1416,7 @@ export class ProjectStore {
 					: path.basename(resolved),
 			cwd: resolved,
 			kainbainDirName,
+			docsRepo,
 			// Adoption grandfathers existing local-only repositories (D11b):
 			// transport row 2, no clone-from-origin, no remote required.
 			allowLocalOnly: true,
@@ -1216,16 +1494,31 @@ export class ProjectStore {
 	 * @returns {{state: string, repaired: boolean, docsLink: string|null, notesDir: string|null}}
 	 *   `state` is one of 'ok', 'repaired', 'repaired-broken-link',
 	 *   'broken-link', 'link-missing', 'shadowed', 'local-dir',
-	 *   'foreign-link', 'notes-missing', 'no-cwd', 'opted-out', 'unexpected'.
+	 *   'foreign-link', 'notes-missing', 'no-cwd', 'opted-out',
+	 *   'external-docs', 'unexpected'.
 	 *   A project with a custom `docsDirName` verifies its own link name;
 	 *   a project with `centralizedDocs: false` reports 'opted-out' and
-	 *   never creates, repairs, or otherwise touches the notes space.
+	 *   never creates, repairs, or otherwise touches the notes space;
+	 *   a project with a separate docs repo reports 'external-docs' and never
+	 *   creates, repairs, or otherwise touches anything in the main repo —
+	 *   its docs live in the docs-repo checkout (`docsHome` in the result).
 	 ***/
 	ensureDocsLink(project) {
 		/* eslint-disable security/detect-non-literal-fs-filename */
 		const cwd = project?.cwd;
 		if (!cwd || typeof cwd !== "string") {
 			return { state: "no-cwd", repaired: false, docsLink: null, notesDir: null };
+		}
+		// Separate docs repo: the main repo must stay free of KainBain
+		// traces, so no link is created, repaired, or removed there.
+		if (hasDocsRepo(project)) {
+			return {
+				state: "external-docs",
+				repaired: false,
+				docsLink: null,
+				notesDir: null,
+				docsHome: resolveDocsRepoLocalPath(project),
+			};
 		}
 		const docsLink = path.join(cwd, resolveDocsDirName(project));
 		const label = project?.name || project?.id || cwd;
@@ -1701,6 +1994,44 @@ export class ProjectStore {
 				throw err;
 			}
 		}
+		// Separate docs repo: strict on write — an invalid URL/path throws 400
+		// and leaves the project unchanged; null/blank clears back to
+		// in-repo docs+state; absent keys are untouched. A docs repo already
+		// claimed by another project is a 409. Thrown before the record is
+		// touched.
+		const docsRepoTouched = updates.docsRepo !== undefined;
+		let docsRepoRaw = null;
+		if (docsRepoTouched) {
+			docsRepoRaw = updates.docsRepo;
+			updates.docsRepo = assertValidDocsRepoForWrite(updates.docsRepo);
+			if (updates.docsRepo) {
+				if (!updates.docsRepo.localPath) {
+					updates.docsRepo.localPath = this._defaultDocsRepoLocalPath(project.cwd);
+				}
+				this._assertDocsRepoUnclaimed(
+					updates.docsRepo,
+					updates.docsRepo.localPath,
+					project.id,
+				);
+				// Provision BEFORE the record is saved: the save below already
+				// resolves the KainBain home into the docs checkout, so the
+				// checkout must exist (and be a git repo) by then — otherwise
+				// the save itself would create a non-git directory that
+				// provisioning would refuse. A provision failure leaves the
+				// project record untouched.
+				const rawUrl =
+					typeof docsRepoRaw?.url === "string" && docsRepoRaw.url.trim()
+						? docsRepoRaw.url.trim()
+						: null;
+				updates.docsRepo.localPath = this._provisionDocsRepo({
+					docsRepo: updates.docsRepo,
+					rawUrl,
+					localPath: updates.docsRepo.localPath,
+					docsLinkName: resolveDocsDirName(project),
+					kainbainLinkName: resolveKainbainDirName(project),
+				});
+			}
+		}
 		// Normalize an incoming alias list (trim, drop invalids, dedupe);
 		// an empty result clears the list (undefined), like the harness.
 		// Inferred renames migrate referencing default/stage fields BEFORE
@@ -1728,8 +2059,10 @@ export class ProjectStore {
 		// The saved record leads: when a docs setting actually changed,
 		// migrate the on-disk link entry to match it. Never throws —
 		// verification reports whatever remains for an operator to
-		// reconcile. Unrelated updates never touch the filesystem.
-		if (docsDirTouched || centralizedDocsTouched) {
+		// reconcile. Unrelated updates never touch the filesystem. Skipped
+		// entirely for docs-repo projects: their docs live in the docs
+		// checkout and the main repo must stay free of KainBain entries.
+		if (!hasDocsRepo(project) && (docsDirTouched || centralizedDocsTouched)) {
 			try {
 				this._migrateDocsLink(project, {
 					fromName: docsNameFrom,
@@ -1738,6 +2071,22 @@ export class ProjectStore {
 				});
 			} catch {
 				// Link migration is best-effort; the record is already saved.
+			}
+		}
+		// Docs-repo switch: the checkout was provisioned above (before the
+		// save, which already landed the config inside it); here only the
+		// engine-global pointer is recorded so a restart rediscovers the
+		// project from its docs-repo config. Clearing removes the pointer.
+		// The main repo is never written here.
+		if (docsRepoTouched) {
+			if (project.docsRepo?.localPath) {
+				rememberDocsRepoPointer(
+					project.cwd,
+					project.docsRepo.localPath,
+					this._registryOverrides(),
+				);
+			} else {
+				removeDocsRepoPointer(project.cwd, this._registryOverrides());
 			}
 		}
 		return project;

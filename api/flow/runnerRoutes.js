@@ -28,6 +28,7 @@ import { stageRunnerPolicyVerdict } from "../../shared/stageRunnerPolicy.js";
 import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { collectTaskAssetPayload } from "../work/taskAssets.js";
+import { docsRepoUrlFor } from "../project/docsRepo.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask, resolveCandidateStage } from "./stageResolution.js";
@@ -1135,7 +1136,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const stage = resolveCandidateStage(stages, task.currentStageId);
 			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
 			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(docsRepoUrlFor(project) ? { docsRepoUrl: docsRepoUrlFor(project) } : {}), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
 		} catch (err) {
 			// WP2 signals: conflicts feed the fencing breakdown; other
 			// claim failures debit the success rate.
@@ -1532,6 +1533,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					stageId: cand.stage?.id ?? null,
 					prompt: curateRunnerPrompt({ project: candProject, task: cand.task, stageId: cand.stage?.id }),
 					taskAssets: taskAssetsFor(candProject, cand.taskId),
+					...(docsRepoUrlFor(candProject) ? { docsRepoUrl: docsRepoUrlFor(candProject) } : {}),
 					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
 					...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}),
