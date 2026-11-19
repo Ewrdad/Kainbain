@@ -59,6 +59,17 @@ Every new surface is additive and optional with the old path preserved as the de
 - Behaviour parity: `commandStages.test.js`, `integrationDispatch.test.js`, `runnerCiBranchPayload.test.js`, `taskBranches.test.js`, `taskDiffStat.test.js`, `branch.test.js`, `routes/projects.test.js`, `runner/ciBranchWorkdir.test.js`, plus `pipelineBaseBranch.integration.test.js` (configured-path end-to-end with `main` untouched).
 - Prior canary failures in this task's reports are infra flakes (`Target page, context or browser has been closed`, 1–3 tests, different specs per run, 137–139/140 passing) unrelated to this change.
 
+## Second pass (2026-11-19, HEAD `171a855b`) — latest delta re-checked
+
+The HEAD commit added four refinements on top of the reviewed state. Each was re-checked for upgrade breakage; none changes the verdict.
+
+- **Wrong-typed `baseBranch` now throws (400) instead of silently clearing** (`api/project/workflowDefaults.js:normalizeBaseBranchUpdate`). Only reachable when the caller explicitly sends the new field (existing clients never do), and it replaces a silent data-loss (wipe) with a loud error. Absent (`undefined`) still means untouched — verified at runtime: `undefined → {changed:false}`, `null → {changed:true, baseBranch:null}`; `42`/`{}`/`[x]` throw.
+- **Invalid pipeline names are never pinned** (`api/work/taskLifecycle.js:createTask` gates `normalizeBaseBranchName` with `isValidBranchName`). A hand-edited store with garbage yields an absent pin (resolver falls through to repo default), never a persisted-bad snapshot. Stored-workflow tolerance is unchanged: `normalizeWorkflows` drops invalid/non-string names on load (runtime-verified: `"has space"` and `42` both drop without throwing).
+- **Diff-stat badge now threads the caller's effective base** (`api/work/taskDiffStat.js`, `api/work/taskPersistence.js`). `getTaskDiffStat` gains an optional `baseBranch` (defaults to task pin); `recordTimelineWithDiffStat` resolves via `resolveTaskBaseBranch` best-effort and degrades to pin-only on failure. Unconfigured tasks resolve to repo default exactly as before (tests: 234 passed across `workflowDefaults`, `projectStore`, `projectStore.barrel`, `taskLifecycle`, `taskPersistence`, `taskBaseBranch` this session).
+- **Runner re-check unified to `isValidBranchName`** (`runner/daemon.js:checkoutPrimaryBase`). Stricter than the old inline regex, but only exercised when a pipeline is explicitly configured (`primaryBranch` absent ⇒ no checkout). No existing install reaches it.
+
+Merge status: `git merge-tree --write-tree HEAD origin/main` resolves cleanly (single tree, no conflicts) — the earlier `api/projectStore.barrel.test.js` conflict is already resolved by merge `359fa2d4` (all three exports `normalizeBaseBranchUpdate`, `normalizeDocsRepoPointers`, `normalizeDocsRepoSettings` present in order).
+
 ## Conclusion
 
 KAINBAIN_VERDICT: PASS — ship as-is from an upgrade-safety standpoint. No follow-up required for existing installs; operators opting into `baseBranch` get the new auto-create/push/checkout behaviour as designed.
