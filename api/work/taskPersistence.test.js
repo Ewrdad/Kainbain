@@ -139,6 +139,61 @@ describe("The Work: reliability-sample persistence", () => {
 		});
 	});
 
+	it("round-trips the pinned base branch through task.md frontmatter", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-basebranch-persist-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-base-1",
+			projectId: "proj-1",
+			workflowId: "wf-x",
+			branch: "kb/task-base-1",
+			baseBranch: "feature/x",
+			title: "Based task",
+			status: "in_stage",
+			createdAt: "2026-11-19T00:00:00.000Z",
+			updatedAt: "2026-11-19T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-base-1", "task.md"),
+			"utf8",
+		);
+		expect(content).toContain("baseBranch: feature/x");
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-base-1", "proj-1");
+		expect(rehydrated.baseBranch).toBe("feature/x");
+		expect(rehydrated.branch).toBe("kb/task-base-1");
+	});
+
+	it("omits the baseBranch line for tasks on the repo default", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-basebranch-plain-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-base-2",
+			projectId: "proj-1",
+			branch: "kb/task-base-2",
+			title: "Plain task",
+			status: "in_stage",
+			createdAt: "2026-11-19T00:00:00.000Z",
+			updatedAt: "2026-11-19T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-base-2", "task.md"),
+			"utf8",
+		);
+		expect(content).not.toContain("baseBranch");
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-base-2", "proj-1");
+		expect(rehydrated.baseBranch).toBeUndefined();
+	});
+
 	it("keeps an empty sample list for tasks with no samples (no fake history)", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-reliability-empty-"));
 		const store = stubStore({ cwd: dir });

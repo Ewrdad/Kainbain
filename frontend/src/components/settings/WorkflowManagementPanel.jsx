@@ -23,11 +23,25 @@ export function WorkflowManagementPanel({ projectId }) {
 
   const [newWfName, setNewWfName] = useState('');
   const [newWfIsDefault, setNewWfIsDefault] = useState(false);
+  const [newWfBaseBranch, setNewWfBaseBranch] = useState('');
   const [template, setTemplate] = useState('standard');
   const [isCreating, setIsCreating] = useState(false);
   const [editingWfId, setEditingWfId] = useState(null);
   const [editName, setEditName] = useState('');
+  const [editingBaseWfId, setEditingBaseWfId] = useState(null);
+  const [editBaseBranch, setEditBaseBranch] = useState('');
   const [statusMsg, setStatusMsg] = useState(null);
+
+  // Obvious-mistake hint only (the server owns full git-name validation
+  // and its 400 surfaces as the status error below).
+  const baseBranchHint = (value) => {
+    if (!value) return '';
+    if (/\s/.test(value)) return 'Branch names cannot contain spaces.';
+    if (value.startsWith('-') || value.startsWith('/') || value.startsWith('.')) {
+      return 'Branch names cannot start with -, / or .';
+    }
+    return '';
+  };
 
   const getTemplateStages = (tpl) => {
     if (tpl === 'fast') {
@@ -60,6 +74,11 @@ export function WorkflowManagementPanel({ projectId }) {
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!newWfName.trim() || !projectId) return;
+    const hint = baseBranchHint(newWfBaseBranch.trim());
+    if (hint) {
+      setStatusMsg({ type: 'error', text: hint });
+      return;
+    }
     setIsCreating(true);
     try {
       const stages = getTemplateStages(template);
@@ -67,9 +86,11 @@ export function WorkflowManagementPanel({ projectId }) {
         name: newWfName.trim(),
         stages,
         isDefault: newWfIsDefault,
+        baseBranch: newWfBaseBranch.trim() || undefined,
       });
       setNewWfName('');
       setNewWfIsDefault(false);
+      setNewWfBaseBranch('');
       setStatusMsg({ type: 'success', text: 'Workflow created successfully' });
       setTimeout(() => setStatusMsg(null), 3000);
     } catch (err) {
@@ -87,6 +108,28 @@ export function WorkflowManagementPanel({ projectId }) {
       setEditName('');
     } catch (err) {
       setStatusMsg({ type: 'error', text: err.message || 'Failed to update workflow' });
+    }
+  };
+
+  const handleSaveBaseEdit = async (wfId) => {
+    if (!projectId) return;
+    const hint = baseBranchHint(editBaseBranch.trim());
+    if (hint) {
+      setStatusMsg({ type: 'error', text: hint });
+      return;
+    }
+    try {
+      // Blank clears the override back to the repo default.
+      await updateWorkflowDetails(projectId, wfId, { baseBranch: editBaseBranch.trim() });
+      setEditingBaseWfId(null);
+      setEditBaseBranch('');
+      setStatusMsg({
+        type: 'success',
+        text: 'Base branch updated — in-flight tasks keep the base branch they were created with.',
+      });
+      setTimeout(() => setStatusMsg(null), 5000);
+    } catch (err) {
+      setStatusMsg({ type: 'error', text: err.message || 'Failed to update base branch' });
     }
   };
 
@@ -186,6 +229,27 @@ export function WorkflowManagementPanel({ projectId }) {
             </div>
           </div>
 
+          <div>
+            <label
+              htmlFor="new-wf-base-branch"
+              className="block text-[10px] font-bold uppercase text-text-muted mb-1"
+            >
+              Base branch
+            </label>
+            <input
+              id="new-wf-base-branch"
+              type="text"
+              value={newWfBaseBranch}
+              onChange={(e) => setNewWfBaseBranch(e.target.value)}
+              placeholder="Repo default (e.g. main) — or a feature branch"
+              className="w-full p-2 bg-surface-deep border border-border-standard rounded-sm text-xs text-on-surface font-mono outline-none focus:border-primary"
+            />
+            <p className="mt-1 text-[10px] text-text-muted">
+              New tasks branch off this branch and merge back into it. Blank means the
+              repo&apos;s default branch.
+            </p>
+          </div>
+
           <div className="flex items-center justify-between pt-1">
             <label className="flex items-center gap-2 text-xs text-text-muted cursor-pointer select-none">
               <input
@@ -219,6 +283,7 @@ export function WorkflowManagementPanel({ projectId }) {
         {projectWorkflows.map((wf) => {
           const isActive = activeWorkflowId === wf.id;
           const isEditing = editingWfId === wf.id;
+          const isEditingBase = editingBaseWfId === wf.id;
 
           return (
             <div
@@ -318,6 +383,59 @@ export function WorkflowManagementPanel({ projectId }) {
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Base branch row */}
+              <div className="flex min-w-0 flex-wrap items-center gap-2 pb-1">
+                {isEditingBase ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <input
+                      type="text"
+                      value={editBaseBranch}
+                      onChange={(e) => setEditBaseBranch(e.target.value)}
+                      placeholder="Repo default (blank)"
+                      aria-label={`Base branch for ${wf.name}`}
+                      className="min-w-0 flex-1 px-2 py-1 bg-surface-deep border border-border-standard rounded-sm text-xs text-on-surface font-mono outline-none focus:border-primary"
+                      // eslint-disable-next-line jsx-a11y/no-autofocus -- editor appears from the user's explicit edit action
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveBaseEdit(wf.id)}
+                      className="shrink-0 px-2 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase rounded-sm cursor-pointer"
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingBaseWfId(null)}
+                      className="shrink-0 px-2 py-1 bg-surface-deep text-text-muted text-[10px] font-bold uppercase rounded-sm cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="text-[11px] text-text-muted font-mono">
+                      Base branch:{' '}
+                      <span className="text-on-surface font-bold">
+                        {wf.baseBranch || 'repo default'}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingBaseWfId(wf.id);
+                        setEditBaseBranch(wf.baseBranch || '');
+                      }}
+                      className="shrink-0 text-text-muted hover:text-on-surface text-xs cursor-pointer"
+                      title="Edit base branch"
+                      aria-label={`Edit base branch for ${wf.name}`}
+                    >
+                      ✏️
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Stages Pill Strip */}

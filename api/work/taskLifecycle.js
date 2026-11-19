@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { _sanitizeTaskTitle, resolveTaskTitleAndGoal } from "./taskIdentity.js";
 import { safeParseJsonArray } from "./taskFiles.js";
 import { taskBranchName } from "./taskBranches.js";
+import { normalizeBaseBranchName } from "./taskBaseBranch.js";
 import {
 	_appendProcessLog,
 	_logEntriesForFeed,
@@ -294,10 +295,27 @@ export function createTask(
 		? parseAutoApproveDuration(entryStage.autoApproveAfterMs)
 		: null;
 
+	// Pin the pipeline's base branch onto the task (pure data, no git):
+	// in-flight tasks keep this snapshot even when the pipeline is
+	// re-pointed later. Absent when the pipeline uses the repo default.
+	let pinnedBaseBranch = null;
+	if (
+		store.projectStore &&
+		typeof store.projectStore.getWorkflow === "function"
+	) {
+		try {
+			const pipeline = store.projectStore.getWorkflow(projectId, resolvedWorkflowId);
+			pinnedBaseBranch = normalizeBaseBranchName(pipeline?.baseBranch);
+		} catch {
+			pinnedBaseBranch = null;
+		}
+	}
+
 	const task = {
 		id,
 		projectId,
 		workflowId: resolvedWorkflowId,
+		...(pinnedBaseBranch ? { baseBranch: pinnedBaseBranch } : {}),
 		title: taskTitle,
 		goal: taskGoal,
 		body: taskGoal,

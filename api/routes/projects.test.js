@@ -717,6 +717,55 @@ describe("Project & Workflow API Integration", () => {
 		expect(JSON.parse(deleteWfRes.payload).status).toBe("deleted");
 	});
 
+	it("round-trips workflow.baseBranch via the workflows endpoints (400 on invalid)", async () => {
+		const projRes = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: { name: "Base Branch App", gitUrl: "https://git.example.com/team/fixture.git" },
+		});
+		const project = JSON.parse(projRes.payload);
+
+		const createRes = await app.inject({
+			method: "POST",
+			url: `/projects/${project.id}/workflows`,
+			payload: { name: "Feature Track", baseBranch: "feature/big-thing" },
+		});
+		expect(createRes.statusCode).toBe(201);
+		const created = JSON.parse(createRes.payload);
+		expect(created.baseBranch).toBe("feature/big-thing");
+
+		const badCreate = await app.inject({
+			method: "POST",
+			url: `/projects/${project.id}/workflows`,
+			payload: { name: "Bad Track", baseBranch: "--evil" },
+		});
+		expect(badCreate.statusCode).toBe(400);
+		expect(JSON.parse(badCreate.payload).error).toMatch(/valid git branch name/);
+
+		const patchRes = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}/workflows/${created.id}`,
+			payload: { baseBranch: "release/next" },
+		});
+		expect(patchRes.statusCode).toBe(200);
+		expect(JSON.parse(patchRes.payload).baseBranch).toBe("release/next");
+
+		const badPatch = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}/workflows/${created.id}`,
+			payload: { baseBranch: "has space" },
+		});
+		expect(badPatch.statusCode).toBe(400);
+
+		const clearRes = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}/workflows/${created.id}`,
+			payload: { baseBranch: "" },
+		});
+		expect(clearRes.statusCode).toBe(200);
+		expect("baseBranch" in JSON.parse(clearRes.payload)).toBe(false);
+	});
+
 	it("should return 409 Conflict when updating project with mismatched expectedUpdatedAt", async () => {
 		const projRes = await app.inject({
 			method: "POST",

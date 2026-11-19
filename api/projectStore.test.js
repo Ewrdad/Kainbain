@@ -480,6 +480,46 @@ describe("ProjectStore", () => {
 		});
 	});
 
+	it("round-trips workflow.baseBranch through create/update and disk reload", () => {
+		const p = store.createProject({ name: "Based Pipelines", allowLocalOnly: true });
+		const created = store.createWorkflow(p.id, {
+			name: "Feature Track",
+			baseBranch: "  feature/big-thing  ",
+		});
+		expect(created.baseBranch).toBe("feature/big-thing");
+
+		// Survives a scan/reload from disk (the normalizer must not drop it).
+		const reloaded = store.scanProjects().find((proj) => proj.id === p.id);
+		expect(
+			reloaded.workflows.find((w) => w.id === created.id).baseBranch,
+		).toBe("feature/big-thing");
+
+		// Blank clears back to the repo default (the key is dropped).
+		const cleared = store.updateWorkflow(p.id, created.id, { baseBranch: "  " });
+		expect(cleared).not.toHaveProperty("baseBranch");
+		const reloadedCleared = store.scanProjects().find((proj) => proj.id === p.id);
+		expect(
+			reloadedCleared.workflows.find((w) => w.id === created.id),
+		).not.toHaveProperty("baseBranch");
+
+		// Workflows created without a base carry no key at all.
+		const plain = store.createWorkflow(p.id, { name: "Plain" });
+		expect(plain).not.toHaveProperty("baseBranch");
+	});
+
+	it("refuses an invalid workflow.baseBranch on create and update", () => {
+		const p = store.createProject({ name: "Based Pipelines", allowLocalOnly: true });
+		expect(() =>
+			store.createWorkflow(p.id, { name: "Bad", baseBranch: "--evil" }),
+		).toThrow(/valid git branch name/);
+		const created = store.createWorkflow(p.id, { name: "Good" });
+		expect(() =>
+			store.updateWorkflow(p.id, created.id, { baseBranch: "has space" }),
+		).toThrow(/valid git branch name/);
+		// The failed update left the stored workflow untouched.
+		expect(store.getWorkflow(p.id, created.id)).not.toHaveProperty("baseBranch");
+	});
+
 	it("persists useBranches (per-task branch support) as an opt-in project flag", () => {
 		// Default OFF for backwards compatibility.
 		const plain = store.createProject({ name: "Single Branch" , allowLocalOnly: true });

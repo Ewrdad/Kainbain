@@ -252,6 +252,28 @@ describe("createTask", () => {
 		expect(t.body).toBe(goal);
 	});
 
+	it("pins the pipeline's base branch snapshot onto the task", () => {
+		const store = makeStore();
+		store.projectStore.getWorkflow = vi.fn(() => ({ id: "wf-x", baseBranch: "feature/x" }));
+		const t = createTask(store, "p-1", { title: "A", goal: "A", workflowId: "wf-x" });
+		expect(t.baseBranch).toBe("feature/x");
+		expect(store.projectStore.getWorkflow).toHaveBeenCalledWith("p-1", "wf-x");
+	});
+
+	it("leaves baseBranch absent when the pipeline uses the repo default", () => {
+		const store = makeStore();
+		store.projectStore.getWorkflow = () => ({ id: "wf-x" });
+		const t = createTask(store, "p-1", { title: "A", goal: "A", workflowId: "wf-x" });
+		expect(t).not.toHaveProperty("baseBranch");
+	});
+
+	it("leaves baseBranch absent when the store has no workflow lookup", () => {
+		const store = makeStore();
+		delete store.projectStore.getWorkflow;
+		const t = createTask(store, "p-1", { title: "A", goal: "A" });
+		expect(t).not.toHaveProperty("baseBranch");
+	});
+
 });
 
 describe("listTasks / getTasks / getTask", () => {

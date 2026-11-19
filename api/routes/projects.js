@@ -752,7 +752,7 @@ export default async function projectsRoutes(app, { deps }) {
 		const project = projectStore.getProject(request.params.id);
 		if (!project) return reply.status(404).send({ error: "Project not found" });
 
-		const { name, stages, isDefault } = request.body || {};
+		const { name, stages, isDefault, baseBranch } = request.body || {};
 		if (!name || typeof name !== "string" || !name.trim()) {
 			return reply.status(400).send({ error: "Workflow name is required" });
 		}
@@ -767,6 +767,7 @@ export default async function projectsRoutes(app, { deps }) {
 				name,
 				stages,
 				isDefault,
+				baseBranch,
 			});
 			return reply.status(201).send(workflow);
 		} catch (err) {
@@ -806,11 +807,16 @@ export default async function projectsRoutes(app, { deps }) {
 		const patchAutoApproveError = assertValidStageAutoApproves((request.body || {}).stages);
 		if (patchAutoApproveError) return reply.status(400).send(patchAutoApproveError);
 
-		const updated = projectStore.updateWorkflow(
-			request.params.id,
-			request.params.workflowId,
-			request.body || {},
-		);
+		let updated;
+		try {
+			updated = projectStore.updateWorkflow(
+				request.params.id,
+				request.params.workflowId,
+				request.body || {},
+			);
+		} catch (err) {
+			return reply.status(400).send({ error: err.message });
+		}
 		if (!updated) {
 			return reply.status(404).send({ error: "Workflow not found" });
 		}

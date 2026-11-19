@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { DEFAULT_STAGES, normalizeStages } from "./stageNormalizers.js";
+import { isValidBranchName } from "../git/validation.js";
+import { normalizeBaseBranchName } from "../work/taskBaseBranch.js";
 
 /***
  * MARK: createDefaultWorkflow
@@ -21,8 +23,34 @@ export function createDefaultWorkflow(stages = DEFAULT_STAGES) {
 }
 
 /***
+ * MARK: normalizeBaseBranchUpdate
+ * @description Interprets a base-branch write from the API or UI: an absent
+ *   value leaves the field untouched, a blank or null value clears it back
+ *   to the repo default, a valid git branch name sets it, and anything else
+ *   throws loudly (the route turns it into a 400).
+ * @example normalizeBaseBranchUpdate('  feature/x  ') => { changed: true, baseBranch: 'feature/x' }
+ * @example normalizeBaseBranchUpdate('') => { changed: true, baseBranch: null }
+ * @param {*} value - Raw incoming value.
+ * @returns {{changed: boolean, baseBranch?: string|null}}
+ ***/
+export function normalizeBaseBranchUpdate(value) {
+	if (value === undefined) return { changed: false };
+	if (value === null) return { changed: true, baseBranch: null };
+	if (typeof value !== "string" || !value.trim()) {
+		return { changed: true, baseBranch: null };
+	}
+	const cleaned = value.trim();
+	if (!isValidBranchName(cleaned)) {
+		throw new Error(
+			`Invalid base branch '${cleaned}' — set a valid git branch name, or clear it to use the repo default.`,
+		);
+	}
+	return { changed: true, baseBranch: cleaned };
+}
+
+/***
  * MARK: normalizeWorkflow
- * @description Normalizes a single workflow entity with valid id, name, isDefault, and normalized stages.
+ * @description Normalizes a single workflow entity with valid id, name, isDefault, normalized stages, and the optional base branch.
  * @example normalizeWorkflow({ name: 'Bugfix', stages: [] }) => { id: 'wf-...', name: 'Bugfix', isDefault: false, stages: [...] }
  * @param {Object} wf
  * @param {boolean} [isFirst=false]
@@ -40,11 +68,13 @@ export function normalizeWorkflow(wf, isFirst = false) {
 			? wf.stages
 			: DEFAULT_STAGES.map((s) => ({ ...s })),
 	);
+	const storedBase = normalizeBaseBranchName(wf.baseBranch);
 	return {
 		id,
 		name,
 		isDefault,
 		stages,
+		...(storedBase && isValidBranchName(storedBase) ? { baseBranch: storedBase } : {}),
 	};
 }
 

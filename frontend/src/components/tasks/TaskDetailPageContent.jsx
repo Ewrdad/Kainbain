@@ -73,6 +73,7 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     currentStageId,
     stages = [],
     projects = [],
+    projectWorkflows = [],
     processLogs: wsProcessLogs = [],
     engineState,
     isAgentRunning,
@@ -294,6 +295,24 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     task?.workingLocation?.branch || getTaskBranchName(task);
   const workingLocationText = workingLocationBranch
     ? `Works on ${workingLocationBranch} · ${task?.workingLocation?.workspaceIsolation || 'quarantine'}${task?.workingLocation?.worktreePath ? ` · ${task.workingLocation.worktreePath}` : ''}`
+    : null;
+  // Effective base branch (mirrors the backend resolver chain): the task's
+  // pinned snapshot first, then the pipeline's live setting, else the repo
+  // default. Shown wherever the branch is shown.
+  const taskPipeline = (projectWorkflows || []).find((w) => w?.id === task?.workflowId);
+  const pinnedBaseBranch =
+    typeof task?.baseBranch === 'string' && task.baseBranch.trim()
+      ? task.baseBranch.trim()
+      : null;
+  const liveBaseBranch =
+    typeof taskPipeline?.baseBranch === 'string' && taskPipeline.baseBranch.trim()
+      ? taskPipeline.baseBranch.trim()
+      : null;
+  const effectiveBaseBranch = pinnedBaseBranch || liveBaseBranch;
+  const baseBranchText = workingLocationBranch
+    ? effectiveBaseBranch
+      ? `Base branch: ${effectiveBaseBranch}${pinnedBaseBranch ? ' (pinned to this task)' : ' (from pipeline)'}`
+      : 'Base branch: repo default'
     : null;
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
@@ -1059,6 +1078,14 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                     title="Where this task's work lives: branch, isolation mode, and worktree path when enabled"
                   >
                     {workingLocationText}
+                  </p>
+                )}
+                {baseBranchText && (
+                  <p
+                    className="text-[11px] font-mono text-text-muted break-all"
+                    title="The branch this task branched off and merges back into"
+                  >
+                    {baseBranchText}
                   </p>
                 )}
               </div>

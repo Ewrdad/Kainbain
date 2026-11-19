@@ -73,6 +73,44 @@ describe("prepareIntegrationAttempt", () => {
 		}
 	});
 
+	it("targets the task's pinned pipeline base instead of main", async () => {
+		const { origin, backend, work } = originWithTask();
+		try {
+			// A pushed feature base the integration must merge into.
+			execFileSync("git", ["checkout", "-q", "main"], { cwd: work, stdio: "ignore" });
+			execFileSync("git", ["checkout", "-qb", "feature/base"], { cwd: work, stdio: "ignore" });
+			fs.writeFileSync(path.join(work, "feature.txt"), "feature");
+			execFileSync("git", ["add", "."], { cwd: work, stdio: "ignore" });
+			execFileSync("git", ["commit", "-qm", "feature"], { cwd: work, stdio: "ignore" });
+			execFileSync("git", ["push", "-q", "origin", "feature/base"], { cwd: work, stdio: "ignore" });
+			const task = { id: "t1", branch: "kb/t1", workflowId: "wf-f", baseBranch: "feature/base" };
+			const { taskStore, projectStore } = storesFor(backend, task);
+			const out = await prepareIntegrationAttempt({ taskStore, projectStore, projectId: "p1", task });
+			expect(out.targetBranch).toBe("feature/base");
+			expect(out.expectedTargetSha).toBe(git(work, ["rev-parse", "feature/base"]));
+			expect(out.expectedTaskSha).toBe(git(work, ["rev-parse", "kb/t1"]));
+		} finally {
+			for (const d of [origin, backend, work]) fs.rmSync(d, { recursive: true, force: true });
+		}
+	});
+
+	it("auto-creates and pushes a missing pipeline base for integration", async () => {
+		const { origin, backend, work } = originWithTask();
+		try {
+			const task = { id: "t1", branch: "kb/t1", workflowId: "wf-f", baseBranch: "feature/fresh" };
+			const { taskStore, projectStore } = storesFor(backend, task);
+			const out = await prepareIntegrationAttempt({ taskStore, projectStore, projectId: "p1", task });
+			expect(out.targetBranch).toBe("feature/fresh");
+			expect(out.expectedTargetSha).toBe(git(work, ["rev-parse", "main"]));
+			// The auto-created base reached the remote, so runners can merge it.
+			expect(git(origin, ["rev-parse", "--verify", "refs/heads/feature/fresh"])).toBe(
+				out.expectedTargetSha,
+			);
+		} finally {
+			for (const d of [origin, backend, work]) fs.rmSync(d, { recursive: true, force: true });
+		}
+	});
+
 	it("rotates the attempt id after a failed attempt and refuses unpushed task work", async () => {
 		const { origin, backend, work } = originWithTask();
 		try {
