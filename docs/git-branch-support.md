@@ -24,6 +24,28 @@ Two further settings control workspace isolation and dirty-tree recovery
 - `dirtyTreeRecovery: "ladder"` (default) — run the sweep → stash → report
   ladder before parking; `"off"` restores the immediate refusal.
 
+## Per-Pipeline Base Branch
+
+Each named workflow (pipeline) can name its own **base branch** — the branch
+that pipeline treats as its main branch. Set it in the pipeline settings
+(`Base branch` field, blank = repo default) or via
+`POST/PATCH /projects/:id/workflows…` (`baseBranch`, stored in
+`.kainbain/project.json`). Every "default branch" step in this document then
+means the task's **effective base branch**: task branches are created off it,
+the merge stage merges back into it (and pushes it), post-stage finalise
+returns to it, CI `runOnBranch: "primary"` runs on it, and review/diff views
+compare the task branch against it.
+
+Resolution order per task: the task's pinned snapshot → the pipeline's live
+setting → the repo default. The snapshot is pinned at task creation (pure
+data, no git — the serialization gate below still holds), so re-pointing a
+pipeline only affects subsequently created tasks; in-flight tasks keep
+merging into the base they started with. A configured base that does not
+exist yet is auto-created from the repo default tip (adopting
+`origin/<base>` when the remote already has it) and pushed best-effort, so a
+fresh feature branch just works. An invalid git name refuses loudly (400 at
+the API, inline error in the UI) and is never silently replaced with `main`.
+
 ## Workspace Isolation
 
 ### Quarantine mode (default)

@@ -1247,6 +1247,38 @@ describe('TaskDetailPage Copy Checkout buttons', () => {
     });
     expect(screen.getByText('Works on kb/task-101 · quarantine')).toBeInTheDocument();
   });
+
+  test('base-branch line prefers the task-pinned base over the pipeline live value', () => {
+    renderWithKainBain(
+      <TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1', baseBranch: 'feature/pinned' }} />,
+      {
+        stages: sampleStages,
+        projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+        projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+      },
+    );
+    expect(
+      screen.getByText('Base branch: feature/pinned (pinned to this task)'),
+    ).toBeInTheDocument();
+  });
+
+  test('base-branch line falls back to the pipeline live base', () => {
+    renderWithKainBain(<TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1' }} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+      projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+    });
+    expect(screen.getByText('Base branch: feature/live (from pipeline)')).toBeInTheDocument();
+  });
+
+  test('base-branch line falls back to the repo default when nothing is pinned', () => {
+    renderWithKainBain(<TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1' }} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+      projectWorkflows: [{ id: 'wf-1', name: 'Feature' }],
+    });
+    expect(screen.getByText('Base branch: repo default')).toBeInTheDocument();
+  });
 });
 
 describe('TaskDetailPage survey entry points', () => {

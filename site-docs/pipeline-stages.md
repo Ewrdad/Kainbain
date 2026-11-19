@@ -35,7 +35,7 @@ A `ci` stage has an optional **Run on branch** setting that decides which git br
 | Mode | Meaning |
 | ---- | ------- |
 | `task` *(default)* | The task's own branch / isolated worktree — today's behaviour, unchanged. For a deploy-command stage this runs `deploy.sh` from the task worktree: a branch-specific deploy for isolated testing (falls back to the primary checkout when none is provisioned). |
-| `primary` | The project's primary/default branch, auto-resolved per repository (`origin/HEAD` → `main` → `master` → current → `main`), so a merge can be verified on main / master / dev / prod — whatever the project uses. |
+| `primary` | The pipeline's base branch (below), or the project's primary/default branch when the pipeline names none — auto-resolved per repository (`origin/HEAD` → `main` → `master` → current → `main`), so a merge can be verified on main / master / dev / prod — whatever the project uses. |
 | `custom` | A named branch you type in (e.g. `release/next`). It must already exist locally. |
 
 Why you might want this: a pipeline of `… → merge → ci (primary)` verifies the **merged** result on the primary branch. If the merge broke main, the CI stage fails and routes to its configured failback (e.g. retask an agent to fix it) — the same evidence loop that replaced the old combined merge-and-deploy stage type with a plain merge plus a separate deploy CI stage.
@@ -46,6 +46,17 @@ How it behaves at run time:
 - The switch is refused (with a clear stage failure) when the working tree is dirty or the project is not a git repository; a custom branch that is blank, invalid, or missing fails the stage before any checkout. A misconfigured stage never silently falls back to the task branch.
 - Task-branch finalize (commit + push of task work) is **skipped** for `primary`/`custom` runs: a verification or deploy run must never commit or push onto the primary or custom branch. Keep CI commands on these modes read-only (tests, lint, builds) and gitignore their artifacts — a command that dirties the tree will make the restore refuse and fail the stage loudly.
 - The stage report records the resolved branch and its tip SHA (`**Branch:** main (primary) @ <sha>`) so a failed run is auditable.
+
+## Per-pipeline base branch
+
+Each named pipeline can treat a feature branch as its main branch: set
+**Base branch** in the pipeline settings (blank = the repo default). New
+task branches fork off it, the merge stage merges back into it (and pushes
+it), `primary` CI runs verify it, and review diffs compare against it. The
+base is pinned onto each task at creation, so re-pointing a pipeline only
+affects tasks created afterwards — in-flight work keeps merging into the
+base it started with. A base that does not exist yet is created from the
+repo default tip automatically.
 
 ## CI failure detail: fast gate, verdicts, and budgets
 

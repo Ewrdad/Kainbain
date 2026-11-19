@@ -38,6 +38,7 @@ describe("projectStore barrel surface", () => {
 		isPublishCommand: "function",
 		migrateMergeDeployStages: "function",
 		normalizeAppStatus: "function",
+		normalizeBaseBranchUpdate: "function",
 		normalizeProjectRetrySettings: "function",
 		normalizeRetryCount: "function",
 		normalizeRetryEnabled: "function",

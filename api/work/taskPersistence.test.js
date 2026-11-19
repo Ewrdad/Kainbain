@@ -161,7 +161,7 @@ describe("The Work: reliability-sample persistence", () => {
 			path.join(dir, "docs", "tasks", "task-base-1", "task.md"),
 			"utf8",
 		);
-		expect(content).toContain("baseBranch: feature/x");
+		expect(content).toContain('baseBranch: "feature/x"');
 
 		const rehydrated = parseTaskMarkdown(store, content, "task-base-1", "proj-1");
 		expect(rehydrated.baseBranch).toBe("feature/x");

@@ -21,12 +21,15 @@ import {
 	branchExists,
 	currentBranch,
 	isWorkingTreeClean,
-	isValidBranchName,
 	commitAllIfNeeded,
 	defaultBranch,
 	drainGitLockRecoveries,
 	formatGitLockRecoveryNotice,
 } from "./git.js";
+// Pure validation comes from the defining module, not the git barrel (see
+// api/work/taskBaseBranch.js): the barrel is mocked out in unit tests and
+// those mocks do not carry pure helpers.
+import { isValidBranchName } from "./git/validation.js";
 import { config } from "./config.js";
 import {
 	isReviewDiffPreserved,

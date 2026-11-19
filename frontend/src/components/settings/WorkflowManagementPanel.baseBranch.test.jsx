@@ -129,7 +129,12 @@ describe('WorkflowManagementPanel base branch', () => {
     );
     expect(await screen.findByText('Invalid base branch')).toBeInTheDocument();
 
-    // Obvious client-side mistake: spaces never reach the server.
+    // Obvious client-side mistake: spaces never reach the server. The name is
+    // filled so the submit reaches base-branch validation (an empty name
+    // refuses the submit before any field is validated).
+    fireEvent.change(screen.getByLabelText('Workflow Name'), {
+      target: { value: 'Spaced Track' },
+    });
     fireEvent.change(screen.getByLabelText('Base branch'), {
       target: { value: 'has space' },
     });

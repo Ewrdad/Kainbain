@@ -367,7 +367,7 @@ export async function finalizeTaskBranch(
 	// The guard stays strict here (recovery: 'off'): a tree that is dirty
 	// AFTER the commit step means the commit itself failed, and stashing
 	// it away would strand work the merge stage never restores — refuse loudly.
-	const { branch: returnBranch } = await resolveTaskBaseBranch({
+	const { branch: returnBranch, source: returnSource } = await resolveTaskBaseBranch({
 		task,
 		projectStore: taskStore?.projectStore,
 		projectId: task?.projectId,
@@ -376,7 +376,10 @@ export async function finalizeTaskBranch(
 	try {
 		const back = await returnToDefaultBranch(cwd, {
 			recovery: "off",
-			targetBranch: returnBranch,
+			// The explicit target rides along only when a pipeline base is
+			// actually configured: unconfigured tasks keep the historical
+			// call shape (and the callee resolves the repo default itself).
+			...(returnSource !== "repo" && returnBranch ? { targetBranch: returnBranch } : {}),
 			// Same project hint the commit step above uses: a custom docs
 			// folder must count as engine-owned on the return switch too,
 			// or the strict guard refuses a tree holding only snapshots.

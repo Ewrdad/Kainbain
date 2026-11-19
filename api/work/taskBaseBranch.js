@@ -7,9 +7,13 @@ import {
 	hasCommits,
 	hasRemote,
 	isGitRepository,
-	isValidBranchName,
 	pushBranchIfRemote,
 } from "../git.js";
+// Pure validation comes from the defining module, not the git barrel: the
+// barrel is mocked out in unit tests (which never run real git) and those
+// mocks do not carry pure helpers, so a barrel import would resolve to
+// undefined and fail every lookup that validates a name.
+import { isValidBranchName } from "../git/validation.js";
 
 /***
  * MARK: normalizeBaseBranchName
