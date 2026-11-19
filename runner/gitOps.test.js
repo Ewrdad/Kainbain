@@ -96,6 +96,63 @@ describe("commitAndPush", () => {
 		assert.equal(show(["log", "-1", "--format=%an"]), "kainbain-runner/host-9");
 		assert.equal(show(["config", "user.name"]), "t");
 	});
+
+	it("commits and pushes the paired docs worktree FIRST (docs repo, same branch)", async () => {
+		// Code repo + separate docs repo, each with its own origin, both on
+		// kb/t1 — the docs-repo project layout the runner prepares.
+		ctx = worktreeRepo(true);
+		const docs = worktreeRepo(true);
+		try {
+			fs.writeFileSync(path.join(ctx.dir, "code.txt"), "c");
+			const docsTaskDir = path.join(docs.dir, "docs", "tasks", "t1");
+			fs.mkdirSync(docsTaskDir, { recursive: true });
+			fs.writeFileSync(path.join(docsTaskDir, "plan.md"), "# plan");
+			const out = await commitAndPush({
+				workdir: ctx.dir,
+				branch: "kb/t1",
+				message: "kb/t1 s1: stage output",
+				taskDocsPath: "docs/tasks/t1",
+				docsWorkdir: docs.dir,
+			});
+			assert.equal(out.pushed, true);
+			assert.equal(out.docsPushed, true);
+			// Docs commit carries the [docs] prefix; code commit does not.
+			const docsSubject = execFileSync("git", ["log", "-1", "--format=%s", "kb/t1"], { cwd: docs.origin, encoding: "utf8" }).trim();
+			assert.equal(docsSubject, "[docs] kb/t1 s1: stage output");
+			const codeSubject = execFileSync("git", ["log", "-1", "--format=%s", "kb/t1"], { cwd: ctx.origin, encoding: "utf8" }).trim();
+			assert.equal(codeSubject, "kb/t1 s1: stage output");
+			// The docs branch actually carries the task docs file.
+			const docsFile = execFileSync("git", ["show", "kb/t1:docs/tasks/t1/plan.md"], { cwd: docs.origin, encoding: "utf8" });
+			assert.equal(docsFile, "# plan");
+		} finally {
+			fs.rmSync(docs.dir, { recursive: true, force: true });
+			fs.rmSync(docs.origin, { recursive: true, force: true });
+		}
+	});
+
+	it("aborts before the code push when the docs worktree push fails", async () => {
+		ctx = worktreeRepo(true);
+		const docs = worktreeRepo(false); // no origin on the docs side
+		try {
+			fs.writeFileSync(path.join(ctx.dir, "code.txt"), "c");
+			fs.writeFileSync(path.join(docs.dir, "docs-note.txt"), "d");
+			await assert.rejects(
+				commitAndPush({
+					workdir: ctx.dir,
+					branch: "kb/t1",
+					message: "stage",
+					docsWorkdir: path.join(docs.dir, "does-not-exist"),
+				}),
+				(err) => /docs repo/.test(err.message),
+			);
+			// Code origin never received the branch tip with the new commit:
+			// the pre-existing kb/t1 is untouched (no new commit pushed).
+			const codeSubject = execFileSync("git", ["log", "-1", "--format=%s", "kb/t1"], { cwd: ctx.origin, encoding: "utf8" }).trim();
+			assert.equal(codeSubject, "init");
+		} finally {
+			fs.rmSync(docs.dir, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("commitAndPush task docs rescue", () => {

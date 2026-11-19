@@ -118,7 +118,7 @@ describe("publish.sh", () => {
 		const publish = fs.readFileSync(path.join(ROOT, "publish.sh"), "utf8");
 		const gateLine = publish.split("\n").find((line) => line.includes("runner) run node --test"));
 		assert.ok(gateLine, "publish.sh has a runner gate line");
-		const gated = [...gateLine.matchAll(/runner\/[A-Za-z0-9-]+\.test\.js/g)].map((m) => m[0]).sort();
+		const gated = [...gateLine.matchAll(/runner\/[A-Za-z0-9.-]+\.test\.js/g)].map((m) => m[0]).sort();
 		const { buildBranches } = await import("../scripts/run-tests.mjs");
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		const runnerBranch = branches.find((branch) => branch.name === "Unit Tests (runner)");

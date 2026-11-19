@@ -87,9 +87,36 @@ export async function integrateUpstream({ workdir, branch, author = "" }) {
  * @param {string} opts.branch - Task branch.
  * @param {string} opts.message - Commit message.
  * @param {string} [opts.author] - Per-Runner commit identity (WP-4.1 push attribution), e.g. `kainbain-runner/host-1`. Recorded with `git -c` overrides so repo config is never touched.
- * @returns {Promise<Object>} `{ sha, pushed, skipped, beforeSha, pushState }`.
+ * @param {string} [opts.taskDocsPath] - Task-docs folder to force-add (default none).
+ * @param {string} [opts.docsWorkdir] - Paired docs-repo worktree (same branch): committed and pushed FIRST (docs-first, so a half-pushed state never shows code without its docs). A docs failure throws with the `docs repo` label and never reaches the code push.
+ * @returns {Promise<Object>} `{ sha, pushed, skipped, beforeSha, pushState, docsSha?, docsPushed? }`.
  ***/
-export async function commitAndPush({ workdir, branch, message, author = "", taskDocsPath = "" }) {
+export async function commitAndPush({ workdir, branch, message, author = "", taskDocsPath = "", docsWorkdir = null }) {
+	// Docs-first: the docs worktree (separate repo, same kb/<taskId> branch)
+	// is committed and pushed before the code worktree, so the code branch
+	// never lands on the shared remote without its docs twin. A docs failure
+	// is labelled and aborts the handoff before any code push.
+	let docsResult = null;
+	if (docsWorkdir) {
+		try {
+			docsResult = await commitAndPush({
+				workdir: docsWorkdir,
+				branch,
+				message: `[docs] ${message}`,
+				author,
+				taskDocsPath,
+			});
+		} catch (err) {
+			if (err instanceof RunnerGitError) {
+				throw new RunnerGitError(
+					err.code,
+					`docs repo (${path.basename(docsWorkdir)}): ${err.message}`,
+					{ cwd: docsWorkdir },
+				);
+			}
+			throw err;
+		}
+	}
 	const beforeSha = await runGit(workdir, ["rev-parse", "HEAD"]).then((r) => r.stdout.trim()).catch(() => null);
 	await runGit(workdir, ["add", "-A"]);
 	// Task docs (plans/reports) must reach the backend even on branches whose
@@ -135,7 +162,7 @@ export async function commitAndPush({ workdir, branch, message, author = "", tas
 	try {
 		await runGit(workdir, ["remote", "get-url", "origin"]);
 	} catch {
-		return { sha, pushed, skipped, pushSkipped, beforeSha, pushState: "no-remote" };
+		return { sha, pushed, skipped, pushSkipped, beforeSha, pushState: "no-remote", ...(docsResult ? { docsSha: docsResult.sha, docsPushed: docsResult.pushed, docsPushSkipped: docsResult.pushSkipped } : {}) };
 	}
 	// Integrate-then-push: a stage that started on a stale base merges the
 	// latest remote task-branch work (a sibling stage's push) before
@@ -153,7 +180,7 @@ export async function commitAndPush({ workdir, branch, message, author = "", tas
 			pushSkipped = null;
 			if (attempts > 1) pushState = "pushed-after-retry";
 			const finalSha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
-			return { sha: finalSha, pushed, skipped, pushSkipped, beforeSha, pushState };
+			return { sha: finalSha, pushed, skipped, pushSkipped, beforeSha, pushState, ...(docsResult ? { docsSha: docsResult.sha, docsPushed: docsResult.pushed, docsPushSkipped: docsResult.pushSkipped } : {}) };
 		} catch (err) {
 			if (err instanceof RunnerGitError && err.code === "sync-conflict") throw err;
 			if (/could not read Username|Authentication failed|Could not resolve host|unable to connect/i.test(`${err?.message || ""}\n${err?.stderr || ""}`)) {

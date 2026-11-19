@@ -177,13 +177,16 @@ export function useProjects({ onSelectProject, onNotification } = {}) {
    * @param {string} name
    * @param {Object} [opts]
    * @param {string} [opts.gitUrl] - Git remote URL for the new project.
+   * @param {Object} [opts.docsRepo] - Separate docs repo `{ url, localPath? }` for KainBain docs/state (advanced option).
    * @returns {Promise<Object>}
    ***/
   const createProject = useCallback(
-    async (name, { gitUrl } = {}) => {
+    async (name, { gitUrl, docsRepo } = {}) => {
       try {
         const remote = typeof gitUrl === 'string' ? gitUrl.trim() : '';
-        const project = await api.createProject(remote ? { name, gitUrl: remote } : { name });
+        const payload = remote ? { name, gitUrl: remote } : { name };
+        if (docsRepo && typeof docsRepo === 'object') payload.docsRepo = docsRepo;
+        const project = await api.createProject(payload);
         setProjects((prev) => [...prev, project]);
         await selectProject(project.id);
         onNotificationRef.current?.({

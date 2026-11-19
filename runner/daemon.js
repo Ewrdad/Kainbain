@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, resolveRunnerDocsRepoUrl, resolveRunnerKainbainHome, shouldSyncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { runImpromptuJob } from "./impromptu.js";
@@ -733,15 +733,26 @@ export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {})
  * @description Retargets a backend-curated prompt to the prepared worktree:
  *   the backend curates with its own project cwd (it owns task/stage truth),
  *   so every occurrence of that cwd prefix is rewritten to the worktree the
- *   harness will actually run in. Empty prompt (old backend) stays empty so
- *   the caller falls back to its minimal prompt.
+ *   harness will actually run in. For docs-repo projects the backend's
+ *   KainBain home (`docsHome`, the docs-repo checkout) is additionally
+ *   rewritten to the paired docs worktree (`docsWorkdir`), so curated
+ *   `.../docs/tasks/<id>` paths keep working where the docs actually live
+ *   on this Runner. The docs-home rewrite runs FIRST: the default docs
+ *   checkout (`<cwd>-kainbain-docs`) contains the cwd as a prefix, so the
+ *   reverse order would corrupt it. Empty prompt (old backend) stays empty
+ *   so the caller falls back to its minimal prompt.
  * @example applyBackendPrompt({ prompt: 'see /repo/docs', backendCwd: '/repo', workdir: '/w' }) => 'see /w/docs'
- * @param {Object} opts - `{ prompt, backendCwd, workdir }`.
+ * @example applyBackendPrompt({ prompt: 'see /srv/kb/docs', backendCwd: '/repo', workdir: '/w', docsHome: '/srv/kb', docsWorkdir: '/w-docs' }) => 'see /w-docs/docs'
+ * @param {Object} opts - `{ prompt, backendCwd, workdir, docsHome?, docsWorkdir? }`.
  * @returns {string} The retargeted prompt.
  ***/
-export function applyBackendPrompt({ prompt, backendCwd, workdir } = {}) {
-	const text = typeof prompt === "string" ? prompt : "";
-	if (!text || !backendCwd || !workdir || backendCwd === workdir) return text;
+export function applyBackendPrompt({ prompt, backendCwd, workdir, docsHome = null, docsWorkdir = null } = {}) {
+	let text = typeof prompt === "string" ? prompt : "";
+	if (!text) return text;
+	if (docsHome && docsWorkdir && docsHome !== docsWorkdir && docsHome !== backendCwd) {
+		text = text.split(docsHome).join(docsWorkdir);
+	}
+	if (!backendCwd || !workdir || backendCwd === workdir) return text;
 	return text.split(backendCwd).join(workdir);
 }
 
@@ -1714,11 +1725,14 @@ export function sanitizeCiEnv(value) {
 		return {};
 	}
 }
-export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null } = {}) {
+export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null, docsWorkdir = null } = {}) {
 	const resolved = resolveRunnerDocsDirName(
 		docsDirName ?? (typeof project === "object" && project !== null ? project : null),
 	);
-	const dir = path.join(workdir, resolved, "tasks", taskId);
+	// With a separate docs repo the task docs live in the paired docs
+	// worktree (synced through git), not in the code worktree.
+	const base = docsWorkdir || workdir;
+	const dir = path.join(base, resolved, "tasks", taskId);
 	const files = [];
 	let total = 0;
 	try {
@@ -1865,27 +1879,37 @@ async function executeAssignment({
 				stageId,
 				event: "started",
 			});
-			const { workdir, branch, mode, reused, recoveredTo, baseSha, evicted } = await prepareWorkdir({
+			const docsRepoUrl = resolveRunnerDocsRepoUrl(project) || (typeof claim?.docsRepoUrl === "string" && claim.docsRepoUrl.trim() ? claim.docsRepoUrl.trim() : null);
+			const { workdir, branch, mode, reused, recoveredTo, baseSha, evicted, docsWorkdir = null, docsRecoveredTo = null } = await prepareWorkdir({
 				repoUrl: project.gitUrl || project.repoUrl || null,
 				localPath: project.cwd || null,
 				workRoot: config.workRoot,
 				taskId: taskId,
+				docsRepoUrl,
+				docsLocalPath: typeof project?.docsRepo?.localPath === "string" && project.docsRepo.localPath.trim() ? project.docsRepo.localPath.trim() : null,
 			});
 			state.workdir = workdir;
-			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}` : ""}).`);
+			state.docsWorkdir = docsWorkdir;
+			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}` : ""})${docsWorkdir ? ` + docs worktree ${docsWorkdir}${docsRecoveredTo ? ` (residue parked on ${docsRecoveredTo})` : ""}` : ""}.`);
 			// Task prompt inputs (idea files, reference images) land in the
 			// live task folder outside the task branch — mirror them into
-			// the worktree so the harness actually sees them.
+			// the worktree so the harness actually sees them. With a separate
+			// docs repo the docs already live in the paired docs worktree
+			// (synced through git), so the copy is skipped; the sync source
+			// is the primary's KainBain home (the docs checkout on the
+			// backend host), never the code repo.
 			try {
 				const syncStats = {};
-				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId, docsDirName: project?.docsDirName, stats: syncStats });
-				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) (${syncStats.assets ?? 0} task asset(s)) into worktree.`);
+				if (shouldSyncTaskDocs({ project, docsWorkdir })) {
+					const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, primaryHome: resolveRunnerKainbainHome(project?.cwd, project), workdir, destWorkdir: docsWorkdir || workdir, taskId, docsDirName: project?.docsDirName, stats: syncStats });
+					if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) (${syncStats.assets ?? 0} task asset(s)) into worktree.`);
+				}
 				// Remote-Runner delivery arm: with no local primary checkout
 				// the sync above copies nothing, so the claim's taskAssets
 				// bytes land here instead — before the first stage runs.
 				// Entries the worktree already has are skipped, never
 				// overwritten (a local sync or the agent wins).
-				const shipped = await writeClaimTaskAssets({ workdir, taskId, assets: claimTaskAssets, docsDirName: project?.docsDirName });
+				const shipped = await writeClaimTaskAssets({ workdir, destWorkdir: docsWorkdir || workdir, taskId, assets: claimTaskAssets, docsDirName: project?.docsDirName });
 				if (shipped > 0) logger.log(`Wrote ${shipped} claim-shipped task asset(s) into worktree.`);
 			} catch (err) {
 				logger.log(`Task-doc sync skipped: ${err?.message || err}`);
@@ -1909,7 +1933,13 @@ async function executeAssignment({
 			// Backend-curated stage prompt (backend owns curation; the
 			// Runner only retargets the backend cwd prefix to the worktree).
 			// Absent prompt (old backend) falls back to the minimal prompt.
-			let prompt = applyBackendPrompt({ prompt: backendPrompt, backendCwd: project.cwd, workdir });
+			let prompt = applyBackendPrompt({
+				prompt: backendPrompt,
+				backendCwd: project.cwd,
+				workdir,
+				docsHome: resolveRunnerKainbainHome(project?.cwd, project),
+				docsWorkdir,
+			});
 			if (!prompt) {
 				prompt = [`Task goal: ${task.goal || task.title || taskId}`, `Stage: ${stageId}`].join("\n");
 			}
@@ -1969,7 +1999,7 @@ async function executeAssignment({
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
 						...(configHash ? { configHash } : {}),
 						committed: false,
-						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: "",
+						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: "",
 						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
@@ -1984,7 +2014,7 @@ async function executeAssignment({
 					const ci = await runCiCommand({
 						command, workdir: ciWorkdir,
 						timeoutMs: ciTimeoutMs || 600000,
-						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
+						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${docsWorkdir || workdir}/docs/tasks/${taskId}` },
 						onLog: (text) => { sendLogs(text).catch(() => {}); },
 					});
 					state.session = null; stopRenewal();
@@ -1994,9 +2024,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -2091,6 +2121,9 @@ async function executeAssignment({
 				workdir,
 				branch,
 				taskDocsPath: `docs/tasks/${taskId}`,
+				// Docs-repo projects: the paired docs worktree (same kb/<taskId>
+				// branch in the docs repo) is committed and pushed FIRST.
+				docsWorkdir,
 				message: configHash
 					? appendAttestationTrailers(stageMessage, { taskId, stageId, configHash })
 					: stageMessage,
@@ -2132,7 +2165,7 @@ async function executeAssignment({
 					failureReason: verdictDecision.failureReason,
 					...(configHash ? { configHash } : {}),
 					committed: !skipped,
-					taskFiles: collectTaskFiles({ workdir, taskId }),
+					taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }),
 					output: String(output || "").slice(0, 20000),
 					durationMs: Date.now() - runStartedAt,
 				});
@@ -2152,7 +2185,7 @@ async function executeAssignment({
 				outcome: "passed",
 				...(configHash ? { configHash } : {}),
 				committed: !skipped,
-				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
+				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
 			});

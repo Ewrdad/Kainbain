@@ -95,3 +95,29 @@ describe("PromptCurationEngine custom docsDirName", () => {
 		);
 	});
 });
+
+describe("PromptCurationEngine separate docs repo (docsRepo)", () => {
+	it("interpolates {{taskDocs}} into the docs-repo checkout when the project has one", () => {
+		const engine = new PromptCurationEngine();
+		const prompt = engine.curatePrompt(
+			{ id: "task-7", goal: "G" },
+			{ id: "s", name: "Plan", prompt: "Output files to {{taskDocs}}." },
+			{
+				project: { docsRepo: { url: "https://git.example.com/me/kb.git", localPath: "/srv/kb/app" } },
+				projectCwd: "/repo/app",
+			},
+		);
+		expect(prompt).toContain("Output files to /srv/kb/app/docs/tasks/task-7/.");
+		expect(prompt).not.toContain("/repo/app/docs/tasks/task-7");
+	});
+
+	it("keeps the legacy cwd-based {{taskDocs}} when no docs repo is set", () => {
+		const engine = new PromptCurationEngine();
+		const prompt = engine.curatePrompt(
+			{ id: "task-7", goal: "G" },
+			{ id: "s", name: "Plan", prompt: "Output files to {{taskDocs}}." },
+			{ projectCwd: "/repo/app" },
+		);
+		expect(prompt).toContain("Output files to /repo/app/docs/tasks/task-7/.");
+	});
+});

@@ -838,6 +838,36 @@ describe("applyBackendPrompt", () => {
 		assert.equal(applyBackendPrompt({ prompt: "x /repo", backendCwd: "/repo", workdir: "/repo" }), "x /repo");
 		assert.equal(applyBackendPrompt({ prompt: "x", backendCwd: "", workdir: "/w" }), "x");
 	});
+	it("retargets the backend docs home into the paired docs worktree (docs repo)", () => {
+		const out = applyBackendPrompt({
+			prompt: "Read /srv/kb/app/docs/tasks/t1/plan.md and edit /repo/src",
+			backendCwd: "/repo",
+			workdir: "/w/kb-t1",
+			docsHome: "/srv/kb/app",
+			docsWorkdir: "/w/kb-t1-docs",
+		});
+		assert.equal(out, "Read /w/kb-t1-docs/docs/tasks/t1/plan.md and edit /w/kb-t1/src");
+	});
+	it("does not corrupt a docs home that starts with the cwd (default sibling checkout)", () => {
+		const out = applyBackendPrompt({
+			prompt: "See /repo-kainbain-docs/docs/tasks/t1 and /repo/src",
+			backendCwd: "/repo",
+			workdir: "/w/kb-t1",
+			docsHome: "/repo-kainbain-docs",
+			docsWorkdir: "/w/kb-t1-docs",
+		});
+		assert.equal(out, "See /w/kb-t1-docs/docs/tasks/t1 and /w/kb-t1/src");
+	});
+	it("skips the docs rewrite for legacy projects (docs home === cwd)", () => {
+		const out = applyBackendPrompt({
+			prompt: "See /repo/docs/tasks/t1",
+			backendCwd: "/repo",
+			workdir: "/w/kb-t1",
+			docsHome: "/repo",
+			docsWorkdir: null,
+		});
+		assert.equal(out, "See /w/kb-t1/docs/tasks/t1");
+	});
 });
 
 describe("runner facts (G4/G5)", () => {

@@ -197,6 +197,107 @@ test('renders the Use Task Branches toggle unchecked by default (opt-in)', () =>
   expect(screen.getByLabelText(/Use Task Branches/i)).not.toBeChecked();
 });
 
+test('saving an unrelated edit on a legacy project never sends a docsRepo key', async () => {
+  api.updateProject.mockResolvedValue({ id: 'p1' });
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(api.updateProject).toHaveBeenCalled();
+  });
+  expect(api.updateProject.mock.calls[0][1]).not.toHaveProperty('docsRepo');
+});
+
+test('setting a docs repo URL in Files & Repos saves docsRepo in the payload', async () => {
+  api.updateProject.mockResolvedValue({ id: 'p1', docsRepo: { url: 'git@github.com:me/proj-docs.git', branchMode: 'synced' } });
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  fireEvent.change(screen.getByLabelText('Separate Docs Repository URL (optional)'), {
+    target: { value: 'git@github.com:me/proj-docs.git' },
+  });
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(api.updateProject).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ docsRepo: { url: 'git@github.com:me/proj-docs.git' } }),
+      {},
+    );
+  });
+});
+
+test('clearing a stored docs repo URL saves docsRepo: null to disable it', async () => {
+  const projectWithDocsRepo = {
+    ...projects[0],
+    docsRepo: { url: 'git@github.com:me/proj-docs.git', localPath: '/srv/kb/proj', branchMode: 'synced' },
+  };
+  api.updateProject.mockResolvedValue({ id: 'p1' });
+  renderWithKainBain(<ProjectSettings />, {
+    projects: [projectWithDocsRepo],
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  const urlInput = screen.getByLabelText('Separate Docs Repository URL (optional)');
+  expect(urlInput).toHaveValue('git@github.com:me/proj-docs.git');
+  fireEvent.change(urlInput, { target: { value: '' } });
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(api.updateProject).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ docsRepo: null }),
+      {},
+    );
+  });
+});
+
+test('an unchanged docs repo is not re-sent on save (no re-provisioning)', async () => {
+  const projectWithDocsRepo = {
+    ...projects[0],
+    docsRepo: { url: 'git@github.com:me/proj-docs.git', localPath: '/srv/kb/proj', branchMode: 'synced' },
+  };
+  api.updateProject.mockResolvedValue({ id: 'p1' });
+  renderWithKainBain(<ProjectSettings />, {
+    projects: [projectWithDocsRepo],
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(api.updateProject).toHaveBeenCalled();
+  });
+  expect(api.updateProject.mock.calls[0][1]).not.toHaveProperty('docsRepo');
+});
+
+test('a docs repo URL with whitespace is refused client-side before any save', async () => {
+  api.updateProject.mockResolvedValue({ id: 'p1' });
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  fireEvent.change(screen.getByLabelText('Separate Docs Repository URL (optional)'), {
+    target: { value: 'not a url' },
+  });
+  fireEvent.click(screen.getByText('Save Configuration'));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/git remote/i);
+  expect(api.updateProject).not.toHaveBeenCalled();
+});
+
 test('renders the preserved-diff toggles reflected from the project and saves their values', async () => {
   const projectWithPreserve = {
     ...projects[0],
