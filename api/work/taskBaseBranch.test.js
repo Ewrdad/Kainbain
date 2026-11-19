@@ -119,6 +119,25 @@ describe("resolveTaskBaseBranch", () => {
 		const out = await resolveTaskBaseBranch({});
 		expect(out).toEqual({ branch: null, source: "repo" });
 	});
+
+	it("tolerates a throwing store lookup and falls through to the repo default", async () => {
+		const projectStore = {
+			getWorkflow: () => {
+				throw new Error("store exploded");
+			},
+		};
+		const out = await resolveTaskBaseBranch({
+			task: { workflowId: "wf-1" },
+			projectStore,
+			projectId: "proj-1",
+			repoDefault: "main",
+		});
+		expect(out).toEqual({ branch: "main", source: "repo" });
+	});
+
+	// Note: when git itself is unavailable, `defaultBranch` fails safe to the
+	// repo's own documented fallback ('main') rather than throwing — that
+	// policy lives in api/git/branch.js and is intentionally unchanged here.
 });
 
 describe("ensureBaseBranchExists", () => {
@@ -271,5 +290,54 @@ describe("ensureTaskBaseBranch", () => {
 			.toString()
 			.trim();
 		expect(tip).toMatch(/^[0-9a-f]{40}$/);
+	});
+
+	it("auto-creates a missing live workflow base (no task snapshot)", async () => {
+		const { dir } = localRepo();
+		dirs.push(dir);
+		const notes = [];
+		const out = await ensureTaskBaseBranch(
+			{
+				projectStore: {
+					getWorkflow: () => ({ id: "wf-1", baseBranch: "feature/live-made" }),
+				},
+			},
+			{ projectId: "p", workflowId: "wf-1" },
+			dir,
+			{ onCreated: (detail) => notes.push(detail) },
+		);
+		expect(out).toEqual({
+			branch: "feature/live-made",
+			source: "workflow",
+			created: true,
+			from: "main",
+		});
+		expect(notes).toHaveLength(1);
+		const tip = execFileSync("git", ["rev-parse", "feature/live-made"], { cwd: dir })
+			.toString()
+			.trim();
+		expect(tip).toMatch(/^[0-9a-f]{40}$/);
+	});
+
+	it("keeps the resolved branch when the ensure itself cannot create (never throws)", async () => {
+		const { dir } = localRepo();
+		dirs.push(dir);
+		// Point the pipeline at the repo default's own name via the live
+		// workflow: ensure skips creation, the branch still resolves.
+		const out = await ensureTaskBaseBranch(
+			{
+				projectStore: {
+					getWorkflow: () => ({ id: "wf-1", baseBranch: "main" }),
+				},
+			},
+			{ projectId: "p", workflowId: "wf-1" },
+			dir,
+		);
+		expect(out).toEqual({
+			branch: "main",
+			source: "workflow",
+			created: false,
+			from: null,
+		});
 	});
 });

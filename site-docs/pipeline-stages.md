@@ -18,7 +18,7 @@ Execution, however, is **one shared pipeline across all projects**: a single glo
 | `agent` | Automated execution by the AI agent. |
 | `human` | Manual checkpoint — the task waits for your approval or rejection. |
 | `ci` | Automated bash/script verification command. Runs no model. |
-| `merge` | Git operations only — integrates the task branch into the default main branch, auto-commits, records the review baseline, and pushes. Never runs a command. Runs no model. |
+| `merge` | Git operations only — integrates the task branch into the pipeline's base branch (the repo default main branch unless the pipeline names its own, see below), auto-commits, records the review baseline, and pushes. Never runs a command. Runs no model. |
 
 There is no `deploy` stage type any more: **a stage whose command runs a deploy/publish script** (e.g. `./publish.sh --detect`) **is an ordinary `ci` stage** with the same `running_ci` status, CI timeout/stall budgets, heartbeat, and failback behaviour as any other `ci` stage. One structural exception: deploy/publish/redeploy commands are *host commands* — stage normalization stamps them `hostOnly`, and host commands only ever run on the backend in the primary checkout; they are never dispatched to a Runner. On failure a host-command stage routes to its configured fallback like any other CI stage, so an agent can fix it.
 

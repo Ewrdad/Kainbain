@@ -1686,6 +1686,44 @@ describe("resolveCiBranchPlan", () => {
 		).rejects.toThrow(/Could not resolve the primary branch/);
 	});
 
+	it("resolves primary mode to the task's pinned pipeline base when one is set", async () => {
+		const plan = await resolveCiBranchPlan({
+			stage: { name: "Verify", runOnBranch: "primary" },
+			cwd: "/repo",
+			task: { id: "t", workflowId: "wf-f", baseBranch: "feature/big-thing" },
+			projectStore: { getWorkflow: () => ({ id: "wf-f", baseBranch: "feature/other" }) },
+			projectId: "p1",
+		});
+		expect(plan).toEqual({ mode: "primary", branch: "feature/big-thing" });
+		// A configured base is verified to exist locally (repo-default source skips this).
+		expect(gitMocks.branchExists).toHaveBeenCalledWith("/repo", "feature/big-thing");
+	});
+
+	it("resolves primary mode to the live pipeline base for a legacy task without a snapshot", async () => {
+		const plan = await resolveCiBranchPlan({
+			stage: { name: "Verify", runOnBranch: "primary" },
+			cwd: "/repo",
+			task: { id: "t", workflowId: "wf-f" },
+			projectStore: { getWorkflow: () => ({ id: "wf-f", baseBranch: "feature/live" }) },
+			projectId: "p1",
+		});
+		expect(plan).toEqual({ mode: "primary", branch: "feature/live" });
+		expect(gitMocks.branchExists).toHaveBeenCalledWith("/repo", "feature/live");
+	});
+
+	it("fails loudly when a configured pipeline base is missing locally (never runs on the wrong branch)", async () => {
+		gitMocks.branchExists.mockResolvedValue(false);
+		await expect(
+			resolveCiBranchPlan({
+				stage: { name: "Verify", runOnBranch: "primary" },
+				cwd: "/repo",
+				task: { id: "t", workflowId: "wf-f", baseBranch: "feature/gone" },
+				projectStore: { getWorkflow: () => null },
+				projectId: "p1",
+			}),
+		).rejects.toThrow(/pipeline base branch 'feature\/gone'.*does not exist locally/);
+	});
+
 	it("resolves custom mode to the configured existing branch", async () => {
 		const plan = await resolveCiBranchPlan({
 			stage: { name: "Verify", runOnBranch: "custom", customBranch: "  release/next  " },
