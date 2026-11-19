@@ -426,3 +426,29 @@ decision + restarts with rediscovery receipts, live §6.3 UI pass,
 explicit human who/when/scope for q3 leftovers + q4 infeasibility) and
 a later agent run confirms §6.1 all-pass. Evidence in
 `run47-20261117-0420.md` (`verification-20261114.md` addendum).
+
+## Addendum 2026-11-19 ~21:35Z (run49 — read-only re-verification)
+
+NOT READY (unchanged since run48/review). Branch NOT synced this run
+(HEAD `68e57d55`, behind `origin/main ffc8f419` 34 / ahead 75,
+merge-base `e69a35ff`; blocker merges WP-A/B/C/E/D + deploy commit
+`93970db0` all ancestors; new main = docs-repo + runner restart/update
+UI + version-info merges, kept out of scope — dedicated sync stage
+recommended after operator actions land); §6.5 FULLY green on this HEAD:
+runner 431/431, dispatch 175/175, routes 178/178, frontend 91/91, with
+ENGINE-DIR-UNTOUCHED proven bit-identical before/after our suite block;
+§6.4 fixture 12/12. Live §6.1 PARTIAL: local-alpha fully PASS;
+local-bravo discovery PASS but `paused:true` persists (muse-ember still
+2 runners); server2-alpha still FAIL (pre-WP-B pi `ERR_MODULE_NOT_FOUND`,
+fresh atMs `1795119017496` — discovery re-ran and still fails; tarball
+staged `ac919e2a…`, install still `f430f537`, `cross-spawn` still
+absent). Backend build 637 redeployed 2026-11-19T12:36:33Z (same build
+number, `/status` commit still stale). §6.2 PASS (129 models, zero
+`test-fleet`, 2 quarantined leftovers awaiting q3 grant). §6.3/§6.4 live
+pending operator; explicit human grant still absent (zero DELETEs
+issued). WP-G may proceed to its HUMAN dispatch decision ONLY after
+operator completes the run49 recommendation list (Bundle B + bravo
+decision + restarts with rediscovery receipts, live §6.3 UI pass,
+explicit human who/when/scope for q3 leftovers + q4 infeasibility) and
+a later agent run confirms §6.1 all-pass. Evidence in
+`run49-20261119-2135.md` (`verification-20261114.md` addendum).
