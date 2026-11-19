@@ -103,6 +103,57 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "On each pipeline — one setting per pipeline that applies to all of its tasks"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Both — new task branches are created from it, and the merge stage merges back into it"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Automatically create it from the repo's current default branch (e.g. main)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Keep using the base branch that was set when each task was created"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "In the UI, in the pipeline settings (the workflow management panel)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Yes — inside such a pipeline, 'the main branch' means the pipeline's configured base branch"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Base branch"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "After a merge, push the base branch to the remote so the feature branch is updated on the server",
+        "The branch the runner switches back to after each stage finishes",
+        "Review/diff views that compare the task's work against the base branch"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
