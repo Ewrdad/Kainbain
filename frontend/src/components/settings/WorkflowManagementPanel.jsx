@@ -32,13 +32,25 @@ export function WorkflowManagementPanel({ projectId }) {
   const [editBaseBranch, setEditBaseBranch] = useState('');
   const [statusMsg, setStatusMsg] = useState(null);
 
-  // Obvious-mistake hint only (the server owns full git-name validation
-  // and its 400 surfaces as the status error below).
+  // Instant hint only (the server owns full git-name validation and its
+  // 400 surfaces as the status error below). Every check below mirrors the
+  // server's allow-list exactly, so a hint never blocks a name the server
+  // would accept; blank is always fine (it clears back to the repo default).
   const baseBranchHint = (value) => {
     if (!value) return '';
+    if (value.length > 255) return 'Branch names cannot be longer than 255 characters.';
     if (/\s/.test(value)) return 'Branch names cannot contain spaces.';
+    if (!/^[A-Za-z0-9_./-]+$/.test(value)) {
+      return "Branch names can only use letters, digits, '_', '-', '.' and '/'.";
+    }
     if (value.startsWith('-') || value.startsWith('/') || value.startsWith('.')) {
       return 'Branch names cannot start with -, / or .';
+    }
+    if (value.endsWith('/') || value.endsWith('.') || value.endsWith('.lock')) {
+      return "Branch names cannot end with '/', '.' or '.lock'.";
+    }
+    if (value.includes('..') || value.includes('//') || value.includes('@{')) {
+      return "Branch names cannot contain '..', '//' or '@{'.";
     }
     return '';
   };
@@ -125,7 +137,7 @@ export function WorkflowManagementPanel({ projectId }) {
       setEditBaseBranch('');
       setStatusMsg({
         type: 'success',
-        text: 'Base branch updated — in-flight tasks keep the base branch they were created with.',
+        text: 'Base branch updated — in-flight tasks keep their pinned base branch; new tasks use the new base.',
       });
       setTimeout(() => setStatusMsg(null), 5000);
     } catch (err) {

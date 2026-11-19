@@ -55,8 +55,9 @@ task branches fork off it, the merge stage merges back into it (and pushes
 it), `primary` CI runs verify it, and review diffs compare against it. The
 base is pinned onto each task at creation, so re-pointing a pipeline only
 affects tasks created afterwards — in-flight work keeps merging into the
-base it started with. A base that does not exist yet is created from the
-repo default tip automatically.
+base it started with (tasks created before this feature have no pin and
+follow the pipeline's current setting). A base that does not exist yet is
+created from the repo default tip automatically.
 
 ## CI failure detail: fast gate, verdicts, and budgets
 

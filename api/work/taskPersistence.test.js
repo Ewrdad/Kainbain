@@ -1157,6 +1157,32 @@ describe("The Work: timeline diff-stat persistence", () => {
 			expect(onSave).toHaveBeenCalledWith("/repo", task);
 		});
 
+		it("badges a legacy task against the pipeline's live base (agreeing with the review view)", async () => {
+			const task = { id: "t-legacy", projectId: "p1", branch: "kb/t-legacy", workflowId: "wf-feature" };
+			const store = stubStore({ cwd: "/repo" });
+			store.projectStore = {
+				getWorkflow: () => ({ id: "wf-feature", baseBranch: "feature/live" }),
+			};
+			let base = null;
+			recordTimelineWithDiffStat(
+				store,
+				task,
+				{ stage: "Plan", status: "Advanced", duration: "2s" },
+				"/repo",
+				{
+					useBranches: true,
+					defaultBranchFn: async () => "main",
+					branchExistsFn: async (cwd, ref) => ref === "feature/live",
+					diffFilesFn: async (cwd, b) => {
+						base = b;
+						return [{ path: "a.js", additions: 5, deletions: 1, binary: false }];
+					},
+				},
+			);
+			await flushAsyncCapture();
+			expect(base).toBe("feature/live");
+		});
+
 		it("keeps a plain entry when git fails", async () => {
 			const onSave = vi.fn();
 			const task = { id: "t3", projectId: "p1" };

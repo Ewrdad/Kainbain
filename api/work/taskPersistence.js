@@ -6,6 +6,7 @@ import { _formatFrontmatterValue, _parseFrontmatter } from "./taskFiles.js";
 import { normalizeSurveyFileName } from "./taskSurvey.js";
 import { resolveTaskTitleAndGoal } from "./taskIdentity.js";
 import { computeStageDelta, getTaskDiffStat, getCommitRangeDiffStat } from "./taskDiffStat.js";
+import { resolveTaskBaseBranch } from "./taskBaseBranch.js";
 import { _atomicWriteFileSync } from "../house/index.js";
 import { parseStoredRecords } from "./taskFiles.js";
 import { reportCreatedAt } from "../../shared/reportTimestamp.js";
@@ -481,7 +482,28 @@ export function recordTimelineWithDiffStat(
 					diffStatOpts,
 				);
 			} else {
-				stat = await getTaskDiffStat(cwd, task, diffStatOpts);
+				// The badge must agree with the review view, which diffs
+				// against the task's effective pipeline base (pinned
+				// snapshot, else the pipeline's live setting): legacy
+				// tasks without a snapshot would otherwise badge
+				// task-vs-main while the review shows task-vs-feature.
+				// Pure store lookup, no git — and best-effort, so a
+				// failing lookup degrades to the pinned-only path.
+				let effectiveBase = null;
+				try {
+					const resolved = await resolveTaskBaseBranch({
+						task,
+						projectStore: store?.projectStore,
+						projectId: task?.projectId,
+					});
+					if (resolved?.source !== "repo") effectiveBase = resolved?.branch || null;
+				} catch {
+					effectiveBase = null;
+				}
+				stat = await getTaskDiffStat(cwd, task, {
+					...diffStatOpts,
+					...(effectiveBase ? { baseBranch: effectiveBase } : {}),
+				});
 			}
 		} catch {
 			stat = null;

@@ -93,6 +93,13 @@ describe("normalizeBaseBranchUpdate", () => {
 		expect(() => normalizeBaseBranchUpdate("--evil")).toThrow(/valid git branch name/);
 		expect(() => normalizeBaseBranchUpdate("has space")).toThrow(/valid git branch name/);
 	});
+
+	it("refuses wrong-typed values instead of silently clearing the branch", () => {
+		expect(() => normalizeBaseBranchUpdate(42)).toThrow(/valid git branch name/);
+		expect(() => normalizeBaseBranchUpdate(true)).toThrow(/valid git branch name/);
+		expect(() => normalizeBaseBranchUpdate({})).toThrow(/valid git branch name/);
+		expect(() => normalizeBaseBranchUpdate(["feature/x"])).toThrow(/valid git branch name/);
+	});
 });
 
 describe("normalizeWorkflows", () => {

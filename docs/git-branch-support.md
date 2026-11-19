@@ -40,8 +40,11 @@ Resolution order per task: the task's pinned snapshot → the pipeline's live
 setting → the repo default. The snapshot is pinned at task creation (pure
 data, no git — the serialization gate below still holds), so re-pointing a
 pipeline only affects subsequently created tasks; in-flight tasks keep
-merging into the base they started with. A configured base that does not
-exist yet is auto-created from the repo default tip (adopting
+merging into the base they started with. One caveat when adopting
+this on a live install: tasks created before this feature have no snapshot,
+so they follow the pipeline's live setting — set the base before those tasks
+merge if you want them on the feature branch too. A configured base that
+does not exist yet is auto-created from the repo default tip (adopting
 `origin/<base>` when the remote already has it) and pushed best-effort, so a
 fresh feature branch just works. An invalid git name refuses loudly (400 at
 the API, inline error in the UI) and is never silently replaced with `main`.

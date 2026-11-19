@@ -172,6 +172,9 @@ export function computeStageDelta(current, baseline) {
  * @param {Object} task - The task entity (branch and pinned pipeline base resolved from it).
  * @param {Object} [opts]
  * @param {boolean} [opts.useBranches=false] - Whether the project uses per-task branches.
+ * @param {string} [opts.baseBranch] - Preferred effective pipeline base
+ *   (pinned snapshot, else the pipeline's live setting); the task's own
+ *   pinned snapshot is used when this is omitted.
  * @param {Function} [opts.diffFilesFn] - Injectable branch-diff reader (tests).
  * @param {Function} [opts.defaultBranchFn] - Injectable default-branch resolver (tests).
  * @param {Function} [opts.branchExistsFn] - Injectable ref-existence check (tests).
@@ -183,6 +186,7 @@ export async function getTaskDiffStat(
 	task,
 	{
 		useBranches = false,
+		baseBranch: preferredBase = undefined,
 		diffFilesFn = diffFiles,
 		defaultBranchFn = defaultBranch,
 		branchExistsFn = branchExists,
@@ -197,13 +201,14 @@ export async function getTaskDiffStat(
 			const head = resolveTaskBranch(task);
 			if (!head) return null;
 			// The badge must agree with the review view, which diffs
-			// against the task's pipeline base (pinned snapshot) — not
-			// the repo default — so a feature-pipeline task badges
+			// against the task's effective pipeline base (pinned
+			// snapshot, else the pipeline's live setting) — not the
+			// repo default — so a feature-pipeline task badges
 			// task-vs-feature. An absent, invalid, missing, or
-			// self-referential pinned base falls back to the repo
+			// self-referential preferred base falls back to the repo
 			// default below (never nulls the badge on its own).
 			let base = null;
-			const preferred = normalizeBaseBranchName(task?.baseBranch);
+			const preferred = normalizeBaseBranchName(preferredBase ?? task?.baseBranch);
 			if (preferred && isValidBranchName(preferred) && preferred !== head) {
 				try {
 					if (await branchExistsFn(cwd, preferred)) base = preferred;

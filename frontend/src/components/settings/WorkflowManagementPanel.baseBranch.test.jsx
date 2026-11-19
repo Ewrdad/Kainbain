@@ -93,7 +93,7 @@ describe('WorkflowManagementPanel base branch', () => {
       });
     });
     expect(
-      await screen.findByText(/in-flight tasks keep the base branch they were created with/i),
+      await screen.findByText(/in-flight tasks keep their pinned base branch/i),
     ).toBeInTheDocument();
   });
 
@@ -141,5 +141,37 @@ describe('WorkflowManagementPanel base branch', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create Workflow' }));
     expect(await screen.findByText(/cannot contain spaces/i)).toBeInTheDocument();
     expect(context.createWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('hints at other invalid names without blocking valid ones', async () => {
+    const context = renderPanel(WORKFLOWS);
+    fireEvent.change(screen.getByLabelText('Workflow Name'), {
+      target: { value: 'Hint Track' },
+    });
+    for (const [bad, hint] of [
+      ['-leading', /cannot start with/i],
+      ['trailing.', /cannot end with/i],
+      ['has..dots', /cannot contain '\.\.', '\/\/' or '@\{'/i],
+      ['bad;char', /can only use letters/i],
+    ]) {
+      fireEvent.change(screen.getByLabelText('Base branch'), {
+        target: { value: bad },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Create Workflow' }));
+      expect(await screen.findByText(hint)).toBeInTheDocument();
+    }
+    expect(context.createWorkflow).not.toHaveBeenCalled();
+
+    // A valid name sails through the hint to the server.
+    fireEvent.change(screen.getByLabelText('Base branch'), {
+      target: { value: 'feature/ok-name.1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create Workflow' }));
+    await waitFor(() => {
+      expect(context.createWorkflow).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({ baseBranch: 'feature/ok-name.1' }),
+      );
+    });
   });
 });

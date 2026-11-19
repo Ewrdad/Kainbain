@@ -146,6 +146,24 @@ describe("resolveCiWorkdir", () => {
 		);
 	});
 
+	it("primary refuses a suspicious passed base without touching git refs", async () => {
+		const repo = localRepo();
+		dirs.push(repo);
+		const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cibranch-w-"));
+		dirs.push(workRoot);
+		for (const suspicious of ["--force", "has space", "a..b", "trailing.lock", "/leading", "with[bracket"]) {
+			await assert.rejects(
+				() => resolveCiWorkdir({
+					runOnBranch: "primary", primaryBranch: suspicious,
+					workdir: "/w/kb-t1", projectCwd: repo, workRoot, taskId: "t1",
+				}),
+				/Refusing to check out suspicious primary branch name/,
+			);
+		}
+		const current = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+		assert.equal(current, "main");
+	});
+
 	it("custom mode fails loudly on a blank or missing branch", async () => {
 		const repo = localRepo();
 		dirs.push(repo);

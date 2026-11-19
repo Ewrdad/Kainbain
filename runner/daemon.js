@@ -35,6 +35,11 @@ import { processSignalTotals } from "../api/watch/productionSignals.js";
 // detects on the same host (SDK-style pi installs under ~/.pi/agent are
 // frequently NOT on PATH, which is why PATH-only probing missed them).
 import { DISCOVERY_ENV_VARS, candidateExecutables, standardSearchDirs, piSnapshotPath } from "../api/agent/harnessDiscovery.js";
+// Single source of truth for branch-name safety: the backend validates the
+// pipeline base with the same allow-list before it ever reaches a claim, and
+// the Runner re-checks here so a tampered or hand-built claim can never turn
+// the checkout below into a git flag injection.
+import { isValidBranchName } from "../api/git/validation.js";
 import { commitAndPush } from "./gitOps.js";
 import { saveRunnerCredential } from "./credentialFile.js";
 
@@ -1581,12 +1586,14 @@ export function ciWorkdirFor({ runOnBranch, workdir, projectCwd } = {}) {
  * MARK: checkoutPrimaryBase
  * @description Checks the primary checkout onto a backend-passed pipeline
  *   base branch before a primary-mode CI command runs there. Idempotent
- *   no-op when already on the branch. Fails loud when the branch is
- *   missing or the checkout refuses (dirty tree) — a primary CI run on
- *   the wrong branch would verify the wrong code.
+ *   no-op when already on the branch. Fails loud when the name is not a
+ *   valid git branch name, when the branch is missing, or when the
+ *   checkout refuses (dirty tree) — a primary CI run on the wrong branch
+ *   would verify the wrong code.
+ * @example await checkoutPrimaryBase('/repo', 'feature/base') => undefined (now on 'feature/base')
  ***/
 async function checkoutPrimaryBase(projectCwd, base) {
-	if (!base || base.startsWith("-") || base.includes("..") || /[\s~^:?*[\\]]/.test(base)) {
+	if (!isValidBranchName(base)) {
 		throw new Error(`Refusing to check out suspicious primary branch name '${base}'`);
 	}
 	try {

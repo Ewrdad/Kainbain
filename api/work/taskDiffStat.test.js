@@ -265,6 +265,39 @@ describe("The Work: task diff stat", () => {
 			).resolves.toEqual({ additions: 1, deletions: 0 });
 		});
 
+		it("prefers the caller's effective base so legacy tasks badge against the live pipeline base", async () => {
+			let base = null;
+			const stat = await getTaskDiffStat("/repo", task, {
+				useBranches: true,
+				baseBranch: "feature/live",
+				defaultBranchFn: async () => "main",
+				branchExistsFn: async (cwd, ref) => ref === "feature/live",
+				diffFilesFn: async (cwd, b, head) => {
+					base = b;
+					expect(head).toBe("kb/task-1");
+					return [{ path: "a.js", additions: 4, deletions: 0, binary: false }];
+				},
+			});
+			expect(stat).toEqual({ additions: 4, deletions: 0 });
+			expect(base).toBe("feature/live");
+		});
+
+		it("falls back to the repo default when the caller's effective base is missing", async () => {
+			let base = null;
+			const stat = await getTaskDiffStat("/repo", task, {
+				useBranches: true,
+				baseBranch: "feature/gone",
+				defaultBranchFn: async () => "main",
+				branchExistsFn: async () => false,
+				diffFilesFn: async (cwd, b) => {
+					base = b;
+					return [{ path: "a.js", additions: 1, deletions: 0, binary: false }];
+				},
+			});
+			expect(stat).toEqual({ additions: 1, deletions: 0 });
+			expect(base).toBe("main");
+		});
+
 		it("derives kb/<id> when the task has no stored branch", async () => {
 			let head = null;
 			const stat = await getTaskDiffStat("/repo", { id: "abc" }, {

@@ -7,6 +7,7 @@ import { _sanitizeTaskTitle, resolveTaskTitleAndGoal } from "./taskIdentity.js";
 import { safeParseJsonArray } from "./taskFiles.js";
 import { taskBranchName } from "./taskBranches.js";
 import { normalizeBaseBranchName } from "./taskBaseBranch.js";
+import { isValidBranchName } from "../git/validation.js";
 import {
 	_appendProcessLog,
 	_logEntriesForFeed,
@@ -298,6 +299,9 @@ export function createTask(
 	// Pin the pipeline's base branch onto the task (pure data, no git):
 	// in-flight tasks keep this snapshot even when the pipeline is
 	// re-pointed later. Absent when the pipeline uses the repo default.
+	// An invalid name is never pinned (a hand-edited store could serve
+	// one): the task then follows the resolver chain instead of
+	// persisting a snapshot every reader would have to distrust.
 	let pinnedBaseBranch = null;
 	if (
 		store.projectStore &&
@@ -305,7 +309,8 @@ export function createTask(
 	) {
 		try {
 			const pipeline = store.projectStore.getWorkflow(projectId, resolvedWorkflowId);
-			pinnedBaseBranch = normalizeBaseBranchName(pipeline?.baseBranch);
+			const candidate = normalizeBaseBranchName(pipeline?.baseBranch);
+			pinnedBaseBranch = candidate && isValidBranchName(candidate) ? candidate : null;
 		} catch {
 			pinnedBaseBranch = null;
 		}

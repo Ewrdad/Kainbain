@@ -25,9 +25,10 @@ export function createDefaultWorkflow(stages = DEFAULT_STAGES) {
 /***
  * MARK: normalizeBaseBranchUpdate
  * @description Interprets a base-branch write from the API or UI: an absent
- *   value leaves the field untouched, a blank or null value clears it back
+ *   value leaves the field untouched, a blank string or null clears it back
  *   to the repo default, a valid git branch name sets it, and anything else
- *   throws loudly (the route turns it into a 400).
+ *   throws loudly (the route turns it into a 400) — a wrong-typed value
+ *   must never silently wipe the configured branch.
  * @example normalizeBaseBranchUpdate('  feature/x  ') => { changed: true, baseBranch: 'feature/x' }
  * @example normalizeBaseBranchUpdate('') => { changed: true, baseBranch: null }
  * @param {*} value - Raw incoming value.
@@ -36,7 +37,12 @@ export function createDefaultWorkflow(stages = DEFAULT_STAGES) {
 export function normalizeBaseBranchUpdate(value) {
 	if (value === undefined) return { changed: false };
 	if (value === null) return { changed: true, baseBranch: null };
-	if (typeof value !== "string" || !value.trim()) {
+	if (typeof value !== "string") {
+		throw new Error(
+			`Invalid base branch '${String(value)}' — set a valid git branch name, or clear it to use the repo default.`,
+		);
+	}
+	if (!value.trim()) {
 		return { changed: true, baseBranch: null };
 	}
 	const cleaned = value.trim();

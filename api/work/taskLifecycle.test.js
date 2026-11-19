@@ -274,6 +274,13 @@ describe("createTask", () => {
 		expect(t).not.toHaveProperty("baseBranch");
 	});
 
+	it("never pins an invalid pipeline base branch name", () => {
+		const store = makeStore();
+		store.projectStore.getWorkflow = () => ({ id: "wf-x", baseBranch: "has space" });
+		const t = createTask(store, "p-1", { title: "A", goal: "A", workflowId: "wf-x" });
+		expect(t).not.toHaveProperty("baseBranch");
+	});
+
 });
 
 describe("listTasks / getTasks / getTask", () => {
