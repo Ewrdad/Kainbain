@@ -7,6 +7,7 @@
 // `.gitignore` entries follow the same resolver so custom folders stay
 // ignored exactly like the default.
 import path from "node:path";
+import { resolveKainbainHome } from "./project/docsRepo.js";
 
 /***
  * MARK: DEFAULT_KAINBAIN_DIR_NAME
@@ -158,16 +159,21 @@ export function assertValidKainbainDirNameForWrite(value, project) {
 /***
  * MARK: resolveKainbainDir
  * @description The absolute state directory for a working directory:
- *   `<cwd>/<kainbainDirName>`, honouring the project's custom name. Null
- *   when no working directory is known.
+ *   `<kainbainHome>/<kainbainDirName>`, honouring the project's custom name.
+ *   `kainbainHome` is the docs-repo checkout when the project has a
+ *   `docsRepo.localPath` (see `resolveKainbainHome`) — the authoritative
+ *   `project.json` then lives in the docs repo, keeping the main repo free
+ *   of KainBain traces — else the cwd itself. Null when no home is known.
  * @example resolveKainbainDir('/repo', { kainbainDirName: '.kb' }) => '/repo/.kb'
+ * @example resolveKainbainDir('/repo', { docsRepo: { localPath: '/srv/kb/repo' } }) => '/srv/kb/repo/.kainbain'
  * @param {string} cwd
  * @param {Object} [project]
  * @returns {string|null}
  ***/
 export function resolveKainbainDir(cwd, project) {
-	if (!cwd || typeof cwd !== "string" || !cwd.trim()) return null;
-	return path.join(path.resolve(cwd), resolveKainbainDirName(project));
+	const home = resolveKainbainHome(cwd, project);
+	if (!home) return null;
+	return path.join(home, resolveKainbainDirName(project));
 }
 
 /***

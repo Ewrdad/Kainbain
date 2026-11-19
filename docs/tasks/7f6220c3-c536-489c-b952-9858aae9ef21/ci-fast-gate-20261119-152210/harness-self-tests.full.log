@@ -1,0 +1,1111 @@
+▶ lockFilePath
+  ✔ honours KAINBAIN_CANARY_LOCK_DIR (31.201315ms)
+  ✔ defaults under the home directory (0.272723ms)
+✔ lockFilePath (111.133372ms)
+▶ pidAlive
+  ✔ sees this process as alive and a reaped child as dead (58.364463ms)
+✔ pidAlive (58.548435ms)
+▶ readHolder
+  ✔ returns null for a missing or corrupt lock (0.770871ms)
+  ✔ returns the holder record for a valid lock (50.978992ms)
+✔ readHolder (81.510622ms)
+▶ holderIsStale
+  ✔ is stale without a record, past max age, or with a dead pid (75.559993ms)
+  ✔ is live for a fresh record owned by a running process (0.22123ms)
+✔ holderIsStale (76.095087ms)
+▶ acquireCanaryLock / releaseCanaryLock
+  ✔ acquires, records our pid, and releases (21.026882ms)
+  ✔ refuses to release a foreign holder's lock (40.187865ms)
+  ✔ a live holder makes a second acquire fail fast with the holder pid (150.712098ms)
+  ✔ takes over a stale (dead pid) lock instead of waiting (70.329285ms)
+  ✔ treats a corrupt lock file as stale and proceeds (0.580133ms)
+✔ acquireCanaryLock / releaseCanaryLock (283.176594ms)
+▶ usesOperatorStack
+  ✔ is false when neither operator URL is set (scratch stack is ours) (35.18249ms)
+  ✔ is true when either operator URL is set (0.235327ms)
+✔ usesOperatorStack (36.64067ms)
+▶ isScratchOccupant
+  ✔ accepts a scratch API by cwd or command shape (0.46313ms)
+  ✔ accepts a scratch vite by its dedicated port flag (0.248569ms)
+  ✔ rejects an unrelated occupant on the API port (33.15568ms)
+  ✔ rejects an unrelated occupant on the vite port (0.303903ms)
+  ✔ rejects a real dev vite on the live dev port (9.989366ms)
+  ✔ rejects an arbitrary occupant on an unknown port (23.447508ms)
+  ✔ is not fooled by the empty/legacy probe shape (3.839041ms)
+✔ isScratchOccupant (72.793216ms)
+▶ probeProcess
+  ✔ reads cmdline and cwd from /proc on linux (39.726643ms)
+  ✔ still classifies when the cwd link is unreadable (0.600564ms)
+  ✔ returns null when the process is gone (1.290055ms)
+  ✔ falls back to ps on non-linux platforms (5.089089ms)
+  ✔ returns null on non-linux when the process is gone (9.418965ms)
+✔ probeProcess (107.717156ms)
+▶ freeScratchPorts
+  ✔ is a no-op when the operator drives their own stack (0.345922ms)
+  ✔ frees both scratch ports when their occupants verify (38.956143ms)
+  ✔ reports success without touching an already-free port (0.19578ms)
+  ✔ fails closed when an occupant does not verify as scratch (0.276877ms)
+  ✔ treats an uninspectable occupant as unverified (0.158068ms)
+✔ freeScratchPorts (40.157774ms)
+✔ readiness budget tolerates loaded gate hosts (2.419624ms)
+✔ readiness budget fits the suite per-test timeout (3.212835ms)
+✔ waitForAppReady waits the full readiness budget (0.378103ms)
+▶ verifyPngMagic
+  ✔ passes a freshly captured PNG head (1.408334ms)
+  ✔ fails a text-corrupted capture with expected vs actual magic (0.501346ms)
+  ✔ fails a missing or empty capture instead of passing it (0.502004ms)
+  ✔ skips non-PNG outputs (the capture may target other image types) (0.402483ms)
+✔ verifyPngMagic (47.612188ms)
+▶ resolveTaskId
+  ✔ prefers $TASK_ID over $KAINBAIN_TASK_ID and the branch (82.745776ms)
+  ✔ uses $KAINBAIN_TASK_ID when $TASK_ID is unset (0.210062ms)
+  ✔ treats empty env values as unset and falls through (11.034476ms)
+  ✔ parses kb/<task-id> branches when no env var is set (34.401261ms)
+  ✔ trims a padded branch name and tolerates a null env mapping (0.209438ms)
+  ✔ returns null on non-task branches, detached HEAD, or missing git (0.212888ms)
+  ✔ returns null when the branch segment is unsafe, even though kb/ matched (0.175353ms)
+✔ resolveTaskId (129.542621ms)
+▶ sanitizeTaskId
+  ✔ accepts plain ids and trims padding (0.181138ms)
+  ✔ accepts UUIDs, slugs, and dotted names that stay one folder (0.148731ms)
+  ✔ rejects traversal, separators, hidden names, and hostile characters (0.142051ms)
+  ✔ rejects null and undefined instead of crashing (0.097769ms)
+  ✔ rejects malicious ids from every source to the fail-fast path (0.128505ms)
+✔ sanitizeTaskId (0.907158ms)
+▶ buildDefaultTaskScreenshotPath
+  ✔ builds docs/tasks/<task-id>/screenshot-<timestamp>.png with a fixed clock (0.335624ms)
+  ✔ pads single-digit timestamp fields (0.119636ms)
+  ✔ refuses to build a traversal path for invalid ids (48.838853ms)
+✔ buildDefaultTaskScreenshotPath (49.453622ms)
+▶ readFlagValue
+  ✔ reads the token after the flag's first occurrence (0.178105ms)
+  ✔ returns null when the flag is absent or has no value after it (0.117552ms)
+  ✔ treats a following flag or an empty value as missing, never as the path (0.094815ms)
+✔ readFlagValue (0.540307ms)
+▶ findUnusedFilePath
+  ✔ keeps the starting path when nothing exists there (0.191755ms)
+  ✔ adds a -01 suffix before the extension when the start is taken (0.094345ms)
+  ✔ walks to the first free suffix instead of overwriting (0.101023ms)
+  ✔ handles names without an extension (0.090936ms)
+  ✔ fails fast naming --out when every fallback name is taken (0.27628ms)
+✔ findUnusedFilePath (0.923602ms)
+▶ resolveOutputPath
+  ✔ defaults into the task folder when the id is discoverable, never repo root (0.255691ms)
+  ✔ resolves the default from env vars without touching git (0.093213ms)
+  ✔ lets an explicit --out win exactly, even with a discoverable id (0.078218ms)
+  ✔ lets an explicit --out win even with no discoverable id (0.119499ms)
+  ✔ treats an empty --out as omitted and falls back to the default (0.109334ms)
+  ✔ fails fast naming the --out form when no task id is discoverable (75.722326ms)
+✔ resolveOutputPath (76.604233ms)
+▶ capture script without --out and without a task id (real entrypoint)
+  ✔ exits non-zero naming the --out form and writes nothing (1294.501203ms)
+✔ capture script without --out and without a task id (real entrypoint) (1294.617954ms)
+error: unknown flag --nope (usage: [--staged] [--root <dir>] [path ...])
+error: --root requires a directory argument
+error: --root /tmp/binary-guard-nope is not a readable directory
+▶ BINARY_MAGIC
+  ✔ reuses the detector magic for every image type (single source of truth) (22.10842ms)
+  ✔ extends coverage to archive binaries so future types slot in as data (0.169843ms)
+✔ BINARY_MAGIC (23.457623ms)
+▶ binaryMagicForExtension
+  ✔ pins PNG magic first (80.381327ms)
+  ✔ is case-insensitive and tolerates a missing dot (0.142928ms)
+  ✔ returns null for unknown extensions and bad input instead of throwing (0.151608ms)
+✔ binaryMagicForExtension (80.927526ms)
+▶ isGuardedPath
+  ✔ guards proof images under docs/tasks (0.332617ms)
+  ✔ guards binary extensions anywhere (broader than proof paths) (0.163098ms)
+  ✔ ignores text and unknown extensions (0.150327ms)
+  ✔ matches ./-prefixed and backslash paths the same as bare ones (0.159729ms)
+  ✔ returns false for missing or non-string input instead of throwing (75.198368ms)
+✔ isGuardedPath (76.355274ms)
+▶ checkBinaryMagic
+  ✔ passes a valid PNG (31.669649ms)
+  ✔ fails the text-corrupted PNG with expected vs actual magic (139.295005ms)
+  ✔ passes a valid zip and fails a text-corrupted one (0.714088ms)
+  ✔ passes valid gzip bytes under .gz and .tgz names (8.810336ms)
+  ✔ validates WebP on both the RIFF and WEBP markers (0.4288ms)
+  ✔ fails an empty PNG instead of passing it (0.296236ms)
+  ✔ skips unknown extensions and missing files instead of failing (12.545571ms)
+  ✔ fails an unreadable binary path instead of passing it (0.371232ms)
+  ✔ follows a symlink to its target bytes: corrupt target fails, broken link is skipped (29.607364ms)
+✔ checkBinaryMagic (397.923639ms)
+▶ formatGuardFailure
+  ✔ names the file with expected vs actual magic and the safe remedy (0.296894ms)
+  ✔ never prints a bare null/undefined for an unreadable file (0.145812ms)
+✔ formatGuardFailure (156.121244ms)
+▶ parsePorcelainZero
+  ✔ parses plain records and drops the trailing empty field after the final NUL (2.160421ms)
+  ✔ consumes the source field of rename/copy records and keeps the current path (0.18436ms)
+  ✔ drops deletions on either side (no bytes left to verify) (0.101031ms)
+  ✔ keeps unmerged and path-with-spaces records intact (0.100831ms)
+✔ parsePorcelainZero (4.100167ms)
+▶ checkPaths
+  ✔ skips unguarded candidates and collects only guarded violations with their relPath (1.129509ms)
+✔ checkPaths (1.253256ms)
+▶ listChangedFiles
+  ✔ lists staged and unstaged worktree files by repo-relative path (191.923076ms)
+  ✔ lists only staged files when stagedOnly is set (362.42065ms)
+  ✔ skips deleted files (there are no bytes left to verify) (688.578977ms)
+  ✔ throws a helpful error outside a git repository (67.139741ms)
+✔ listChangedFiles (1310.323342ms)
+▶ CLI exit contract
+  ✔ exits 1 naming the corrupt PNG with expected vs actual and the remedy (1426.613967ms)
+  ✔ exits 0 on a valid PNG proof (521.963394ms)
+  ✔ skips unknown extensions passed explicitly instead of failing (955.351222ms)
+  ✔ catches a staged corrupt PNG in --staged mode (the pre-commit path) (877.235493ms)
+  ✔ passes --staged mode when the staged PNG is valid (2094.998604ms)
+  ✔ catches an unstaged worktree corruption in default changed-file mode (1420.090648ms)
+  ✔ exits 2 outside a git repository with no explicit paths (never a false PASS) (869.126404ms)
+  ✔ exits 2 on an unknown flag instead of silently passing (961.583737ms)
+  ✔ exits 2 when --root steals another flag as its value (1187.942415ms)
+  ✔ exits 2 on a missing or non-directory --root instead of a false PASS (884.895369ms)
+  ✔ exits 2 naming an explicit path that does not exist (never a false PASS on a typo) (683.270267ms)
+  ✔ exits 2 naming an explicit path that is a broken symlink (642.230019ms)
+  ✔ documents the exit-code contract in --help (1269.380785ms)
+  ✔ rejects main() argument errors with exit 2 without touching the filesystem (8.191462ms)
+✔ CLI exit contract (13804.118538ms)
+▶ checkCompatibility
+  ✔ passes the shipped 1.0.0 files with four OK pairs (47.81427ms)
+  ✔ fails a 2.0.0 backend against <2.0.0 ranges with the exact message shape (14.714789ms)
+  ✔ fails a non-semver apiVersion naming the component (10.042529ms)
+  ✔ checks a recorded manifest the same way (10.638485ms)
+✔ checkCompatibility (220.395209ms)
+▶ check-component-compat CLI
+  ✔ exits 0 on the shipped tree and 1 on a bumped backend (2888.617429ms)
+✔ check-component-compat CLI (2888.859988ms)
+▶ scanSourceForDuplicateIdentifiers
+  ✔ reports no violations for a clean module (427.666738ms)
+  ✔ detects the task-efa802a6 splitReasoning duplicate import (0.77332ms)
+  ✔ detects duplicate variable declarations (0.458427ms)
+  ✔ detects var redeclarations that the parser permits (0.44321ms)
+  ✔ detects an import colliding with a variable declaration (0.496804ms)
+  ✔ detects duplicate function declarations (0.459748ms)
+  ✔ detects duplicate class declarations (0.738057ms)
+  ✔ detects duplicate destructured variable declarations (30.610536ms)
+  ✔ detects duplicate default imports (0.541991ms)
+  ✔ detects duplicate namespace imports (21.688871ms)
+  ✔ detects an exported variable colliding with an import (22.239007ms)
+  ✔ detects a named default export colliding with a variable (2.070033ms)
+  ✔ ignores identifiers shadowed in nested scopes (11.650871ms)
+  ✔ ignores block-scoped redeclarations (0.478059ms)
+  ✔ ignores duplicate words inside comments and strings (99.624548ms)
+  ✔ ignores re-exports with different names (export { x } from 'y') (20.814347ms)
+  ✔ reports re-exports with the same name as a parse error (0.428095ms)
+  ✔ ignores export-star (export * from 'y') (52.57533ms)
+  ✔ ignores side-effect imports (import 'y') (23.854125ms)
+  ✔ ignores anonymous default exports (81.163189ms)
+  ✔ reports parse errors as violations (0.471583ms)
+  ✔ reports const redeclarations caught by the parser itself (0.301704ms)
+  ✔ handles empty source code (21.363935ms)
+  ✔ handles source with only comments (1.581953ms)
+  ✔ reports multiple duplicates in one file (43.033268ms)
+  ✔ includes a remediation message on each violation (1.822076ms)
+✔ scanSourceForDuplicateIdentifiers (1089.885237ms)
+▶ findSourceFilesInDirectory
+  ✔ returns only source files, excluding tests and non-JS files (18.791187ms)
+  ✔ skips node_modules, dist, and other build directories (38.749472ms)
+  ✔ returns an empty array for a nonexistent directory (0.224518ms)
+  ✔ throws when directoryPath is missing (7.509199ms)
+✔ findSourceFilesInDirectory (65.590795ms)
+▶ checkDirectoryForDuplicates
+  ✔ cleanly scans the real settings directory (2099.089483ms)
+  ✔ reports injected duplicates (4.049884ms)
+  ✔ fails safe when the target directory has no source files (0.347501ms)
+  ✔ fails safe when the target directory does not exist (0.262235ms)
+  ✔ scans a custom target directory (0.422982ms)
+  ✔ reports syntax errors in scanned files (12.248954ms)
+✔ checkDirectoryForDuplicates (2116.712459ms)
+▶ formatViolationsReport
+  ✔ renders a helpful message when there are no violations (0.234131ms)
+  ✔ renders a populated report with location and identifier (0.116939ms)
+  ✔ renders violations without an identifier name (0.099641ms)
+  ✔ renders violations without a message (0.096238ms)
+  ✔ handles a missing violationsList gracefully (0.072419ms)
+✔ formatViolationsReport (0.792259ms)
+▶ extractImportSpecifiers
+  ✔ finds static, side-effect, type-only, and re-export forms (62.679505ms)
+  ✔ finds dynamic import() and require() with single, double, and template quotes (33.70705ms)
+  ✔ ignores import lookalikes inside comments (0.211674ms)
+  ✔ ignores import lookalikes inside string literals (11.8709ms)
+  ✔ finds multiline static imports (0.209088ms)
+✔ extractImportSpecifiers (122.662541ms)
+▶ mapSpecifierToPackageName
+  ✔ maps subpath imports to their package (9.163819ms)
+  ✔ returns null for relative, absolute, and internal specifiers (0.181533ms)
+  ✔ returns null for node builtins with and without the node: prefix (0.163959ms)
+  ✔ strips vite resource query and hash suffixes (0.176833ms)
+✔ mapSpecifierToPackageName (10.061367ms)
+▶ findUndeclaredImports on a fixture package
+  ✔ fails the case-study shape: dynamic import() of an undeclared package (9.967567ms)
+  ✔ passes declared, builtin, and relative imports (0.96692ms)
+  ✔ reports every violating file, deduplicated per file and package (324.071889ms)
+✔ findUndeclaredImports on a fixture package (335.215512ms)
+▶ extractImportSpecifiers edge forms
+  ✔ finds require.resolve, import.meta.resolve, backtick require, and import-equals (0.296827ms)
+  ✔ skips template-literal dynamic imports with interpolation (0.148473ms)
+  ✔ finds imports split by comments or newlines (0.164904ms)
+  ✔ finds type re-exports and import attributes (0.111285ms)
+  ✔ ignores method calls and property access shaped like imports (0.104767ms)
+  ✔ ignores bare words that merely contain the import keyword (0.119678ms)
+✔ extractImportSpecifiers edge forms (1.210973ms)
+▶ mapSpecifierToPackageName edge forms
+  ✔ returns null for URL-shaped and home-style specifiers (0.14843ms)
+  ✔ returns null for bare builtin subpaths and malformed scoped names (0.098632ms)
+  ✔ treats bare test as a package (only the node: form is a builtin) (0.101855ms)
+✔ mapSpecifierToPackageName edge forms (0.505253ms)
+▶ resolvePackageDirectory
+  ✔ defaults to the frontend package that owns the script (0.241404ms)
+  ✔ accepts --package <dir> and --package=<dir> (74.972438ms)
+  ✔ rejects a missing --package value instead of silently checking frontend (4.742032ms)
+  ✔ rejects unknown flags and positionals instead of silently ignoring them (0.208392ms)
+✔ resolvePackageDirectory (80.391152ms)
+▶ readDeclaredDependencies failure modes
+  ✔ throws naming the manifest when package.json is missing (0.606574ms)
+  ✔ throws naming the manifest when package.json is not valid JSON (80.597451ms)
+  ✔ reads a manifest with a byte-order mark and tolerates empty dep sections (0.692432ms)
+✔ readDeclaredDependencies failure modes (82.139354ms)
+▶ checkPackageDirectory failure modes
+  ✔ refuses to pass vacuously when no source files are found (0.465727ms)
+  ✔ names the file it cannot scan instead of crashing with a raw error (0.603859ms)
+✔ checkPackageDirectory failure modes (1.213575ms)
+▶ findUndeclaredImports coverage
+  ✔ scans root config files as well as src/ (85.213427ms)
+  ✔ ignores non-source files and node_modules/dist trees under src/ (0.704868ms)
+  ✔ scans .mts/.cts modules and uppercase extensions (43.819084ms)
+  ✔ sorts violations by file then package for stable output (0.737529ms)
+✔ findUndeclaredImports coverage (130.740572ms)
+▶ formatUndeclaredReport
+  ✔ names the owning manifest and install prefix in the fix hint (0.220251ms)
+✔ formatUndeclaredReport (0.360283ms)
+▶ check CLI end to end
+  ✔ exits 1 naming the file and package for an undeclared import (681.541933ms)
+  ✔ exits 0 on a clean tree and --help prints usage (1719.094592ms)
+✔ check CLI end to end (2400.778794ms)
+▶ frontend guardrail contract
+  ✔ the real frontend tree is clean (including the declared mermaid import) (5458.755128ms)
+  ✔ the frontend build runs the check before vite resolves anything (1.574162ms)
+  ✔ the root gate exposes the check and runs it before the overlap window (0.368159ms)
+  ✔ the gate reports check failures (unreadable manifest, unscanned files) without a stack trace (32.313969ms)
+✔ frontend guardrail contract (5500.888348ms)
+▶ hasExampleTag
+  ✔ detects @example in a JSDoc block (0.901196ms)
+✔ hasExampleTag (86.931845ms)
+▶ nearestJsdoc
+  ✔ finds an attached block and rejects detached ones (0.356256ms)
+✔ nearestJsdoc (0.526415ms)
+▶ findPublicExports
+  ✔ finds functions, classes, bindings, and defaults with example status (1.586574ms)
+  ✔ splits multi-declarator consts under one JSDoc block (0.261574ms)
+  ✔ skips re-export lists and export-star (0.217272ms)
+  ✔ ignores the word export inside comments and strings (0.256134ms)
+  ✔ masks template raw text so apostrophes cannot swallow later exports (23.911456ms)
+✔ findPublicExports (146.908729ms)
+▶ isDocSourceFile
+  ✔ covers api, shared, and frontend/src JS/JSX (5.252555ms)
+  ✔ excludes tests, fixtures, mocks, and scripts (2.864606ms)
+✔ isDocSourceFile (9.388936ms)
+▶ checkMissing
+  ✔ passes baselined exports and fails new ones (3.567704ms)
+  ✔ fails everything in strict mode (11.909858ms)
+  ✔ reports baseline entries that now carry @example (0.171108ms)
+✔ checkMissing (20.455591ms)
+▶ formatExampleFailure
+  ✔ names the export and gives a fix recipe (7.676258ms)
+  ✔ emits a tailored ready-to-paste snippet per export kind (8.823623ms)
+  ✔ caps tailored snippets and summarizes the rest (0.458245ms)
+✔ formatExampleFailure (25.49147ms)
+▶ exampleSnippetFor
+  ✔ each snippet passes the gate when pasted above its export (8.088619ms)
+  ✔ pins the TaskCompleteToggleButton CI failure to an actionable message (0.399657ms)
+  ✔ covers default-class, var, async-default, and odd file names (15.934059ms)
+  ✔ emits exactly one well-formed JSDoc block (MARK + @description + @example) (0.215623ms)
+✔ exampleSnippetFor (24.849316ms)
+▶ committed-tree grandfather proof
+  ✔ the baseline covers every currently-missing export (7504.740928ms)
+✔ committed-tree grandfather proof (7504.845598ms)
+▶ topLevelFunctions
+  ✔ counts one top-level declaration (4.108774ms)
+  ✔ counts multiple top-level declarations including async and default (0.237529ms)
+  ✔ ignores nested declarations and callbacks (0.224971ms)
+  ✔ ignores arrow-function constants (0.254057ms)
+  ✔ ignores the word function inside comments, strings, and JSDoc examples (0.279646ms)
+  ✔ masks template raw text so apostrophes cannot swallow later code (1.465871ms)
+  ✔ still sees functions declared inside ${} interpolations at depth (0.191608ms)
+✔ topLevelFunctions (9.489908ms)
+▶ isSourceFile
+  ✔ covers api, shared, and frontend/src JS/JSX (0.370514ms)
+  ✔ excludes tests, specs, configs, and out-of-scope roots (0.211664ms)
+✔ isSourceFile (0.863342ms)
+▶ checkFiles
+  ✔ passes single-function and zero-function files (3.697074ms)
+  ✔ fails unlisted multi-function files (0.148666ms)
+  ✔ grandfathers allowlisted paths that already existed (0.146761ms)
+  ✔ still fails an allowlisted path that is newly added (0.103657ms)
+  ✔ reports stale allowlist entries for pruning (0.103639ms)
+✔ checkFiles (4.434894ms)
+▶ formatFailure
+  ✔ names the file, the functions, and the remediation (0.312439ms)
+✔ formatFailure (0.404536ms)
+▶ git integration
+  ✔ resolves a diff base or degrades to null outside git (181.647492ms)
+  ✔ lists newly-added paths as an array (699.228038ms)
+✔ git integration (881.011351ms)
+error: unknown flag --nope (usage: [--root <dir>] [--strict])
+error: --root requires a directory argument
+error: unexpected argument extra-positional (usage: [--root <dir>] [--strict])
+error: --root /tmp/proof-hygiene-nope is not a readable directory
+▶ magicForExtension
+  ✔ pins PNG magic first (29.428312ms)
+  ✔ covers JPEG, GIF, and WebP (0.212803ms)
+  ✔ is case-insensitive and tolerates a missing dot (0.149704ms)
+  ✔ returns null for unknown extensions (0.148219ms)
+  ✔ returns null for missing or non-string input instead of throwing (0.128134ms)
+✔ magicForExtension (44.207535ms)
+▶ toPosix
+  ✔ normalizes both separator styles so matching is identical on Windows and POSIX (0.326141ms)
+  ✔ returns an empty string for non-string input instead of throwing (0.14354ms)
+  ✔ strips leading ./ segments so ./-prefixed paths match the same rules (0.161296ms)
+✔ toPosix (24.735591ms)
+▶ isProofPath
+  ✔ matches images under docs/tasks regardless of name (0.290568ms)
+  ✔ matches proof/screenshot image names outside docs/tasks (0.270572ms)
+  ✔ ignores non-images, even with proof names (0.179382ms)
+  ✔ ignores images that are not proof artifacts (0.10453ms)
+  ✔ matches ./-prefixed proof paths the same as bare ones (0.085077ms)
+✔ isProofPath (50.043304ms)
+▶ isRootScratch
+  ✔ flags each scratch shape at the root (38.392745ms)
+  ✔ passes legitimate root files (0.196031ms)
+  ✔ ignores nested files, even scratch-shaped ones (0.087573ms)
+  ✔ honours exact-path allowlist entries (0.08336ms)
+  ✔ returns false for missing or non-string input instead of throwing (0.111046ms)
+  ✔ matches backslash-separated proof paths the same as POSIX ones (0.106205ms)
+  ✔ flags ./-prefixed root scratch names the same as bare ones (0.086428ms)
+✔ isRootScratch (39.296442ms)
+▶ matchScratchPattern
+  ✔ names the matched pattern for messages (0.18101ms)
+  ✔ returns null when nothing matches (0.105057ms)
+  ✔ matches case-insensitively so every isRootScratch hit has a pattern name (0.081537ms)
+✔ matchScratchPattern (8.55271ms)
+▶ checkFileMagic
+  ✔ passes a valid PNG (20.819109ms)
+  ✔ fails the text-corrupted PNG with expected vs actual magic (0.474426ms)
+  ✔ passes a valid JPEG prefix (0.35435ms)
+  ✔ validates WebP on both the RIFF and WEBP markers (0.423166ms)
+  ✔ fails an empty PNG with a readable message instead of an empty diff (47.442165ms)
+  ✔ fails a truncated PNG head instead of passing it (0.366524ms)
+  ✔ skips unknown extensions and missing files instead of failing (78.821332ms)
+  ✔ fails an unreadable proof path instead of passing it (only a missing file skips) (0.528675ms)
+✔ checkFileMagic (149.670896ms)
+▶ formatFailure
+  ✔ names the file with expected vs actual magic and a remedy (9.900753ms)
+  ✔ names the scratch pattern and the remedy (0.15612ms)
+  ✔ never prints a bare null/undefined pattern name (0.833791ms)
+✔ formatFailure (11.057267ms)
+▶ loadAllowlist
+  ✔ reads the shipped allowlist file (0.3225ms)
+  ✔ degrades to an empty list outside a repo checkout (18.701037ms)
+  ✔ degrades strict (empty) on corrupt JSON instead of failing the gate on its own config (5.982704ms)
+✔ loadAllowlist (25.222925ms)
+▶ checkTree acceptance scenarios
+  ✔ fails a committed-style corrupt PNG naming file and expected vs actual (1.405454ms)
+  ✔ fails a root scratch file (0.509291ms)
+  ✔ passes a valid PNG proof with a clean root (75.223458ms)
+  ✔ follows a symlinked proof file to its target bytes (0.668517ms)
+  ✔ passes a symlinked proof file with valid target bytes (0.651841ms)
+  ✔ skips a broken proof symlink (nothing to read) instead of failing (103.732735ms)
+  ✔ flags a symlinked scratch file at the root (5.635448ms)
+✔ checkTree acceptance scenarios (188.212255ms)
+▶ baseline
+  ✔ loads the shipped baseline with the recorded bytes (14.074934ms)
+  ✔ degrades to an empty list outside a repo checkout (0.202ms)
+  ✔ degrades strict (empty) on corrupt JSON so baselined damage re-fails loudly (0.378181ms)
+  ✔ covers a scratch violation whose baseline entry carries no magic bytes (13.226677ms)
+  ✔ covers a violation only while its bytes still match the recording (0.143179ms)
+  ✔ files baselined violations as known instead of failing (12.38725ms)
+  ✔ re-fails a baselined path whose bytes changed (111.98726ms)
+✔ baseline (152.787422ms)
+▶ CLI exit contract
+  ✔ exits 1 naming the corrupt PNG with expected vs actual (1050.226185ms)
+  ✔ exits 1 on a root scratch file (839.969782ms)
+  ✔ exits 0 on a valid PNG proof with a clean root (770.477548ms)
+  ✔ exits 2 on an unknown flag instead of silently passing (687.722974ms)
+  ✔ exits 2 when --root steals another flag as its value (732.364067ms)
+  ✔ uses the last --root when the flag repeats (672.340459ms)
+  ✔ rejects main() argument errors with exit 2 without touching the filesystem (1.245961ms)
+  ✔ exits 2 on a positional argument instead of silently ignoring it (800.252035ms)
+  ✔ exits 2 on a missing or non-directory --root instead of a false PASS (1376.705732ms)
+  ✔ documents the exit-code contract in --help (130.626742ms)
+  ✔ notes baseline entries that matched nothing so healed files get pruned (762.177126ms)
+  ✔ exits 0 by default but 1 under --strict on a baselined violation (1203.832834ms)
+✔ CLI exit contract (9028.642649ms)
+▶ isRunnerCodePath
+  ✔ flags runner code and harness code, nothing else (0.960498ms)
+✔ isRunnerCodePath (2.089143ms)
+▶ parseGateSemver / semverGreater
+  ✔ parses strict semver with an optional pre-release (1.282186ms)
+  ✔ orders versions under semver precedence (0.37171ms)
+✔ parseGateSemver / semverGreater (1.979317ms)
+▶ checkRunnerVersionBump
+  ✔ fails when runner code changed without a version increase (1.176479ms)
+  ✔ fails when harness code changed without a version increase (2.645721ms)
+  ✔ passes when the version increased over the base (0.583226ms)
+  ✔ passes trivially when no runner code changed (0.429764ms)
+  ✔ warn-passes when the base version is unreadable (first release) (0.289342ms)
+  ✔ fails when the release version is not semver (1.082078ms)
+✔ checkRunnerVersionBump (7.038265ms)
+▶ check-runner-version-bump CLI
+  ✔ exits 1 on runner-code change without a bump (--files hermetic mode) (691.977302ms)
+  ✔ exits 0 when the version increased, or when no runner code changed (1223.20285ms)
+  ✔ rejects an unbumped release over a real git range, then accepts the bump (4174.39115ms)
+  ✔ warn-passes on a repo with no previous runner release (1213.420246ms)
+✔ check-runner-version-bump CLI (7303.33907ms)
+▶ deploy.sh test gates (static contract)
+  ✔ runs the fast branches as the final-test-suite gate without canary (16.719994ms)
+  ✔ runs the canary suite as two blocking sharded gates (1/2 then 2/2) (28.317118ms)
+  ✔ orders the canary-e2e gates after the final-test-suite gate (0.697464ms)
+  ✔ skips the canary gate only on exactly KAINBAIN_SKIP_CANARY=1 (fail-safe) (2.297646ms)
+  ✔ installs frontend deps on a clean checkout before building (tip-worktree publish failures) (10.180014ms)
+  ✔ refuses to build from a non-default checkout (deploy-tree gate first) (0.557047ms)
+✔ deploy.sh test gates (static contract) (63.130971ms)
+▶ deploy / npm test parity (executable contract)
+  ✔ final-test-suite branches + canary-e2e gate equal the default npm test branches (9.23ms)
+  ✔ fast branches execute the identical command with and without canary (53.755781ms)
+  ✔ the canary-e2e gate command matches the gate's Canary Tests branch (0.672689ms)
+  ✔ root test:canary delegates to the canary-e2e package suite (0.341661ms)
+✔ deploy / npm test parity (executable contract) (64.72701ms)
+▶ deploy.sh re-exec line (static contract)
+  ✔ waits for the transient unit so its exit code propagates (--wait) (31.586126ms)
+  ✔ injects a node-aware PATH into the transient unit (--setenv) (0.587311ms)
+✔ deploy.sh re-exec line (static contract) (133.1173ms)
+▶ deploy.sh re-exec behaviour (fake systemd-run)
+  ✔ passes --wait and a node-aware PATH to systemd-run (1496.264439ms)
+  ✔ propagates a failing unit's exit code to the caller (no vacuous PASS) (1148.572891ms)
+  ✔ pins KAINBAIN_OUTSIDE_CGROUP=1 in the unit env (no re-exec loop) (1548.466585ms)
+  ✔ re-pins KAINBAIN_DEPLOY_ATTEMPT_ID for the transient unit (per-attempt attribution) (1331.282946ms)
+  ✔ omits the attempt-id setenv on manual runs without an attempt id (1237.534447ms)
+✔ deploy.sh re-exec behaviour (fake systemd-run) (6762.711145ms)
+▶ deploy.sh task-worktree invocation (Runner-dispatched Publish)
+  ✔ re-runs in the primary checkout instead of exit 78 (e3b2624a publish failure) (1568.563847ms)
+✔ deploy.sh task-worktree invocation (Runner-dispatched Publish) (1606.139728ms)
+▶ deploy.sh fail-safe contracts (static)
+  ✔ skips the canary E2E gate on exactly KAINBAIN_SKIP_CANARY=1 (parity with npm test) (29.951545ms)
+  ✔ labels the release snapshot with the pre-increment build (no mislabel) (0.538489ms)
+  ✔ guards the STAGE EXIT trap when the stage dir was never created (12.731825ms)
+  ✔ fails fast on missing jq/curl before consuming a build number (0.921629ms)
+  ✔ creates the deploy dir before taking the rollback lock (14.904242ms)
+  ✔ never re-enters auto-rollback through the ERR trap (21.798646ms)
+  ✔ never rolls back a healthy deploy over an nginx reload failure (7.388424ms)
+  ✔ always leaves a durable result from rollback-mode failures (0.375229ms)
+  ✔ never passes --pipe to systemd-run (dead-reader regression, 2026-10-12) (0.434615ms)
+  ✔ needs no stdio detach before restart_service (no pipe, no EPIPE) (0.463638ms)
+✔ deploy.sh fail-safe contracts (static) (90.052059ms)
+▶ deploy.sh re-exec argv (fake systemd-run, no --pipe)
+  ✔ omits --pipe from the real re-exec argv while keeping --wait (1485.666737ms)
+✔ deploy.sh re-exec argv (fake systemd-run, no --pipe) (1485.774018ms)
+▶ deploy.sh engine heartbeat pump (foreground liveness)
+  ✔ emits engine-visible heartbeats while the detached unit runs (3437.518098ms)
+✔ deploy.sh engine heartbeat pump (foreground liveness) (3437.628138ms)
+▶ findDeprecationWarnings
+  ✔ flags the three build-log warning shapes from the task screenshot (22.897435ms)
+  ✔ passes clean build output (including the chunk-size hint) (0.279394ms)
+  ✔ an allowlist entry suppresses its matching line only (0.262887ms)
+  ✔ an expired allowlist entry does not suppress (0.208956ms)
+  ✔ an entry without an expiry date does not suppress (63.967791ms)
+  ✔ an entry with an invalid regex pattern fails closed instead of crashing (0.285299ms)
+  ✔ an invalid pattern does not break its valid siblings (0.187666ms)
+✔ findDeprecationWarnings (89.616871ms)
+▶ compileAllowlistPattern
+  ✔ compiles a valid pattern (0.276621ms)
+  ✔ returns null for a pattern that does not compile (45.882201ms)
+✔ compileAllowlistPattern (46.488223ms)
+▶ loadBuildAllowlist
+  ✔ loads the shipped allowlist file without crashing (0.371417ms)
+✔ loadBuildAllowlist (0.487878ms)
+▶ check-no-deprecations binary
+  ✔ exits 0 and passes output through when the build is clean (1315.273736ms)
+  ✔ exits non-zero when the build prints a deprecation warning (1104.87244ms)
+  ✔ exits non-zero when the build command itself fails (1670.070067ms)
+✔ check-no-deprecations binary (4107.452165ms)
+▶ evaluateAudit
+  ✔ reports non-allowlisted high findings as blocking (0.511722ms)
+  ✔ ignores moderate and low findings (0.135142ms)
+  ✔ an allowlist entry with a valid expiry suppresses its advisory (13.92179ms)
+  ✔ an expired allowlist entry does not suppress (7.749683ms)
+  ✔ an entry for a different advisory source does not suppress (0.151064ms)
+  ✔ tolerates audit output with no vulnerabilities key (0.110341ms)
+  ✔ suppresses transitive dependents when the root advisory is allowlisted (8.59309ms)
+  ✔ a transitive chain with no reachable advisory stays blocking (0.155487ms)
+✔ evaluateAudit (31.694878ms)
+▶ detectFromFiles
+  ✔ maps the WP-A3 fixture paths to exactly the named components (35.084219ms)
+  ✔ records reasons per component (8.280349ms)
+  ✔ runner release tooling flags the runner (publish cuts the release) (41.058163ms)
+  ✔ release machinery flags all three; version files flag their owner (0.395679ms)
+  ✔ ad-site-only paths flag no image components (the S3 sync ships them) (0.350877ms)
+✔ detectFromFiles (86.564427ms)
+▶ detectAdsiteSync
+  ✔ fires for ad-site paths and stays quiet otherwise (0.307544ms)
+✔ detectAdsiteSync (0.469706ms)
+▶ override
+  ✔ parses all/none/csv (0.45882ms)
+  ✔ env override wins over --files in the CLI (825.549086ms)
+✔ override (840.165892ms)
+▶ resolveDevPlan
+  ✔ defaults to API :3100 and frontend :5173 (1.068204ms)
+  ✔ honors PORT and VITE_PORT (6.742245ms)
+  ✔ supervises the API node process and the Vite npm script (14.549832ms)
+  ✔ rejects a garbage port naming the variable (10.360798ms)
+✔ resolveDevPlan (53.94245ms)
+▶ dev --dry-run
+  ✔ prints the plan and exits without touching ports (411.096064ms)
+✔ dev --dry-run (411.455281ms)
+▶ entry points stay free of Linux-only tooling
+  ✔ scripts/run-tests.mjs references no Linux-only tooling (1.603ms)
+  ✔ scripts/depcheck.mjs references no Linux-only tooling (0.289132ms)
+  ✔ scripts/dev.mjs references no Linux-only tooling (0.378079ms)
+  ✔ scripts/setup.mjs references no Linux-only tooling (0.824999ms)
+  ✔ scripts/free-port.mjs references no Linux-only tooling (0.27338ms)
+  ✔ scripts/lib/run-parallel.mjs references no Linux-only tooling (1.685152ms)
+  ✔ scripts/lib/run-supervised.mjs references no Linux-only tooling (0.401394ms)
+  ✔ package.json references no Linux-only tooling (4.116257ms)
+✔ entry points stay free of Linux-only tooling (13.431559ms)
+▶ root scripts point at the Node runners
+  ✔ test runs the Node gate (0.294908ms)
+  ✔ dev runs the Node supervisor (1.377422ms)
+  ✔ setup runs the Node installer (0.137734ms)
+  ✔ depcheck runs the Node fan-out (2.591955ms)
+✔ root scripts point at the Node runners (4.734299ms)
+▶ workspace test scripts carry no shell env prefix
+  ✔ api test runs under Windows cmd (no VAR= prefix) (0.429657ms)
+  ✔ frontend test runs under Windows cmd (no VAR= prefix) (0.188027ms)
+✔ workspace test scripts carry no shell env prefix (0.762357ms)
+▶ run-tests.sh stays a thin shim
+  ✔ delegates to the Node gate without its own runner (6.095398ms)
+✔ run-tests.sh stays a thin shim (6.201351ms)
+▶ installs resolve the way the lockfiles were built
+  ✔ root .npmrc pins legacy peer resolution (frontend needs it) (0.244033ms)
+✔ installs resolve the way the lockfiles were built (0.345344ms)
+▶ fast-gate acceptance (real spawns, stub canary)
+  ✔ fail-fast on: returns without running the slow canary, verdict on disk (299.892327ms)
+  ✔ fail-fast off: the verdict still lands early but the slow canary runs on (6466.780895ms)
+✔ fast-gate acceptance (real spawns, stub canary) (6778.951057ms)
+▶ fast-gate excerpt survival (case-study fixture)
+  ✔ the fixture really is case-study-shaped (24011 lines, trimmed inline) (427.460832ms)
+  ✔ budgets stay pinned (no budget raises ship with this change) (0.173335ms)
+  ✔ keeps suite names and verdict paths in the timeline excerpt (3072 chars) (196.174432ms)
+  ✔ keeps suite names and verdict paths in the retry-prompt excerpt (4000 chars) (62.90892ms)
+  ✔ keeps an assertion line in the retry-prompt excerpt (4000 chars) (154.052536ms)
+  ✔ keeps the untrimmed middle byte-complete in the verdict full-log file (120.012073ms)
+✔ fast-gate excerpt survival (case-study fixture) (978.393173ms)
+▶ FAST_GATE_MARKER
+  ✔ is a greppable single token the engine scans for (15.475776ms)
+  ✔ matches the engine's copy exactly (gate and engine share the marker) (0.815125ms)
+✔ FAST_GATE_MARKER (49.87923ms)
+▶ branchSlug
+  ✔ slugifies branch names into safe log-file stems (7.127022ms)
+  ✔ collapses runs of separators and never returns an empty stem (0.187249ms)
+✔ branchSlug (21.971744ms)
+▶ formatVerdictTimestamp
+  ✔ renders a UTC stamp beside its run (0.44214ms)
+  ✔ falls back to the current time for an unreadable clock reading (0.302679ms)
+✔ formatVerdictTimestamp (2.226228ms)
+▶ resolveVerdictDir
+  ✔ lands under KAINBAIN_TASK_DOCS when it names a writable directory (62.887333ms)
+  ✔ falls back to a repo-local scratch dir when KAINBAIN_TASK_DOCS is absent (6.371386ms)
+  ✔ falls back when KAINBAIN_TASK_DOCS names a missing path or a file (11.791017ms)
+  ✔ uses the current time when no clock is injected (0.498342ms)
+✔ resolveVerdictDir (81.881112ms)
+▶ ensureVerdictDir
+  ✔ creates a nested directory and reports it writable (53.67637ms)
+  ✔ returns false (never throws) when the path cannot hold a directory (0.325104ms)
+✔ ensureVerdictDir (54.138507ms)
+▶ buildFastGateVerdict
+  ✔ marks all-pass fast results ok with no failed branches (5.177277ms)
+  ✔ flags fast-gate membership on each failed branch (0.600799ms)
+  ✔ records every failure when the whole fast phase fails (22.474524ms)
+  ✔ carries a preflight failure with a null exit code and zero wall time (0.249044ms)
+  ✔ folds ran-canary failures into the same failed-branches list (0.144716ms)
+  ✔ stays ok when a ran canary passes after a green fast phase (0.106299ms)
+  ✔ never throws on malformed inputs (0.147296ms)
+✔ buildFastGateVerdict (29.181482ms)
+▶ writeBranchFullLog
+  ✔ writes the branch output byte-complete under its slug name (0.452721ms)
+  ✔ writes an empty file (not a throw) for empty output (1.803909ms)
+  ✔ returns null (never throws) when the directory is unwritable (0.413137ms)
+✔ writeBranchFullLog (29.541032ms)
+▶ writeFastGateVerdict
+  ✔ writes verdict.json plus one full log per failed branch only (0.849683ms)
+  ✔ degrades to ok:false without throwing when nothing is writable (0.386078ms)
+✔ writeFastGateVerdict (1.371557ms)
+▶ formatFastGateBanner
+  ✔ opens with the greppable marker line carrying names, decision, and verdict path (0.450582ms)
+  ✔ names every failed suite and its full-log path in the human lines (0.177458ms)
+  ✔ renders a passing verdict with ok=true and no failure lines (26.304915ms)
+  ✔ stays greppable when the verdict files are unavailable (0.276923ms)
+✔ formatFastGateBanner (27.409761ms)
+▶ isPortOccupied
+  ✔ reports false for a free ephemeral port (38.612912ms)
+  ✔ reports true for a bound port (12.168174ms)
+  ✔ reports false again after the holder closes (14.614042ms)
+  ✔ rejects an out-of-range port number (0.744288ms)
+✔ isPortOccupied (67.618512ms)
+▶ findOccupantPids
+  ✔ parses lsof -ti output on linux (6.709435ms)
+  ✔ parses lsof -ti output on darwin (2.292392ms)
+  ✔ returns an empty list when lsof finds no occupant (exit 1) (41.339868ms)
+  ✔ falls back to ss when lsof is missing on linux (0.545071ms)
+  ✔ ss fallback only returns pids listening on the requested port (0.276478ms)
+  ✔ reports a clear error when neither lsof nor ss exists (0.351346ms)
+  ✔ parses netstat -ano output on win32 (4.365373ms)
+  ✔ returns an empty list when netstat shows no listener (0.245852ms)
+✔ findOccupantPids (57.064645ms)
+▶ freePort
+  ✔ is a no-op reporting alreadyFree when the port is free (0.424687ms)
+  ✔ terminates the occupant and reports freed when the port releases (0.396863ms)
+  ✔ escalates to SIGKILL when the occupant ignores SIGTERM (52.734876ms)
+  ✔ never kills its own process (7.541014ms)
+  ✔ fails with an actionable error when the port never releases (30.842719ms)
+  ✔ fails with an actionable error when no occupant pid is found (0.266009ms)
+  ✔ terminates a verified occupant when verifyFn approves it (0.334493ms)
+  ✔ refuses to kill any occupant when verifyFn rejects it (2.078334ms)
+  ✔ treats a throwing verifyFn as unverified instead of killing (0.3204ms)
+✔ freePort (95.381606ms)
+▶ isAdminCommitSubject
+  ✔ drops KainBain automation sync subjects (4.396319ms)
+  ✔ drops runner stage-output subjects (0.276557ms)
+  ✔ drops merge remote-tracking noise case-insensitively (0.198524ms)
+  ✔ keeps human task work and real merges (0.324829ms)
+  ✔ treats empty and non-string subjects as admin (never bake a blank row) (0.150528ms)
+  ✔ does not confuse lookalike prefixes with admin markers (0.233036ms)
+✔ isAdminCommitSubject (15.382091ms)
+▶ filterChangelogEntries
+  ✔ drops admin entries and preserves newest-first order (4.736563ms)
+  ✔ tolerates non-array and malformed input (2.307716ms)
+✔ filterChangelogEntries (7.43547ms)
+▶ parseGitLog plus filter round-trip
+  ✔ parses the baked format and filters to task-merge history (4.967848ms)
+✔ parseGitLog plus filter round-trip (18.727386ms)
+▶ generateChangelog against a throwaway repo
+  ✔ pages past noise to fill the limit and counts only kept commits (1208.926103ms)
+  ✔ marks truncation when kept history exceeds the limit (653.642098ms)
+  ✔ supports an unfiltered bake for debugging (427.252051ms)
+  ✔ still validates refs and limits (0.45ms)
+✔ generateChangelog against a throwaway repo (2290.557218ms)
+error: unknown argument --nope (usage: [--root <dir>])
+error: --root requires a directory argument
+▶ installGitHooks
+  ✔ sets core.hooksPath in a fresh git repo and reports installed/0 (53.773006ms)
+  ✔ is idempotent: a second run reports already-set/0 and changes nothing (588.653585ms)
+  ✔ never overwrites a foreign hooksPath: reports foreign/2 and leaves the value (322.180201ms)
+  ✔ reports not-a-repo/0 outside a git work tree (nothing to hook) (123.723591ms)
+  ✔ covers linked worktrees: setting it in the primary checkout reads back in a worktree (599.584023ms)
+✔ installGitHooks (1694.139488ms)
+▶ install-git-hooks CLI
+  ✔ installs for --root and exits 0 with a success line (935.825004ms)
+  ✔ exits 2 on a foreign hooksPath and names the current value (392.796989ms)
+  ✔ exits 2 on an unknown argument and on a --root that steals a flag (1020.784313ms)
+  ✔ documents the exit-code contract in --help (73.001693ms)
+  ✔ main() maps argument errors to exit 2 without touching the filesystem (1.812784ms)
+✔ install-git-hooks CLI (2424.821036ms)
+▶ install-local-runner.sh wrapper installs
+  ✔ --dry-run reports the wrapper paths and writes nothing (128.396635ms)
+  ✔ ignores a host KAINBAIN_RUNNER_INSTALL_ROOT so CI never installs outside the fake HOME (319.94268ms)
+  ✔ writes a wrapper unit + env and lays the versioned tree down (1377.699851ms)
+  ✔ leaves an existing unit alone in ensure mode (820.688549ms)
+✔ install-local-runner.sh wrapper installs (2661.761706ms)
+▶ startRunner.sh wrapper installs
+  ✔ creates a wrapper unit and lays the versioned tree down (1950.784348ms)
+  ✔ --ensure rewrites direct units but leaves wrapper units alone (398.539229ms)
+✔ startRunner.sh wrapper installs (2349.932437ms)
+▶ runner-install-root.sh helper
+  ✔ lays down once and keeps an existing current (shared host root) (1813.968128ms)
+  ✔ fails without touching the root when the tree is bad (54.640224ms)
+✔ runner-install-root.sh helper (1869.037717ms)
+▶ migrate-runner-to-wrapper.sh
+  ✔ --dry-run prints the plan and changes nothing (824.573817ms)
+  ✔ lays down the versioned tree, shim, unit, and env (same version) (2540.663735ms)
+  ✔ is idempotent: re-running a migrated unit exits 0 unchanged (1208.799636ms)
+  ✔ refuses unknown units, missing trees, and existing current links (1322.97091ms)
+  ✔ reloads, restarts, and verifies through the doctor (stubbed systemctl) (3078.292798ms)
+✔ migrate-runner-to-wrapper.sh (8984.208915ms)
+(node:3191344) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21/runner/updates/index.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.
+▶ package-runner layout conformance
+  ✔ the real repo ships the entrypoints the contract pins (0.835811ms)
+  ✔ package-runner.sh delegates to the canonical builder (one packager) (2.076952ms)
+  ✔ a packaged bundle stages through the real applyUpdate (118.718432ms)
+✔ package-runner layout conformance (129.352855ms)
+▶ package-runner build stamping
+  ✔ stamps the release version and build into both version.json copies (180.330683ms)
+  ✔ a staged bundle's daemon-readable copy self-identifies as the release (268.521963ms)
+  ✔ resolveBuildStamp reads HEAD plus packaged-tree dirtiness (41.388389ms)
+  ✔ resolveBuildStamp marks dirty trees and degrades to nulls without git (20.741786ms)
+  ✔ resolveBuildStamp matches this checkout's HEAD (347.340744ms)
+✔ package-runner build stamping (858.841764ms)
+▶ package-runner leg closure (N3 regression gate)
+  ✔ every bare leg specifier is a bundled dep (table and packager cannot drift) (33.382191ms)
+  ✔ every leg specifier imports from the staged bundle tree (44971.451505ms)
+✔ package-runner leg closure (N3 regression gate) (45005.131162ms)
+▶ pre-commit hook (end to end, real git commit)
+  ✔ blocks a commit that stages a text-corrupted PNG, naming the file and the safe remedy (618.457365ms)
+  ✔ allows the commit once the staged PNG has valid magic (1740.397432ms)
+  ✔ --no-verify still bypasses (documented for intentional baseline entries only) (396.433802ms)
+  ✔ passes a clean tree commit (hook runs, finds nothing corrupt) (1014.847639ms)
+✔ pre-commit hook (end to end, real git commit) (3771.581931ms)
+▶ publish.sh
+  ✔ dry-run --all prints the full command plan and exits 0 (9340.416762ms)
+  ✔ fails closed with exit 2 naming the namespace variable when unset (5849.701729ms)
+  ✔ rejects unknown arguments with exit 2 (69.229357ms)
+  ✔ publishes the merged tip from a diverged kb/* primary with staged WIP (primary untouched) (2842.089245ms)
+  ✖ runner gate runs the same suite list as scripts/run-tests.mjs (no under-tested channel) (19.589523ms)
+  ✔ --runner cuts and pushes the runner-v* tag once, then skips it as already released (3788.91666ms)
+  ✔ fast-forwards a behind local main ref when publishing from a kb/* branch (2211.028874ms)
+  ✔ installs frontend deps on a warm checkout when a newly declared package.json dependency is missing from node_modules (2367.356614ms)
+✖ publish.sh (26490.29054ms)
+▶ deploy/redeploy.sh (shim-driven)
+  ✔ passes the fake docker/curl shim suite (13666.581324ms)
+✔ deploy/redeploy.sh (shim-driven) (13696.355744ms)
+[remediate] --tasks-dir requires a value
+Usage: node scripts/remediate-no-verdict-rejections.mjs [--apply] [--tasks-dir <dir>] [--log <file>] [--no-backup]
+[remediate] tasks dir not found: /tmp/kainbain-remediate-absent
+[remediate] dry-run: 1 task(s) would be repaired (re-run with --apply)
+  - task-1: removed 1 spurious failure(s), repaired 1 report(s), removed stale verdictImplicitPassStages
+▶ parseArgs
+  ✔ defaults to a dry run that writes nothing (14.97128ms)
+  ✔ honours --apply, --no-backup, --tasks-dir, and --log (6.414984ms)
+  ✔ lets the last of --apply/--dry-run win (0.209788ms)
+  ✔ records an error instead of throwing when a value is missing (0.183511ms)
+  ✔ ignores unknown flags (a typo degrades to a dry run, never a write) (0.156616ms)
+✔ parseArgs (24.354146ms)
+▶ backupPathFor
+  ✔ appends .bak (2.026939ms)
+✔ backupPathFor (2.206154ms)
+▶ remediateTasks
+  ✔ reports victims without writing in dry-run mode (12.069595ms)
+  ✔ repairs task and report files with backups, then idles on re-run (4.051311ms)
+  ✔ leaves a task with only genuine failures byte-identical (10.2068ms)
+  ✔ returns an error for a missing tasks dir instead of throwing (0.475451ms)
+✔ remediateTasks (34.459544ms)
+▶ main
+  ✔ exits 2 with usage on argument errors before touching files (18.920263ms)
+  ✔ exits 1 on a missing tasks dir (0.738283ms)
+  ✔ dry-runs a temp tasks dir and exits 0 (18.078031ms)
+✔ main (37.932356ms)
+▶ parseArgs
+  ✔ defaults to the api suite, 5 runs, no pattern (15.090213ms)
+  ✔ parses every flag (1.569175ms)
+  ✔ rejects an unknown suite, unknown flag, and non-positive runs (1.320236ms)
+  ✔ rejects a flag with no value (0.210786ms)
+✔ parseArgs (19.812332ms)
+▶ normalizePattern
+  ✔ strips the suite directory prefix so the runner resolves the filter in its own workspace (0.45029ms)
+  ✔ passes through a bare substring filter unchanged (0.156262ms)
+  ✔ rejects an unknown suite (1.64208ms)
+✔ normalizePattern (26.427719ms)
+▶ buildRepeatCommand
+  ✔ targets the suite workspace through npm with no shell (1.044983ms)
+  ✔ passes the pattern as a workspace-relative positional filter after -- (0.297701ms)
+  ✔ maps canary to its own workspace (21.261239ms)
+  ✔ rejects an unknown suite (0.194059ms)
+✔ buildRepeatCommand (23.738366ms)
+▶ extractFailureSignatures
+  ✔ strips ANSI colour and keeps vitest FAIL headlines once each (1.003261ms)
+  ✔ falls back to Error lines when the run died before reporting tests (3.198255ms)
+  ✔ caps the number of signatures (0.151456ms)
+  ✔ returns an empty list for a clean run (0.098681ms)
+✔ extractFailureSignatures (8.198468ms)
+▶ summarizeRuns
+  ✔ counts passes, failing run numbers, and distinct signatures (10.706736ms)
+  ✔ reports a zero pass rate for an empty record set without dividing by zero (0.119327ms)
+✔ summarizeRuns (10.974644ms)
+▶ runRepeat
+  ✔ runs the suite N times, logs JSONL + raw output, and reports a green pass rate (10.691132ms)
+  ✔ records failures with their signatures and returns ok:false (0.921943ms)
+✔ runRepeat (15.172979ms)
+▶ runParallel
+  ✔ all branches pass -> ok:true with a PASS line per branch (290.987823ms)
+  ✔ one branch fails -> ok:false, FAIL names the branch, the other still passes, output shown (1221.277509ms)
+  ✔ all branches fail -> ok:false (264.030157ms)
+  ✔ seven branches work (mirrors the gate overlap window) (784.330481ms)
+  ✔ reports lines in argument order even when a later branch finishes first (917.974864ms)
+  ✔ a missing command fails its branch instead of crashing the run (227.495554ms)
+  ✔ passing branch output stays hidden (213.840173ms)
+  ✔ lowPriority branches still run (niceness is best-effort) (124.90453ms)
+  ✔ failure details keep the tail of long output, not the flood (135.364043ms)
+  ✔ short failure output prints whole with no trim marker (184.090237ms)
+  ✔ failureDetailsPreamble prints between the Details line and the excerpt for failures only (152.053656ms)
+  ✔ a throwing or non-string preamble never fails the run (478.986434ms)
+  ✔ failureOutputTailLines tunes the kept tail (149.288502ms)
+✔ runParallel (5181.156756ms)
+▶ resolveFailureTailLines
+  ✔ defaults to the 120-line pinned default (0.177577ms)
+  ✔ prefers the explicit option over the env override (0.093298ms)
+  ✔ honours KAINBAIN_FAILURE_TAIL_LINES when no option is given (0.07286ms)
+  ✔ falls through on missing, zero, negative, or non-numeric values (0.102855ms)
+  ✔ the env override reaches the printed Details tail without an option (180.277231ms)
+✔ resolveFailureTailLines (181.038506ms)
+▶ runParallel progress output (no silent blackout)
+  ✔ announces every branch at spawn, in argument order, before any result line (266.160768ms)
+  ✔ emits a still-running tick naming outstanding branches while a slow branch runs (436.381816ms)
+  ✔ emits no tick when every branch settles inside the interval (125.494024ms)
+  ✔ progressIntervalMs 0 disables the tick entirely (434.520238ms)
+  ✔ an injected failing branch still prints its full details unchanged (97.05932ms)
+  ✔ resolveProgressIntervalMs: option wins, then env, then the 30s default (0.255334ms)
+  ✔ formatElapsedSeconds renders compact human durations (0.105548ms)
+✔ runParallel progress output (no silent blackout) (1361.014179ms)
+▶ hung-branch guard (a timed-out branch fails the gate, it cannot hang it)
+  ✔ reports exit 124 and settles even when the branch never emits close (102.5762ms)
+  ✔ keeps the branch's captured output when it is reaped (81.816637ms)
+  ✔ reaps the whole branch process tree, not just the direct child (6361.689923ms)
+✔ hung-branch guard (a timed-out branch fails the gate, it cannot hang it) (6546.445989ms)
+▶ vitest workers: defaults govern (no cap)
+  ✔ scripts/run-tests.mjs sets no worker cap (0.333081ms)
+  ✔ api vitest config uses vitest defaults (0.126045ms)
+  ✔ frontend vitest config uses vitest defaults (0.114124ms)
+✔ vitest workers: defaults govern (no cap) (0.732417ms)
+▶ api worker pool: thread workers, per-file isolation kept
+  ✔ runs the api suite on the threads pool (no fork per file) (0.262214ms)
+  ✔ never disables per-file isolation (0.209338ms)
+  ✔ keeps the per-file isolation setup file installed (0.118834ms)
+✔ api worker pool: thread workers, per-file isolation kept (0.725334ms)
+▶ vitest node-env contract: node builtins stay out of shared happy-dom workers
+  ✔ no frontend suite imports the api tree (no pin escape hatch) (54.000482ms)
+  ✔ every node:-importing suite runs in node env or the forks pool (50.859744ms)
+  ✔ every forks-pinned suite is excluded from the main project (no double run) (0.399223ms)
+✔ vitest node-env contract: node builtins stay out of shared happy-dom workers (105.413928ms)
+▶ runSupervised
+  ✔ streams each child's output with its prefix (322.072658ms)
+  ✔ resolves with the first child's exit code and stops the sibling (319.399436ms)
+  ✔ reaps wrapper grandchildren that inherit stdio (npm/vite shape) (276.084369ms)
+  ✔ a missing command fails the run instead of hanging (73.514489ms)
+  ✔ SIGTERM to the supervisor stops every child and resolves ok (211.003067ms)
+✔ runSupervised (1204.972525ms)
+Dependencies missing for api (fastify) — installing (npm install --prefix api)...
+Dependencies missing for frontend (react) — installing (npm install --prefix frontend)...
+Workspace dependencies installed (api, frontend).
+Dependencies missing for frontend (react) — installing (npm install --prefix frontend)...
+Dependencies missing for canary-e2e (@playwright/test) — installing (npm install --prefix canary-e2e)...
+Workspace dependencies installed (frontend, canary-e2e).
+Dependencies missing for frontend (react) — installing (npm install --prefix frontend)...
+▶ buildBranches
+  ✔ builds the fourteen canonical branches in order when bash and docker exist (5.837448ms)
+  ✔ every branch spawns a binary with argv (never a shell string) (0.458444ms)
+  ✔ unit tests run at normal priority, the rest low (2.256643ms)
+  ✔ runs the runner contract suites through node --test with every runner test file named (0.458813ms)
+  ✔ reports SKIP (non-fatal) for Security Script Tests without bash (0.806282ms)
+  ✔ reports SKIP (non-fatal) for Container Tests without a docker daemon (0.272083ms)
+  ✔ reports SKIP (non-fatal) for Dependency Check without the depcheck binary (0.350311ms)
+  ✔ keeps Dependency Check runnable (low priority, via npm) when the binary exists (1.149787ms)
+  ✔ runs the proof-hygiene gate against the real tree (not just its fixture tests) (0.507548ms)
+  ✔ runs the binary-guard gate against the real tree (fail-fast prevention, task ef569a1a) (0.662709ms)
+  ✔ container tests run the docker suite through node --test (0.179789ms)
+  ✔ harness self-tests run the fast-gate verdict, excerpt, and acceptance suites (0.149717ms)
+  ✔ harness self-tests run the ported node suites (not the old shell one) (0.30062ms)
+  ✔ includes Canary Tests by default (npm test parity with deploy.sh --prod) (0.126462ms)
+  ✔ omits Canary Tests when opted out (withCanary: false — --no-canary / KAINBAIN_SKIP_CANARY=1) (0.139416ms)
+  ✔ spawns Canary Tests last as npm run test:canary (0.143159ms)
+✔ buildBranches (15.844774ms)
+▶ splitGatePhases
+  ✔ runs Canary Tests in the serial phase after the fast overlap window (0.302673ms)
+  ✔ leaves an opted-out gate as one fast phase with no canary phase (0.281596ms)
+✔ splitGatePhases (0.729954ms)
+▶ resolveCanary
+  ✔ runs canary by default (parity with deploy.sh --prod) (0.371854ms)
+  ✔ accepts the legacy --canary opt-in as a no-op (0.110956ms)
+  ✔ opts out via --no-canary (0.082682ms)
+  ✔ opts out via KAINBAIN_SKIP_CANARY=1 (the deploy emergency opt-out) (0.092483ms)
+  ✔ treats other KAINBAIN_SKIP_CANARY values as unset (0.087042ms)
+  ✔ skip flags win over the legacy opt-in flags (0.088184ms)
+✔ resolveCanary (1.098848ms)
+▶ FAST_GATE_BRANCH_NAMES
+  ✔ names the six fast-gate branches from the problem statement (0.120649ms)
+  ✔ every fast-gate name is a real canonical branch in the fast phase (0.23921ms)
+✔ FAST_GATE_BRANCH_NAMES (0.477081ms)
+▶ resolveFailFast
+  ✔ skips canary on fast failure by default (0.191005ms)
+  ✔ accepts the explicit --fail-fast flag as a no-op (0.08361ms)
+  ✔ opts out via --no-fail-fast (0.084705ms)
+  ✔ opts out via KAINBAIN_NO_FAIL_FAST=1 (0.127884ms)
+  ✔ treats other KAINBAIN_NO_FAIL_FAST values as unset (0.376256ms)
+  ✔ the opt-out wins over the explicit opt-in (0.105303ms)
+✔ resolveFailFast (1.205776ms)
+▶ reportPreflightFailure
+  ✔ writes the verdict with the preflight entry plus its untrimmed report (2.970004ms)
+  ✔ degrades to an unavailable banner when the verdict cannot be written (0.176501ms)
+✔ reportPreflightFailure (8.999625ms)
+▶ runGatePhases
+  ✔ fast failure skips the canary spawn, names the suites, and lands the verdict early (7.014719ms)
+  ✔ a non-fast-gate fast failure also skips canary (uniform predicate) (2.288107ms)
+  ✔ a green fast phase always runs canary (the #KB-0417 parity requirement) (1.200887ms)
+  ✔ with --no-fail-fast the verdict still lands early but canary runs on (1.360348ms)
+  ✔ an opted-out gate runs one phase and records opted_out (0.896919ms)
+  ✔ a canary-only failure surfaces canary detail and exits 1 (1.328083ms)
+  ✔ hands runParallel a preamble pointing at the branch's full log (4.228901ms)
+  ✔ an unwritable verdict dir skips files but still skips canary on failure (5.999866ms)
+  ✔ a failure without named branch results still fails and skips canary as unknown branch (0.847888ms)
+✔ runGatePhases (25.619089ms)
+▶ resolvePhaseOutcome
+  ✔ passes a clean run with its results untouched (0.317972ms)
+  ✔ fails a named branch failure and names it (0.10655ms)
+  ✔ fails a nameless failure as unknown branch instead of claiming ok (0.152715ms)
+  ✔ fails when the runner claims success but a branch result disagrees (0.087225ms)
+✔ resolvePhaseOutcome (1.679818ms)
+▶ depcheckAvailable
+  ✔ reports true when the root tree carries the posix binary (0.423654ms)
+  ✔ reports true when the root tree carries the Windows binary (0.229581ms)
+  ✔ reports false when the platform's binary name is missing (0.238433ms)
+  ✔ reports false when the root tree has no binaries at all (0.20076ms)
+✔ depcheckAvailable (1.339828ms)
+▶ workspaceDepsInstalled
+  ✔ reports installed when every workspace dependency resolves (2.540196ms)
+  ✔ names the missing modules per package when node_modules is absent (fresh runner clone) (0.761008ms)
+  ✔ reports not installed when a package manifest is unreadable (0.445168ms)
+✔ workspaceDepsInstalled (4.077899ms)
+▶ ensureWorkspaceDeps
+  ✔ provisions api and frontend but never touches canary when canary is opted out (5.895796ms)
+  ✔ does not spawn when every workspace dependency is already present (2.390708ms)
+  ✔ installs each missing package through npm and re-verifies (1.564464ms)
+  ✔ fails loudly when an install exits non-zero (never a silent skip) (0.788901ms)
+✔ ensureWorkspaceDeps (10.861541ms)
+▶ pruneStaleTestDirectories
+  ✔ removes old directories matching test prefixes and preserves young or unrelated entries (0.963877ms)
+  ✔ returns zero and does not throw when directory does not exist (0.193589ms)
+✔ pruneStaleTestDirectories (1.277065ms)
+package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.
+package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.
+package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.
+package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.
+package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.
+package-runner: warning: no git checkout at the release root — packaging with an unknown build identity.
+▶ buildManifest
+  ✔ keeps the full canary version and points assetBase at the canary tag (2.958837ms)
+  ✔ still builds plain final versions (1.18234ms)
+  ✔ rejects non-semver versions instead of publishing a bad pointer (0.878518ms)
+  ✔ stamps requires.backendApi from the release source tree (1.867015ms)
+  ✔ omits requires when the source tree carries no range (legacy shape) (0.909892ms)
+  ✔ sha256FileHex matches the manifest's hashing (0.332156ms)
+✔ buildManifest (9.498139ms)
+▶ packageRunner
+  ✔ packages a canary version under its full name and stamps version.json (50.580029ms)
+  ✔ rejects non-semver versions instead of tarring them (0.580575ms)
+  ✔ fails closed on unsupported platforms (v1: linux/darwin only) (0.457619ms)
+  ✔ leaves the default leg-closure install on for fake roots without crashing (auto-skip) (43.408683ms)
+  ✔ stageLegNpmDeps fails closed with a named error when the root has no api/package.json (20.408472ms)
+  ✔ agrees with buildManifest on the asset filename grammar (241.280255ms)
+✔ packageRunner (359.892832ms)
+▶ installSteps
+  ✔ installs root, api, frontend, then canary-e2e in order (1.465127ms)
+✔ installSteps (4.753186ms)
+▶ hookInstallStep
+  ✔ pins the setup hook-install step: runs scripts/install-git-hooks.mjs with node from the repo root (0.489038ms)
+✔ hookInstallStep (0.77791ms)
+▶ installSteps npmrc
+  ✔ every install dir resolves legacy-peer-deps the way npm actually reads it (0.598737ms)
+  ✔ root .npmrc documents the per-dir mirrors (14.486412ms)
+✔ installSteps npmrc (17.567493ms)
+▶ playwrightAttempts
+  ✔ tries system deps first on linux, then the browser alone (1.998256ms)
+  ✔ installs the browser alone on macOS and Windows (7.071061ms)
+✔ playwrightAttempts (9.387773ms)
+▶ npxExecutable
+  ✔ uses npx.cmd on Windows, npx elsewhere (25.478809ms)
+✔ npxExecutable (25.68484ms)
+▶ browserInstallTargets
+  ✔ installs the root browser first, then the canary-e2e browser (0.578808ms)
+  ✔ keeps Linux --with-deps on the root target and browser-only on canary (1.085171ms)
+  ✔ installs the browser alone for every target on macOS and Windows (0.377823ms)
+✔ browserInstallTargets (2.228456ms)
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-lmJOYZ/Sanity/docs' -> '/tmp/kainbain-sanity-notes-BLXZyG/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-01roMo/Sanity/docs' -> '/tmp/kainbain-sanity-notes-xHM9ae/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-01roMo/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-xHM9ae/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-01roMo/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-xHM9ae/Sanity'.
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-9j6wa6/Sanity/docs' -> '/tmp/kainbain-sanity-notes-Z53AX9/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-T7ztZs/Sanity/docs' -> '/tmp/kainbain-sanity-notes-tRenrq/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-T7ztZs/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-tRenrq/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-T7ztZs/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-tRenrq/Sanity'.
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-jxh4mE/Sanity/docs' -> '/tmp/kainbain-sanity-notes-0SoUAn/Sanity'
+[projectStore] recreated missing docs symlink for 'Sanity': '/tmp/kainbain-sanity-projects-VbxBQI/Sanity/docs' -> '/tmp/kainbain-sanity-notes-3ebqRU/Sanity'
+[projectStore] '/tmp/kainbain-sanity-projects-VbxBQI/Sanity/docs' is a real directory shadowing the notes space '/tmp/kainbain-sanity-notes-3ebqRU/Sanity' — task lists read the shadow copy, so most tasks are hidden. Merge any newer files from the shadow 'docs/tasks/' into the notes space, then replace '/tmp/kainbain-sanity-projects-VbxBQI/Sanity/docs' with a symlink to '/tmp/kainbain-sanity-notes-3ebqRU/Sanity'.
+▶ checkStorageSanity
+  ✔ restores every seeded task and arms the shadow detector (13.298524ms)
+  ✔ leaves no fixture residue in the OS temp dir (806.785812ms)
+✔ checkStorageSanity (830.267232ms)
+▶ isMainModule
+  ✔ matches URL-encoded entry paths (space decodes via fileURLToPath, not pathname) (0.676248ms)
+  ✔ rejects a missing entry path or a different file (0.249951ms)
+  ✔ fires on direct run: node scripts/storage-sanity.mjs prints PASS (748.844516ms)
+✔ isMainModule (750.204634ms)
+▶ countNotesTasks
+  ✔ counts only folders holding a task.md (26.148865ms)
+  ✔ returns 0 when the notes space has no tasks dir (0.518056ms)
+✔ countNotesTasks (26.948384ms)
+▶ scripts/sync-tip-dist.mjs
+  ✔ skips (exit 0, primary untouched) without the tip-worktree marker (52.762611ms)
+  ✔ syncs manifest, appends unseen history, copies tarballs, writes the pointer (51.128832ms)
+  ✔ syncs build-info.json alongside a moved manifest commit (194.122651ms)
+  ✔ leaves build-info.json alone when the primary manifest is already current (154.292193ms)
+  ✔ syncs under deploy.sh's tip re-exec marker alone (pipeline Publish path) (250.885219ms)
+  ✔ is idempotent: a second run appends no duplicate history (299.248463ms)
+  ✔ leaves an already-current primary manifest alone (250.72307ms)
+✔ scripts/sync-tip-dist.mjs (1256.089026ms)
+fatal: bad object ffffffffffffffffffffffffffffffffffffffff
+usage: node scripts/verify-stage-attestation.mjs --repo <path> --task <id> [--sha <sha>] [--config <input.json>] [--docs-dir <name>]
+▶ parseVerifyArgs
+  ✔ parses flags with defaults (13.469943ms)
+✔ parseVerifyArgs (17.081922ms)
+▶ findHistoryTokens
+  ✔ collects tokens in file order (0.642561ms)
+✔ findHistoryTokens (31.572278ms)
+▶ verifyFromRepo
+  ✔ links a matching history entry, commit, and pinned config (225.24192ms)
+  ✔ defaults to the latest token when no SHA is given (261.662387ms)
+  ✔ fails when the history token was tampered with (136.976309ms)
+  ✔ fails when history names a commit the repo does not know (93.954167ms)
+  ✔ fails when history carries no token, and when the task file is missing (61.8974ms)
+  ✔ fails the pinned-config check on drifted config (49.674052ms)
+  ✔ CLI smoke: exit 0 on PASS, 1 on FAIL, 2 on usage error (377.577511ms)
+✔ verifyFromRepo (1207.766074ms)
+ℹ tests 687
+ℹ suites 170
+ℹ pass 686
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 90173.823182
+
+✖ failing tests:
+
+test at tests/publish.test.mjs:113:2
+✖ runner gate runs the same suite list as scripts/run-tests.mjs (no under-tested channel) (19.589523ms)
+  AssertionError [ERR_ASSERTION]: publish.sh runner gate names every suite in the gate branch
+  + actual - expected
+  ... Skipped lines
+  
+    [
+      'runner/ciBranchWorkdir.test.js',
+      'runner/client.test.js',
+      'runner/config.test.js',
+      'runner/daemon.test.js',
+  ...
+      'runner/modelDiscovery.test.js',
+  -   'runner/project.docsRepo.test.js',
+      'runner/project.test.js',
+      'runner/updates-check.test.js',
+      'runner/updates-compat.test.js',
+      'runner/updates-daemon.test.js',
+      'runner/updates-fixture.test.js',
+  
+      at TestContext.<anonymous> (file:///home/server/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21/tests/publish.test.mjs:126:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'runner/ciBranchWorkdir.test.js', 'runner/client.test.js', 'runner/config.test.js', 'runner/daemon.test.js', 'runner/gitOps.test.js', 'runner/harness.test.js', 'runner/harnessModelDiscovery.test.js', 'runner/impromptu.test.js', 'runner/logEvents.test.js', 'runner/modelDiscovery.test.js', 'runner/project.test.js', 'runner/updates-check.test.js', 'runner/updates-compat.test.js', 'runner/updates-daemon.test.js', 'runner/updates-fixture.test.js', 'runner/updates-manifest.test.js', 'runner/updates-platform.test.js', 'runner/updates-state.test.js', 'runner/updates-verify.test.js', 'runner/updates-wrapper.test.js' ],
+    expected: [ 'runner/ciBranchWorkdir.test.js', 'runner/client.test.js', 'runner/config.test.js', 'runner/daemon.test.js', 'runner/gitOps.test.js', 'runner/harness.test.js', 'runner/harnessModelDiscovery.test.js', 'runner/impromptu.test.js', 'runner/logEvents.test.js', 'runner/modelDiscovery.test.js', 'runner/project.docsRepo.test.js', 'runner/project.test.js', 'runner/updates-check.test.js', 'runner/updates-compat.test.js', 'runner/updates-daemon.test.js', 'runner/updates-fixture.test.js', 'runner/updates-manifest.test.js', 'runner/updates-platform.test.js', 'runner/updates-state.test.js', 'runner/updates-verify.test.js', 'runner/updates-wrapper.test.js' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

@@ -8,6 +8,7 @@ import { InfoTooltip } from '../common/InfoTooltip';
 import { GoToAppLink } from '../common/GoToAppLink';
 import { TabNavigator } from './TabNavigator';
 import { ProjectMenu } from './ProjectMenu';
+import { DocsRepoFields } from './DocsRepoFields';
 import { MonitorPopoutButton } from './MonitorPopoutButton';
 import { AuthUserChip } from '../auth/AuthUserChip';
 import { MOBILE_TOOLBAR_COLLAPSE_EVENT } from '../workflow/hooks/useMobileToolbarCollapse';
@@ -307,11 +308,16 @@ export function Header() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjName, setNewProjName] = useState('');
   const [newProjGitUrl, setNewProjGitUrl] = useState('');
+  const [newProjDocsRepoUrl, setNewProjDocsRepoUrl] = useState('');
+  const [createAdvancedOpen, setCreateAdvancedOpen] = useState(false);
   const [createError, setCreateError] = useState('');
   const [isRegisteringProject, setIsRegisteringProject] = useState(false);
   const [adoptPath, setAdoptPath] = useState('');
   const [adoptName, setAdoptName] = useState('');
   const [adoptKainbainDir, setAdoptKainbainDir] = useState('');
+  const [adoptDocsRepoUrl, setAdoptDocsRepoUrl] = useState('');
+  const [adoptDocsRepoPath, setAdoptDocsRepoPath] = useState('');
+  const [adoptAdvancedOpen, setAdoptAdvancedOpen] = useState(false);
   const [adoptError, setAdoptError] = useState('');
 
   // MARK: toolbar-collapse sync (task 34793321)
@@ -410,9 +416,18 @@ export function Header() {
     if (!newProjName.trim()) return;
     setCreateError('');
     try {
-      await createProject(newProjName.trim(), { gitUrl: newProjGitUrl.trim() || undefined });
+      // Advanced: a blank docs-repo URL means the default (docs inside the
+      // main repo); a set URL moves all KainBain docs/state into the
+      // separate repo. undefined keys are dropped by JSON.stringify.
+      const docsRepoUrl = newProjDocsRepoUrl.trim();
+      await createProject(newProjName.trim(), {
+        gitUrl: newProjGitUrl.trim() || undefined,
+        ...(docsRepoUrl ? { docsRepo: { url: docsRepoUrl } } : {}),
+      });
       setNewProjName('');
       setNewProjGitUrl('');
+      setNewProjDocsRepoUrl('');
+      setCreateAdvancedOpen(false);
       setIsCreatingProject(false);
       setIsProjectDropdownOpen(false);
     } catch (err) {
@@ -446,16 +461,27 @@ export function Header() {
     if (typeof registerProject !== 'function') return;
     setAdoptError('');
     try {
+      // Advanced: a blank docs-repo URL means the default (docs inside the
+      // main repo); a set URL moves all KainBain docs/state into the
+      // separate repo, optionally at an explicit local checkout path.
+      const docsRepoUrl = adoptDocsRepoUrl.trim();
+      const docsRepoPath = adoptDocsRepoPath.trim();
       await registerProject({
         path,
         // JSON.stringify drops undefined keys, so an omitted name / state
         // folder never reaches the API (which would reject a blank string).
         name: adoptName.trim() || undefined,
         kainbainDirName: adoptKainbainDir.trim() || undefined,
+        ...(docsRepoUrl
+          ? { docsRepo: { url: docsRepoUrl, ...(docsRepoPath ? { localPath: docsRepoPath } : {}) } }
+          : {}),
       });
       setAdoptPath('');
       setAdoptName('');
       setAdoptKainbainDir('');
+      setAdoptDocsRepoUrl('');
+      setAdoptDocsRepoPath('');
+      setAdoptAdvancedOpen(false);
       setIsRegisteringProject(false);
       setIsProjectDropdownOpen(false);
     } catch (err) {
@@ -786,6 +812,33 @@ export function Header() {
               </p>
             </div>
 
+            {/* Advanced: separate docs repo (collapsed by default) */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setCreateAdvancedOpen((open) => !open)}
+                aria-expanded={createAdvancedOpen}
+                aria-controls="create-project-advanced"
+                className="text-[11px] font-bold uppercase tracking-widest text-text-muted hover:text-on-surface cursor-pointer flex items-center gap-1"
+              >
+                <span
+                  className={`material-symbols-outlined text-base transition-transform ${createAdvancedOpen ? 'rotate-90' : ''}`}
+                  aria-hidden="true"
+                >
+                  chevron_right
+                </span>
+                Advanced options
+              </button>
+              {createAdvancedOpen && (
+                <div id="create-project-advanced" className="mt-3">
+                  <DocsRepoFields
+                    docsRepoUrl={newProjDocsRepoUrl}
+                    setDocsRepoUrl={setNewProjDocsRepoUrl}
+                  />
+                </div>
+              )}
+            </div>
+
             {createError && (
               <p className="text-xs text-error" role="alert" data-testid="create-project-error">
                 {createError}
@@ -896,6 +949,38 @@ export function Header() {
                 placeholder=".kainbain"
                 className="w-full p-2.5 bg-surface-deep border border-border-standard rounded-sm text-xs text-on-surface outline-none focus:border-primary transition-colors font-mono"
               />
+            </div>
+
+            {/* Advanced: separate docs repo (collapsed by default) — the
+                natural place on an import, since shared/public repos are
+                exactly where KainBain traces must stay out. */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setAdoptAdvancedOpen((open) => !open)}
+                aria-expanded={adoptAdvancedOpen}
+                aria-controls="adopt-project-advanced"
+                className="text-[11px] font-bold uppercase tracking-widest text-text-muted hover:text-on-surface cursor-pointer flex items-center gap-1"
+              >
+                <span
+                  className={`material-symbols-outlined text-base transition-transform ${adoptAdvancedOpen ? 'rotate-90' : ''}`}
+                  aria-hidden="true"
+                >
+                  chevron_right
+                </span>
+                Advanced options
+              </button>
+              {adoptAdvancedOpen && (
+                <div id="adopt-project-advanced" className="mt-3">
+                  <DocsRepoFields
+                    docsRepoUrl={adoptDocsRepoUrl}
+                    setDocsRepoUrl={setAdoptDocsRepoUrl}
+                    docsRepoLocalPath={adoptDocsRepoPath}
+                    setDocsRepoLocalPath={setAdoptDocsRepoPath}
+                    showLocalPath
+                  />
+                </div>
+              )}
             </div>
 
             {adoptError && (

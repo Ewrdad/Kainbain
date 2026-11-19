@@ -244,6 +244,80 @@ export function slugForRepo(repoUrl) {
 }
 
 /***
+ * MARK: docsWorkdirFor
+ * @description The docs-repo worktree paired with a code worktree:
+ *   `<workdir>-docs` (e.g. `/w/kb-<taskId>` → `/w/kb-<taskId>-docs`). Both
+ *   carry the same `kb/<taskId>` branch in their own mirrors, so docs
+ *   history tracks task history in the separate docs repo. Null when no
+ *   code workdir is known.
+ * @example docsWorkdirFor('/w/kb-t1') => '/w/kb-t1-docs'
+ * @param {string} workdir - Code worktree path.
+ * @returns {string|null}
+ ***/
+export function docsWorkdirFor(workdir) {
+	if (!workdir || typeof workdir !== "string" || !workdir.trim()) return null;
+	return `${workdir}-docs`;
+}
+
+/***
+ * MARK: resolveRunnerDocsRepoUrl
+ * @description The docs-repo remote URL carried on a project record (or a
+ *   claim payload), or null when the project keeps docs in the main repo.
+ *   The stored value is credential-redacted; like the main repo's URL the
+ *   Runner relies on ambient credentials (same login as the main repo).
+ *   Mirrors the backend's `docsRepoUrlFor` without importing backend code.
+ * @example resolveRunnerDocsRepoUrl({ docsRepo: { url: 'https://h/kb.git' } }) => 'https://h/kb.git'
+ * @param {*} project - Project record or claim payload.
+ * @returns {string|null}
+ ***/
+export function resolveRunnerDocsRepoUrl(project) {
+	const repo = project?.docsRepo;
+	if (!repo || typeof repo !== "object" || Array.isArray(repo)) return null;
+	const url = repo.url;
+	if (typeof url !== "string") return null;
+	const trimmed = url.trim();
+	return trimmed || null;
+}
+
+/***
+ * MARK: resolveRunnerKainbainHome
+ * @description Runner-side mirror of the backend's `resolveKainbainHome`:
+ *   the docs-repo checkout (`docsRepo.localPath`) when the project has one,
+ *   else the primary checkout cwd. Used as the SOURCE of task-docs syncs on
+ *   the backend host — with a docs repo the primary's docs live there, not
+ *   under `<cwd>/docs`.
+ * @example resolveRunnerKainbainHome('/repo', { docsRepo: { localPath: '/srv/kb' } }) => '/srv/kb'
+ * @param {string} cwd - Primary checkout path.
+ * @param {*} [project] - Project record.
+ * @returns {string|null}
+ ***/
+export function resolveRunnerKainbainHome(cwd, project) {
+	const repo = project?.docsRepo;
+	if (repo && typeof repo === "object" && !Array.isArray(repo) && typeof repo.localPath === "string" && repo.localPath.trim()) {
+		return path.resolve(repo.localPath.trim());
+	}
+	if (!cwd || typeof cwd !== "string" || !cwd.trim()) return null;
+	return path.resolve(cwd);
+}
+
+/***
+ * MARK: shouldSyncTaskDocs
+ * @description Whether the primary→worktree task-docs copy should run: with
+ *   a docs-repo project the task docs already live in the paired docs
+ *   worktree (synced through git, not copied), so the copy is skipped.
+ *   Legacy projects (no docs repo) always sync.
+ * @example shouldSyncTaskDocs({ project: { docsRepo: { url: 'https://h/kb.git' } }, docsWorkdir: '/w/kb-t1-docs' }) => false
+ * @param {Object} [opts]
+ * @param {*} [opts.project] - Project record.
+ * @param {string|null} [opts.docsWorkdir] - Paired docs worktree, when prepared.
+ * @returns {boolean}
+ ***/
+export function shouldSyncTaskDocs({ project = null, docsWorkdir = null } = {}) {
+	if (docsWorkdir) return false;
+	return !resolveRunnerDocsRepoUrl(project);
+}
+
+/***
  * MARK: refreshMirror
  * @description Self-healing mirror refresh (G6, D14): fetches the origin
  *   and hard-resets the mirror checkout to its upstream so a diverged
@@ -283,8 +357,19 @@ export function listOrphanWorkdirs(workRoot, currentTaskId) {
 	} catch {
 		return [];
 	}
+	const names = new Set(entries.map((e) => e.name));
 	return entries
-		.filter((e) => e.isDirectory() && e.name.startsWith("kb-") && e.name !== keep)
+		.filter((e) => {
+			if (!e.isDirectory() || !e.name.startsWith("kb-") || e.name === keep) return false;
+			// A docs worktree (`kb-<id>-docs`) is part of its code worktree's
+			// pair and counts as the same slot: it is only an orphan on its
+			// own when the base `kb-<id>` is gone (or is the current task).
+			if (e.name.endsWith("-docs")) {
+				const base = e.name.slice(0, -"-docs".length);
+				if (base === keep || names.has(base)) return false;
+			}
+			return true;
+		})
 		.map((e) => path.join(workRoot, e.name));
 }
 
@@ -446,6 +531,30 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
 			if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true });
 		} catch {
 			// A racing remover may own it; the exists check below decides.
+		}
+		// Pair-atomic removal: a docs-repo task's docs worktree
+		// (`<dir>-docs`) goes away with its code worktree, never alone.
+		const docsTwin = docsWorkdirFor(dir);
+		if (docsTwin && docsTwin !== dir) {
+			for (const owner of owners) {
+				try {
+					const list = (await runGit(owner, ["worktree", "list", "--porcelain"])).stdout;
+					if (list.split("\n").some((line) => line.trim() === `worktree ${docsTwin}`)) {
+						await runGit(owner, ["worktree", "remove", "--force", docsTwin]).catch(() => {});
+						// Prune this owner too: the docs mirror usually differs
+						// from the code repo, so its admin entries need their
+						// own prune to avoid stale registrations.
+						await runGit(owner, ["worktree", "prune"]).catch(() => {});
+					}
+				} catch {
+					// Try the next owner.
+				}
+			}
+			try {
+				if (fs.existsSync(docsTwin)) fs.rmSync(docsTwin, { recursive: true, force: true });
+			} catch {
+				// Inert leftover; reaped later.
+			}
 		}
 		return !fs.existsSync(dir);
 	} catch {
@@ -724,19 +833,20 @@ export function resolveRunnerDocsDirName(value) {
  *   failures (a5228675) — the Runner commits it on the task branch while the
  *   backend holds an untracked copy on main.
  * @example await syncTaskDocs({ primaryCwd: '/repo', workdir: '/w/kb-t', taskId: 't1' }) => 3
- * @param {Object} opts - `{ primaryCwd, workdir, taskId, docsDirName, project, stats }` (last three optional; a valid custom docs folder name wins; `stats` is filled with `{ assets }` when provided).
+ * @param {Object} opts - `{ primaryCwd, workdir, taskId, docsDirName, project, stats, primaryHome, destWorkdir }` (`docsDirName`/`project`/`stats` optional; a valid custom docs folder name wins; `stats` is filled with `{ assets }` when provided). `primaryHome` overrides the sync SOURCE root (with a docs repo the primary's docs live in its docs checkout — see `resolveRunnerKainbainHome`); `destWorkdir` overrides the copy DESTINATION (the paired docs worktree for docs-repo projects). Both default to today's behaviour.
  * @returns {Promise<number>} Number of files copied (0 when nothing to copy).
  ***/
-export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = null, project = null, stats = null } = {}) {
+export async function syncTaskDocs({ primaryCwd, primaryHome = null, workdir, destWorkdir = null, taskId, docsDirName = null, project = null, stats = null } = {}) {
 	const tally = { assets: 0 };
 	const finish = (copied) => {
 		if (stats && typeof stats === "object") stats.assets = tally.assets;
 		return copied;
 	};
-	if (!primaryCwd || !workdir || !taskId) return finish(0);
+	const home = primaryHome || primaryCwd;
+	if (!home || !workdir || !taskId) return finish(0);
 	const resolvedDocsDirName = resolveRunnerDocsDirName(docsDirName ?? project);
-	const src = path.join(primaryCwd, resolvedDocsDirName, "tasks", taskId);
-	const dest = path.join(workdir, resolvedDocsDirName, "tasks", taskId);
+	const src = path.join(home, resolvedDocsDirName, "tasks", taskId);
+	const dest = path.join(destWorkdir || workdir, resolvedDocsDirName, "tasks", taskId);
 	let entries;
 	try {
 		entries = fs.readdirSync(src, { withFileTypes: true });
@@ -792,13 +902,13 @@ export const RUNNER_TASK_ASSET_MAX_BYTES = 10 * 1024 * 1024;
  *   writes, and existing worktree files are never overwritten (a local
  *   sync or the agent wins). Never throws: every entry is best-effort.
  * @example await writeClaimTaskAssets({ workdir: '/w/kb-t', taskId: 't1', assets: [{ name: 'a.png', contentBase64: '...' }] }) => 1
- * @param {Object} opts - `{ workdir, taskId, assets, docsDirName, project }` (last two optional; a valid custom docs folder name wins).
+ * @param {Object} opts - `{ workdir, taskId, assets, docsDirName, project, destWorkdir }` (`docsDirName`/`project` optional; a valid custom docs folder name wins; `destWorkdir` overrides the target worktree — the paired docs worktree for docs-repo projects).
  * @returns {Promise<number>} Number of files written.
  ***/
-export async function writeClaimTaskAssets({ workdir, taskId, assets, docsDirName = null, project = null } = {}) {
+export async function writeClaimTaskAssets({ workdir, taskId, assets, docsDirName = null, project = null, destWorkdir = null } = {}) {
 	if (!workdir || !taskId || !Array.isArray(assets) || assets.length === 0) return 0;
 	const resolvedDocsDirName = resolveRunnerDocsDirName(docsDirName ?? project);
-	const dir = path.join(workdir, resolvedDocsDirName, "tasks", taskId, "assets");
+	const dir = path.join(destWorkdir || workdir, resolvedDocsDirName, "tasks", taskId, "assets");
 	let written = 0;
 	for (const entry of assets) {
 		const name = typeof entry?.name === "string" ? entry.name : "";
@@ -885,18 +995,33 @@ export async function ensureRepoHooksPath(repoDir) {
  *   never deleted); only when nothing stale is evictable does it refuse
  *   with WORKTREE_CAP_REACHED so the refusal reports instead of crashing.
  * @example await prepareWorkdir({ repoUrl: 'https://...', workRoot: '/w', taskId: 't1' }) => { workdir: '/w/kb-t1', ... }
- * @returns {Promise<Object>} `{ workdir, branch, mode, reused, recoveredTo, baseSha, evicted }`: `recoveredTo` names the recovery branch when a reused worktree's unpushed residue was parked, `baseSha` is the `origin/<branch>` tip the worktree is based on (null when unpushed), `evicted` names the LRU workdir removed to free the slot (null when none).
+ * @returns {Promise<Object>} `{ workdir, branch, mode, reused, recoveredTo, baseSha, evicted, docsWorkdir, docsRecoveredTo, docsBaseSha }`: `recoveredTo` names the recovery branch when a reused worktree's unpushed residue was parked, `baseSha` is the `origin/<branch>` tip the worktree is based on (null when unpushed), `evicted` names the LRU workdir removed to free the slot (null when none). With a docs repo the `docs*` fields carry the paired docs worktree (`<workdir>-docs`, same `kb/<taskId>` branch in its own mirror/adopted checkout); they are all null for legacy projects.
  * @param {Object} opts - Options.
  * @param {string} [opts.repoUrl] - Origin to clone (remote-backed mode).
  * @param {string} [opts.localPath] - Repo path to adopt (local-only mode).
+ * @param {string} [opts.docsRepoUrl] - Docs-repo origin to clone (paired docs worktree; synced `kb/<taskId>` branch).
+ * @param {string} [opts.docsLocalPath] - Docs-repo path to adopt (adopt mode).
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} opts.taskId - Task id.
  * @param {number} [opts.evictStaleMs] - Staleness threshold for LRU eviction (default WORKTREE_EVICT_STALE_MS).
  * @returns {Promise<Object>} `{ workdir, branch, mode, reused }`.
  ***/
-export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS }) {
+export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS, docsRepoUrl = null, docsLocalPath = null }) {
 	if (!repoUrl && !localPath) {
 		throw new Error("prepareWorkdir needs repoUrl (clone) or localPath (adopt).");
+	}
+	// Stealth guard (defense in depth — the backend 400s this at write time):
+	// the docs repo URL must differ from the main repo URL, otherwise the
+	// paired docs worktree would push `kb/<taskId>` docs branches to the
+	// shared MAIN remote. Compared loosely (.git suffix / trailing slash
+	// ignored) so spelling variants cannot sneak through.
+	if (docsRepoUrl && repoUrl) {
+		const normalize = (u) => String(u).trim().replace(/\.git$/i, "").replace(/\/+$/, "");
+		if (normalize(docsRepoUrl) === normalize(repoUrl)) {
+			throw new Error(
+				`docsRepoUrl must differ from the main repoUrl ('${repoUrl}') — the same remote would receive KainBain docs branches`,
+			);
+		}
 	}
 	fs.mkdirSync(workRoot, { recursive: true });
 	const branch = `kb/${taskId}`;
@@ -941,6 +1066,63 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 	// a failure here must never block task preparation.
 	await ensureRepoHooksPath(repoDir);
 
+	// Separate docs repo: the paired docs worktree mirrors the code worktree
+	// one-for-one — own mirror (clone mode) or adopted docs checkout, same
+	// `kb/<taskId>` branch — so task docs live in the docs repo on a synced
+	// task branch. The pair counts as ONE worktree slot (listOrphanWorkdirs
+	// hides the `-docs` twin) and is evicted/reaped atomically.
+	const hasDocsRepo = Boolean(docsRepoUrl || docsLocalPath);
+	const docsWorkdir = hasDocsRepo ? docsWorkdirFor(workdir) : null;
+	let docsRepoDir = null;
+	let docsMode = null;
+	if (hasDocsRepo) {
+		if (docsRepoUrl) {
+			docsMode = "clone";
+			let docsSlug = slugForRepo(docsRepoUrl);
+			if (repoUrl && docsSlug === slugForRepo(repoUrl)) docsSlug = `${docsSlug}-docs`;
+			docsRepoDir = path.join(workRoot, "mirrors", docsSlug);
+			if (!fs.existsSync(path.join(docsRepoDir, ".git"))) {
+				fs.mkdirSync(path.dirname(docsRepoDir), { recursive: true });
+				await runGit(workRoot, ["clone", docsRepoUrl, docsRepoDir]);
+			} else {
+				await refreshMirror(docsRepoDir);
+			}
+		} else {
+			docsMode = "adopt";
+			docsRepoDir = docsLocalPath;
+		}
+		await ensureRepoHooksPath(docsRepoDir);
+	}
+	const ensureDocsWorktree = async () => {
+		if (!docsWorkdir) return { docsRecoveredTo: null, docsBaseSha: null };
+		if (fs.existsSync(docsWorkdir)) {
+			let docsRecoveredTo = null;
+			if (docsMode === "clone") {
+				({ recoveredTo: docsRecoveredTo } = await refreshWorktreeToRemote(docsWorkdir, branch));
+			}
+			const docsBaseSha = await runGit(docsWorkdir, ["rev-parse", "--verify", `origin/${branch}`])
+				.then((r) => r.stdout.trim())
+				.catch(() => null);
+			touchWorkdir(docsWorkdir);
+			return { docsRecoveredTo, docsBaseSha };
+		}
+		try {
+			await runGit(docsRepoDir, ["worktree", "add", docsWorkdir, "-b", branch]);
+		} catch (err) {
+			const msg = String(err?.stderr || err?.message || "");
+			if (msg.includes("already exists") || msg.includes("already used")) {
+				await runGit(docsRepoDir, ["worktree", "add", docsWorkdir, branch]);
+			} else {
+				throw err;
+			}
+		}
+		const docsBaseSha = await runGit(docsWorkdir, ["rev-parse", "--verify", `origin/${branch}`])
+			.then((r) => r.stdout.trim())
+			.catch(() => null);
+		touchWorkdir(docsWorkdir);
+		return { docsRecoveredTo: null, docsBaseSha };
+	};
+
 	if (fs.existsSync(workdir)) {
 		let recoveredTo = null;
 		if (mode === "clone") {
@@ -949,8 +1131,9 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 		const baseSha = await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`])
 			.then((r) => r.stdout.trim())
 			.catch(() => null);
+		const docs = await ensureDocsWorktree();
 		touchWorkdir(workdir);
-		return { workdir, branch, mode, reused: true, orphans, recoveredTo, baseSha, evicted };
+		return { workdir, branch, mode, reused: true, orphans, recoveredTo, baseSha, evicted, docsWorkdir, docsRepoDir, ...docs };
 	}
 	try {
 		await runGit(repoDir, ["worktree", "add", workdir, "-b", branch]);
@@ -965,8 +1148,9 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 	const baseSha = await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`])
 		.then((r) => r.stdout.trim())
 		.catch(() => null);
+	const docs = await ensureDocsWorktree();
 	touchWorkdir(workdir);
-	return { workdir, branch, mode, reused: false, orphans, recoveredTo: null, baseSha, evicted };
+	return { workdir, branch, mode, reused: false, orphans, recoveredTo: null, baseSha, evicted, docsWorkdir, docsRepoDir, ...docs };
 }
 
 /***
