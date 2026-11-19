@@ -51,6 +51,7 @@ describe("projectStore barrel surface", () => {
 		isValidDocsRepoUrl: "function",
 		migrateMergeDeployStages: "function",
 		normalizeAppStatus: "function",
+		normalizeBaseBranchUpdate: "function",
 		normalizeDocsRepoPointers: "function",
 		normalizeDocsRepoSettings: "function",
 		normalizeProjectRetrySettings: "function",

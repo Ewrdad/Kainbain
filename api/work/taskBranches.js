@@ -1,7 +1,6 @@
 // Domain: The Work — the branch belonging to a task.
 import {
 	currentBranch,
-	defaultBranch,
 	branchExists,
 	commitAllIfNeeded,
 	createBranch,
@@ -19,6 +18,7 @@ import {
 	syncDefaultBranchToRemote,
 } from "../git.js";
 import { ensureTaskWorktree } from "./taskWorkspace.js";
+import { ensureTaskBaseBranch } from "./taskBaseBranch.js";
 import { _appendProcessLog } from "../watch/index.js";
 
 /** Prefix for per-task branches: 'kb/<taskId>'. */
@@ -272,6 +272,9 @@ async function reportDirtyTreeRecoveries(taskStore, task, cwd, bridge) {
  * @param {string} cwd - Project working directory.
  * @param {Object} [bridge] - Event bridge (may be undefined).
  * @param {string} [context] - Human operation name for audit lines (e.g. 'task-branch pickup').
+ * @param {Object} [opts]
+ * @param {string} [opts.mainBranch] - Explicit branch to sync (a task's
+ *   pipeline base); resolved via defaultBranch() when omitted.
  * @returns {Promise<Object|null>} Sync result, or null when sync itself errored unexpectedly.
  ***/
 export async function syncMainToRemoteBestEffort(
@@ -280,11 +283,19 @@ export async function syncMainToRemoteBestEffort(
 	cwd,
 	bridge,
 	context,
+	opts = {},
 ) {
 	const label =
 		typeof context === "string" && context.trim() ? context.trim() : "operation";
 	try {
-		const res = await syncDefaultBranchToRemote(cwd);
+		const explicit =
+			typeof opts.mainBranch === "string" && opts.mainBranch.trim()
+				? opts.mainBranch.trim()
+				: null;
+		const res = await syncDefaultBranchToRemote(
+			cwd,
+			explicit ? { mainBranch: explicit } : {},
+		);
 		if (!res) return null;
 		const short = (sha) =>
 			typeof sha === "string" && sha ? sha.slice(0, 7) : "unknown";
@@ -393,10 +404,11 @@ export async function syncTaskBranchToRemoteBestEffort(
  *   must use ensureTaskBranchRef (create-only, never checks out) instead.
  *   Idempotent (no-op when already on the branch); refuses to switch on a
  *   dirty working tree (GitDirtyTreeError); creates the missing branch from
- *   the default branch. Every work-stage pickup passes through the default
- *   branch first — even when the task branch already exists — so the start
- *   state never depends on where the previous stage left the tree, and
- *   operators can pause mid-pipeline to hand-edit the default branch.
+ *   the task's pipeline base branch (the repo default when unconfigured).
+ *   Every work-stage pickup passes through the base branch first — even
+ *   when the task branch already exists — so the start state never depends
+ *   on where the previous stage left the tree, and operators can pause
+ *   mid-pipeline to hand-edit the base branch.
  *   Records what it did in the task's process logs and history so operators
  *   can audit branch switches between tasks.
  * @example await ensureTaskBranch(taskStore, task, '/repo') => { created, switched, branch }
@@ -431,17 +443,25 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
 			repo = false;
 		}
 		if (repo) {
+			// The pipeline base is the start point (auto-created from the
+			// repo default when the pipeline names a branch that does not
+			// exist yet); the sync below then converges it with the remote.
+			const ensuredBase = await ensureTaskBaseBranch(taskStore, task, cwd, {
+				onCreated: (detail) =>
+					recordBranchHop(taskStore, task, cwd, bridge, detail),
+			});
 			// Source-of-truth sync before provisioning: the primary
-			// checkout's default branch tracks the remote, so worktree bases
-			// never start from stale main-side state.
+			// checkout's base branch tracks the remote, so worktree bases
+			// never start from stale base-side state.
 			await syncMainToRemoteBestEffort(
 				taskStore,
 				task,
 				cwd,
 				bridge,
 				"task worktree provisioning",
+				{ mainBranch: ensuredBase.branch },
 			);
-			const baseBranch = await defaultBranch(cwd).catch(() => null);
+			const baseBranch = ensuredBase.branch;
 			let created = false;
 			try {
 				if (
@@ -478,14 +498,21 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
 	}
 
 	const before = await currentBranch(cwd).catch(() => null);
-	const baseBranch = await defaultBranch(cwd).catch(() => null);
+	// The pipeline base is the start point and the hop-through branch
+	// (auto-created from the repo default when the pipeline names a
+	// branch that does not exist yet).
+	const ensuredBase = await ensureTaskBaseBranch(taskStore, task, cwd, {
+		onCreated: (detail) =>
+			recordBranchHop(taskStore, task, cwd, bridge, detail),
+	});
+	const baseBranch = ensuredBase.branch;
 	// Strict workspace/recovery opt-outs (`workspaceIsolation: 'off'` or
 	// `dirtyTreeRecovery: 'off'`) disable the ladder: the switch refuses a
 	// dirty tree immediately instead of sweeping/stashing it away.
 	const recovery = resolveDirtyTreeRecoveryMode(taskStore, task.projectId);
 
-	// Source-of-truth sync on every pickup: the remote owns the default
-	// branch, so fetch and hard-reset it before any hop. Stale main-side
+	// Source-of-truth sync on every pickup: the remote owns the base
+	// branch, so fetch and hard-reset it before any hop. Stale base-side
 	// state (operator edits, unpushed auto-commits) can never dirty-tree
 	// block the switch after this — only genuinely precious untracked files
 	// (which reset never deletes) still report loudly.
@@ -495,6 +522,7 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
 		cwd,
 		bridge,
 		"task-branch pickup",
+		{ mainBranch: baseBranch },
 	);
 
 	// If we are about to switch branches and the current branch is dirty,
@@ -597,8 +625,9 @@ export async function ensureTaskBranch(taskStore, task, projectCwd, opts = {}) {
  *     - never switches branches, commits, pushes, merges, or deletes;
  *     - never invokes the clean-tree guard, so dirty trees and operators
  *       sitting on another branch never error;
- *     - creates the missing ref from the default branch tip (falling back
- *       to HEAD), so later work stages have a branch to pick up;
+ *     - creates the missing ref from the pipeline base tip (falling back
+ *       to HEAD), so later work stages have a branch to pick up (a
+ *       missing pipeline base is auto-created first, as on work pickup);
  *     - defers with a process-log warning — never throws — when creation is
  *       impossible (non-repo, unborn repo, invalid name, git failure), so a
  *       human checkpoint always parks or advances;
@@ -719,12 +748,16 @@ export async function ensureTaskBranchRef(taskStore, task, projectCwd, opts = {}
 		};
 	}
 
-	// Resolve the start-point WITHOUT switching: prefer the default branch
+	// Resolve the start-point WITHOUT switching: prefer the pipeline base
 	// tip, fall back to HEAD, defer on unborn repositories (no commit to
 	// point the ref at).
 	let startPoint = null;
 	let from = null;
-	const baseBranch = await defaultBranch(cwd).catch(() => null);
+	const ensuredBase = await ensureTaskBaseBranch(taskStore, task, cwd, {
+		onCreated: (detail) =>
+			recordBranchHop(taskStore, task, cwd, bridge, detail),
+	});
+	const baseBranch = ensuredBase.branch;
 	if (baseBranch && isValidBranchName(baseBranch)) {
 		const baseKnown = await branchExists(cwd, baseBranch).catch(() => false);
 		if (baseKnown) {

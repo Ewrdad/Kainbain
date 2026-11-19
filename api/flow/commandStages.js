@@ -88,6 +88,7 @@ import {
 	syncMainToRemoteBestEffort,
 	syncTaskBranchToRemoteBestEffort,
 } from "../work/taskBranches.js";
+import { ensureTaskBaseBranch, resolveTaskBaseBranch } from "../work/taskBaseBranch.js";
 import { resolveShell, buildStageEnv, isWindows } from "../utils/platform.js";
 
 /***
@@ -242,18 +243,22 @@ export async function resolveCommandExecutionCwd(store, { kind, task, cwd } = {}
  *   the actual repository. Fails loud and early — a misconfigured stage must
  *   never silently fall back to the task branch.
  *   'task'    -> { mode: 'task', branch: null } (existing behaviour)
- *   'primary' -> { mode: 'primary', branch: await defaultBranch(cwd) }
+ *   'primary' -> { mode: 'primary', branch: <task's pipeline base> }
  *   'custom'  -> { mode: 'custom', branch: stage.customBranch }
  * @example await resolveCiBranchPlan({ stage, cwd }) => { mode: 'task', branch: null }
  * @param {Object} opts
  * @param {Object} opts.stage - Normalized stage object.
  * @param {string} opts.cwd - Primary project checkout.
+ * @param {Object} [opts.task] - Task entity (pins the pipeline base).
+ * @param {Object} [opts.projectStore] - Project store for the pipeline lookup.
+ * @param {string} [opts.projectId] - Project id for the pipeline lookup.
  * @returns {Promise<{mode: 'task'|'primary'|'custom', branch: string|null}>}
- * @throws {GitError} Non-git project, unresolvable primary branch, or a custom
- *   branch that is blank, not a valid git branch name, or does not exist
- *   locally. No git state is mutated before the throw.
+ * @throws {GitError} Non-git project, unresolvable primary branch, a
+ *   pipeline base that does not exist locally, or a custom branch that is
+ *   blank, not a valid git branch name, or does not exist locally. No git
+ *   state is mutated before the throw.
  ***/
-export async function resolveCiBranchPlan({ stage, cwd } = {}) {
+export async function resolveCiBranchPlan({ stage, cwd, task, projectStore, projectId } = {}) {
 	const rawMode = stage?.runOnBranch;
 	const mode = typeof rawMode === "string" ? rawMode.trim().toLowerCase() : "task";
 	const stageLabel = stage?.name || stage?.id || "unnamed";
@@ -267,10 +272,21 @@ export async function resolveCiBranchPlan({ stage, cwd } = {}) {
 				`Cannot run CI stage '${stageLabel}' on the primary branch: '${cwd}' is not a git repository.`,
 			);
 		}
-		const branch = await defaultBranch(cwd);
+		// Inside a pipeline with its own base branch, "the primary branch"
+		// means that base — not the repo's real default branch.
+		const resolved = await resolveTaskBaseBranch({ task, projectStore, projectId, cwd });
+		const branch = resolved.branch;
 		if (!branch) {
 			throw new GitError(
 				`Could not resolve the primary branch for CI stage '${stageLabel}' in '${cwd}'.`,
+			);
+		}
+		// The pickup already auto-creates a missing pipeline base, so a
+		// still-missing base here is genuinely unexpected — fail loudly
+		// rather than silently running on the wrong branch.
+		if (resolved.source !== "repo" && !(await branchExists(cwd, branch))) {
+			throw new GitError(
+				`Cannot run CI stage '${stageLabel}' on the pipeline base branch '${branch}': it does not exist locally in this project.`,
 			);
 		}
 		return { mode: "primary", branch };
@@ -537,8 +553,8 @@ export function buildCommandStageEnv(execCwd, taskId, keywordContext = {}) {
  * @description Shared execution engine for bash-command stages. Command
  *   stages honour stage.runOnBranch with a uniform contract ('task' default
  *   | 'primary' | 'custom'): primary/custom run the command in the primary
- *   checkout guarded onto the resolved branch and restore the default
- *   branch afterwards (see withCheckedOutBranch), and deliberately skip
+ *   checkout guarded onto the resolved branch and restore the pipeline
+ *   base branch afterwards (see withCheckedOutBranch), and deliberately skip
  *   task-branch finalize — a verification run must never commit or push
  *   onto the primary/custom branch. 'task' (also the default for an unset
  *   value) runs the command from the task's execution directory — the
@@ -605,7 +621,13 @@ export async function runCommandStage(
 
 	if (kind === "ci" || kind === "script") {
 		try {
-			ciBranchPlan = await resolveCiBranchPlan({ stage, cwd });
+			ciBranchPlan = await resolveCiBranchPlan({
+				stage,
+				cwd,
+				task,
+				projectStore: store.projectStore,
+				projectId,
+			});
 		} catch (planError) {
 			return store.handleStageFailure(projectId, taskId, stage, planError, {
 				stages,
@@ -896,16 +918,27 @@ export async function runCommandStage(
 
 	try {
 		if ((ciBranchPlan.mode === "primary" || ciBranchPlan.mode === "custom") && ciBranchPlan.branch) {
+			// A detached run restores the task's pipeline base afterwards,
+			// not the repo default unconditionally.
+			const ciRestore = (
+				await resolveTaskBaseBranch({
+					task,
+					projectStore: store.projectStore,
+					projectId,
+					cwd,
+				}).catch(() => null)
+			)?.branch;
 			await withCheckedOutBranch(cwd, ciBranchPlan.branch, executeCommand, {
 				taskId,
 				context: `CI stage '${stage.name || stage.id}' execution on '${ciBranchPlan.branch}'`,
+				...(ciRestore ? { restoreBranch: ciRestore } : {}),
 				// Custom docs/state folders must count as engine-owned on
 				// the guard, the switch, and the restore alike — without
 				// the project hint a custom folder reads as real dirt and
 				// the guarded switch refuses a clean tree.
 				...(commandProject ? { project: commandProject } : {}),
 			});
-			const defBranch = await defaultBranch(cwd).catch(() => null);
+			const defBranch = ciRestore || (await defaultBranch(cwd).catch(() => null));
 			if (defBranch) {
 				_appendProcessLog(task, `[GIT] Returned to '${defBranch}' after CI stage '${stage.name || stage.id}'`);
 			}
@@ -1469,12 +1502,28 @@ async function mergeTaskBranchIntoMain(
 				"Repository has no commits — create an initial commit on the main branch before using a merge stage.",
 			);
 		}
-		mainBranch = await defaultBranch(cwd);
-		// Source-of-truth sync on merge entry: the remote owns the default
+		// The merge target is the task's pipeline base branch (the repo
+		// default when unconfigured), auto-created when missing.
+		const ensuredBase = await ensureTaskBaseBranch(store, task, cwd, {
+			onCreated: (detail) => {
+				task.history.push({ timestamp: new Date().toISOString(), action: detail });
+				_appendProcessLog(task, `[GIT] ${detail}`);
+				store._saveTaskMarkdown(cwd, task);
+			},
+		});
+		mainBranch = ensuredBase.branch;
+		if (!mainBranch) {
+			throw new GitError(
+				"Could not resolve the base branch to merge into — the repository has no default branch and the task's pipeline names none.",
+			);
+		}
+		// Source-of-truth sync on merge entry: the remote owns the base
 		// branch, so fetch and hard-reset it before measuring or switching.
 		// Best-effort and warn-only — a failed sync keeps local state and
 		// the strict guard below still protects operator work.
-		await syncMainToRemoteBestEffort(store, task, cwd, bridge, "merge");
+		await syncMainToRemoteBestEffort(store, task, cwd, bridge, "merge", {
+			mainBranch,
+		});
 		// Always merge in the latest on the task side too: fast-forward the
 		// task ref to its upstream when it is not checked out (merge entry
 		// normally sits on the default branch after finalize). A stale task
@@ -1601,7 +1650,7 @@ async function mergeTaskBranchIntoMain(
 		if (!landedReentry) {
 			const commitResult = await commitAllIfNeeded(
 				cwd,
-				`KainBain (task ${task.id}): commit task work before merge into main`,
+				`KainBain (task ${task.id}): commit task work before merge into ${mainBranch}`,
 				// Affinity guard: the shared checkout must still be on the task
 				// branch. A concurrent task that moved HEAD here fails the merge
 				// stage loudly instead of landing this task's files on a sibling
@@ -2107,7 +2156,9 @@ export async function executeMergeStage(
 	} catch (pushError) {
 		let converged = null;
 		try {
-			converged = await syncDefaultBranchToRemote(cwd);
+			// Converge the branch that was actually merged into (the
+			// pipeline base), never the repo default unconditionally.
+			converged = await syncDefaultBranchToRemote(cwd, { mainBranch });
 			const retry = await pushBranchIfRemote(cwd, mainBranch);
 			if (retry?.pushed) {
 				const detail = `Pushed '${mainBranch}' to remote after merge (after convergence: ${converged?.detail || converged?.skipped || "synced"})`;

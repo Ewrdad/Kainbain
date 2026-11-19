@@ -35,6 +35,11 @@ import { processSignalTotals } from "../api/watch/productionSignals.js";
 // detects on the same host (SDK-style pi installs under ~/.pi/agent are
 // frequently NOT on PATH, which is why PATH-only probing missed them).
 import { DISCOVERY_ENV_VARS, candidateExecutables, standardSearchDirs, piSnapshotPath } from "../api/agent/harnessDiscovery.js";
+// Single source of truth for branch-name safety: the backend validates the
+// pipeline base with the same allow-list before it ever reaches a claim, and
+// the Runner re-checks here so a tampered or hand-built claim can never turn
+// the checkout below into a git flag injection.
+import { isValidBranchName } from "../api/git/validation.js";
 import { commitAndPush } from "./gitOps.js";
 import { saveRunnerCredential } from "./credentialFile.js";
 
@@ -1578,27 +1583,71 @@ export function ciWorkdirFor({ runOnBranch, workdir, projectCwd } = {}) {
 }
 
 /***
+ * MARK: checkoutPrimaryBase
+ * @description Checks the primary checkout onto a backend-passed pipeline
+ *   base branch before a primary-mode CI command runs there. Idempotent
+ *   no-op when already on the branch. Fails loud when the name is not a
+ *   valid git branch name, when the branch is missing, or when the
+ *   checkout refuses (dirty tree) — a primary CI run on the wrong branch
+ *   would verify the wrong code.
+ * @example await checkoutPrimaryBase('/repo', 'feature/base') => undefined (now on 'feature/base')
+ ***/
+async function checkoutPrimaryBase(projectCwd, base) {
+	if (!isValidBranchName(base)) {
+		throw new Error(`Refusing to check out suspicious primary branch name '${base}'`);
+	}
+	try {
+		await runGit(projectCwd, ["rev-parse", "--verify", `refs/heads/${base}`]);
+	} catch {
+		throw new Error(`CI stage runOnBranch 'primary' needs branch '${base}' in the primary checkout (the task's pipeline base branch) — it does not exist there`);
+	}
+	let current = "";
+	try {
+		current = (await runGit(projectCwd, ["rev-parse", "--abbrev-ref", "HEAD"])).stdout.trim();
+	} catch {
+		current = "";
+	}
+	if (current === base) return;
+	try {
+		await runGit(projectCwd, ["checkout", base]);
+	} catch (err) {
+		throw new Error(`Could not check out primary branch '${base}' in the primary checkout (${err?.message || err}) — refusing to run on the wrong branch`);
+	}
+}
+
+/***
  * MARK: resolveCiWorkdir
  * @description Resolves the working directory for a dispatched CI stage,
  *   honouring the stage's runOnBranch mode end to end (the UI toggle must
  *   never be silently dropped): 'task' (default) runs in the task worktree;
  *   'primary' runs in the primary checkout (project.cwd on this host), where
- *   host/publish commands such as deploy.sh expect to run; 'custom' runs in
- *   a fresh ephemeral detached worktree at the named branch — never in the
- *   shared primary checkout (nothing engine-owned can dirty it) and never in
- *   the task worktree (a custom branch is not kb/*). The returned `cleanup`
- *   removes the ephemeral worktree again (custom mode only; null otherwise).
+ *   host/publish commands such as deploy.sh expect to run — checked out
+ *   onto the backend-passed primaryBranch when the task's pipeline names
+ *   its own base branch; 'custom' runs in a fresh ephemeral detached
+ *   worktree at the named branch — never in the shared primary checkout
+ *   (nothing engine-owned can dirty it) and never in the task worktree (a
+ *   custom branch is not kb/*). The returned `cleanup` removes the ephemeral
+ *   worktree again (custom mode only; null otherwise).
  * @example await resolveCiWorkdir({ runOnBranch: 'custom', customBranch: 'release/next', workdir: '/w/kb-t', projectCwd: '/repo', repoUrl: null, workRoot: '/w', taskId: 't' }) => { workdir: '/w/kb-ci-t', cleanup: [Function] }
- * @param {Object} opts - `{ runOnBranch, customBranch, workdir, projectCwd, repoUrl, workRoot, taskId }`.
+ * @param {Object} opts - `{ runOnBranch, customBranch, primaryBranch, workdir, projectCwd, repoUrl, workRoot, taskId }`.
  * @returns {Promise<{workdir: string, cleanup: (Function|null)}>}
  * @throws {Error} Custom mode with a blank branch name, or a branch that does
  *   not exist in the source repo (fails loud, mirroring the backend's
  *   resolveCiBranchPlan — never silently fall back to the task worktree).
+ *   A passed primaryBranch that is missing or cannot be checked out fails
+ *   the same loud way.
  ***/
-export async function resolveCiWorkdir({ runOnBranch, customBranch, workdir, projectCwd, repoUrl = null, workRoot, taskId } = {}) {
+export async function resolveCiWorkdir({ runOnBranch, customBranch, primaryBranch, workdir, projectCwd, repoUrl = null, workRoot, taskId } = {}) {
 	const mode = typeof runOnBranch === "string" ? runOnBranch.trim().toLowerCase() : "task";
 	if (mode !== "custom") {
-		return { workdir: ciWorkdirFor({ runOnBranch, workdir, projectCwd }), cleanup: null };
+		const resolved = ciWorkdirFor({ runOnBranch, workdir, projectCwd });
+		// A pipeline base travels from new backends only; old backends omit
+		// it and the checkout runs exactly as before (mixed-fleet safe).
+		const base = typeof primaryBranch === "string" ? primaryBranch.trim() : "";
+		if (mode === "primary" && base && resolved === projectCwd && projectCwd) {
+			await checkoutPrimaryBase(projectCwd, base);
+		}
+		return { workdir: resolved, cleanup: null };
 	}
 	const branch = typeof customBranch === "string" ? customBranch.trim() : "";
 	if (!branch) {
@@ -1768,6 +1817,7 @@ async function executeAssignment({
 	harnessId = null,
 	runOnBranch = "",
 	customBranch = "",
+	primaryBranch = "",
 	integration = null,
 	taskAssets = null,
 }) {
@@ -1788,6 +1838,7 @@ async function executeAssignment({
 		if (!ciTimeoutMs && Number(claim.timeoutMs)) ciTimeoutMs = Number(claim.timeoutMs);
 		if (!runOnBranch && typeof claim.runOnBranch === "string") runOnBranch = claim.runOnBranch;
 		if (!customBranch && typeof claim.customBranch === "string") customBranch = claim.customBranch;
+		if (!primaryBranch && typeof claim.primaryBranch === "string") primaryBranch = claim.primaryBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
 		// Claim-shipped task images: the dispatch loop passes them
@@ -1984,7 +2035,7 @@ async function executeAssignment({
 				let ciCleanup = null;
 				try {
 					({ workdir: ciWorkdir, cleanup: ciCleanup } = await resolveCiWorkdir({
-						runOnBranch, customBranch, workdir,
+						runOnBranch, customBranch, primaryBranch, workdir,
 						projectCwd: project.cwd || null,
 						repoUrl: project.gitUrl || project.repoUrl || null,
 						workRoot: config.workRoot,
@@ -2899,6 +2950,7 @@ export async function runDispatchLoop({
 				ciCommand: answer.command || "",
 				runOnBranch: answer.runOnBranch || "",
 				customBranch: answer.customBranch || "",
+				primaryBranch: answer.primaryBranch || "",
 				ciTimeoutMs: Number(answer.timeoutMs) || 0,
 				ciEnv: answer.env,
 				// The backend already matched this task against our

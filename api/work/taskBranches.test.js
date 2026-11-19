@@ -221,6 +221,39 @@ describe("ensureTaskBranch default-first pickup", () => {
 		expect(JSON.stringify(task.logEntries)).toContain("local-ahead");
 	});
 
+	it("syncs an explicit pipeline base instead of the repo default", async () => {
+		const { store, dir, task } = makeStore();
+		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-base-remote-"));
+		tempDirs.push(parent);
+		git(parent, "init", "--bare", "origin.git");
+		const remoteDir = path.join(parent, "origin.git");
+		git(dir, "remote", "add", "origin", remoteDir);
+		git(dir, "checkout", "-qb", "feature/sync");
+		git(dir, "push", "-u", "origin", "feature/sync:feature/sync");
+		// A second writer advances the remote base out of band.
+		const other = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-base-other-"));
+		tempDirs.push(other);
+		git(parent, "clone", remoteDir, other);
+		git(other, "config", "user.email", "kainbain-test@example.com");
+		git(other, "config", "user.name", "KainBain Test");
+		git(other, "checkout", "feature/sync");
+		fs.writeFileSync(path.join(other, "remote-base.txt"), "remote base work\n");
+		git(other, "add", "-A");
+		git(other, "commit", "-m", "remote base advance");
+		git(other, "push", "origin", "feature/sync");
+		const remoteTip = git(other, "rev-parse", "HEAD").trim();
+		git(dir, "checkout", "-q", "master");
+
+		const res = await syncMainToRemoteBestEffort(store, task, dir, null, "test", {
+			mainBranch: "feature/sync",
+		});
+
+		expect(res.synced).toBe(true);
+		expect(res.mainBranch).toBe("feature/sync");
+		expect(git(dir, "rev-parse", "feature/sync").trim()).toBe(remoteTip);
+		expect(historyText(task)).toContain("Synced default branch 'feature/sync'");
+	});
+
 	it("merges remote advances into the task branch on pickup (never works stale)", async () => {
 		const { store, dir, task } = makeStore();
 		const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-pickup-remote-"));
@@ -300,6 +333,26 @@ describe("ensureTaskBranchRef human-review policy", () => {
 		expect(logText(task)).toContain("without checkout");
 		// live-work.txt plus the engine's own task markdown are left behind.
 		expect(logText(task)).toMatch(/leaving \d+ uncommitted paths?/);
+	});
+
+	it("creates the missing ref from the pinned pipeline base", async () => {
+		const { store, dir, task } = makeStore();
+		git(dir, "checkout", "-qb", "feature/human");
+		fs.writeFileSync(path.join(dir, "feature.txt"), "feature\n");
+		git(dir, "add", "-A");
+		git(dir, "commit", "-m", "feature work");
+		const featureTip = git(dir, "rev-parse", "feature/human").trim();
+		git(dir, "checkout", "-q", "master");
+		task.baseBranch = "feature/human";
+
+		const outcome = await store.ensureTaskBranchRef(task, dir, {
+			stageName: "Review",
+		});
+
+		expect(outcome.created).toBe(true);
+		expect(outcome.startPoint).toBe("feature/human");
+		expect(await currentBranch(dir)).toBe("master");
+		expect(git(dir, "rev-parse", task.branch).trim()).toBe(featureTip);
 	});
 
 	it("is a no-op when the ref already exists", async () => {

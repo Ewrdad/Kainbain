@@ -2,7 +2,8 @@ import { config } from "../config.js";
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
 import { applyIntegrationReport } from "./execution/applyIntegrationReport.js";
 import { normalizeStageType } from "../projectStore.js";
-import { git, defaultBranch } from "../git.js";
+import { git } from "../git.js";
+import { ensureBaseBranchExists, resolveTaskBaseBranch } from "../work/taskBaseBranch.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import {
@@ -196,11 +197,16 @@ export const prepareIntegrationAttempt = async ({ taskStore, projectStore, proje
 	const cwd = project?.cwd;
 	if (!cwd) unprepared("project has no checkout");
 	const taskBranch = taskStore.resolveTaskBranch(task);
-	let targetBranch;
-	try {
-		targetBranch = await defaultBranch(cwd);
-	} catch {
+	// The integration target is the task's pipeline base branch (the repo
+	// default when unconfigured), auto-created and pushed when missing so
+	// the remote refs below exist.
+	const resolvedBase = await resolveTaskBaseBranch({ task, projectStore, projectId, cwd });
+	const targetBranch = resolvedBase.branch;
+	if (!targetBranch) {
 		unprepared("cannot resolve the target branch");
+	}
+	if (resolvedBase.source !== "repo") {
+		await ensureBaseBranchExists(cwd, targetBranch);
 	}
 	try {
 		// Prune: a deleted remote task branch must vanish from the
@@ -304,8 +310,30 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// the task worktree (which is exactly how publish stages used to fail:
 		// deploy.sh refuses to run from a kb/* worktree).
 		const runOnBranch = typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task";
+		// A primary-mode stage on a pipeline with its own base branch names
+		// that base explicitly so the Runner checks out the right branch.
+		// Sent ONLY when a pipeline base is configured: unconfigured
+		// pipelines (and old Runners, which ignore the unknown field) keep
+		// today's behaviour byte-identically.
+		let primaryBranch = null;
+		if (runOnBranch === "primary") {
+			try {
+				const resolvedBase = await resolveTaskBaseBranch({
+					task,
+					projectStore,
+					projectId,
+					cwd: project?.cwd || null,
+				});
+				if (resolvedBase.source !== "repo") {
+					primaryBranch = resolvedBase.branch;
+				}
+			} catch {
+				primaryBranch = null;
+			}
+		}
 		const branchPayload = {
 			runOnBranch,
+			...(primaryBranch ? { primaryBranch } : {}),
 			...(runOnBranch === "custom" && typeof resolved.customBranch === "string" && resolved.customBranch.trim()
 				? { customBranch: resolved.customBranch.trim() }
 				: {}),

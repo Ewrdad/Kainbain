@@ -103,6 +103,67 @@ describe("resolveCiWorkdir", () => {
 		assert.ok(!fs.existsSync(workdir), "ephemeral worktree removed by cleanup");
 	});
 
+	it("primary checks out a backend-passed pipeline base", async () => {
+		const repo = localRepo();
+		dirs.push(repo);
+		execFileSync("git", ["branch", "feature/base"], { cwd: repo, stdio: "ignore" });
+		execFileSync("git", ["checkout", "-q", "release/next"], { cwd: repo, stdio: "ignore" });
+		const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cibranch-w-"));
+		dirs.push(workRoot);
+		const primary = await resolveCiWorkdir({
+			runOnBranch: "primary", primaryBranch: "feature/base",
+			workdir: "/w/kb-t1", projectCwd: repo, workRoot, taskId: "t1",
+		});
+		assert.equal(primary.workdir, repo);
+		assert.equal(primary.cleanup, null);
+		const current = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+		assert.equal(current, "feature/base");
+	});
+
+	it("primary without a passed base leaves the checkout untouched (old-backend compatible)", async () => {
+		const repo = localRepo();
+		dirs.push(repo);
+		execFileSync("git", ["checkout", "-q", "release/next"], { cwd: repo, stdio: "ignore" });
+		const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cibranch-w-"));
+		dirs.push(workRoot);
+		const primary = await resolveCiWorkdir({ runOnBranch: "primary", workdir: "/w/kb-t1", projectCwd: repo, workRoot, taskId: "t1" });
+		assert.equal(primary.workdir, repo);
+		const current = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+		assert.equal(current, "release/next");
+	});
+
+	it("primary fails loudly when the passed base is missing", async () => {
+		const repo = localRepo();
+		dirs.push(repo);
+		const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cibranch-w-"));
+		dirs.push(workRoot);
+		await assert.rejects(
+			() => resolveCiWorkdir({
+				runOnBranch: "primary", primaryBranch: "ghost/base",
+				workdir: "/w/kb-t1", projectCwd: repo, workRoot, taskId: "t1",
+			}),
+			/ghost\/base/,
+		);
+	});
+
+	it("primary refuses a suspicious passed base without touching git refs", async () => {
+		const repo = localRepo();
+		dirs.push(repo);
+		const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-cibranch-w-"));
+		dirs.push(workRoot);
+		for (const suspicious of ["--force", "has space", "a..b", "trailing.lock", "/leading", "with[bracket"]) {
+			await assert.rejects(
+				() => resolveCiWorkdir({
+					runOnBranch: "primary", primaryBranch: suspicious,
+					workdir: "/w/kb-t1", projectCwd: repo, workRoot, taskId: "t1",
+				}),
+				/Refusing to check out suspicious primary branch name/,
+			);
+		}
+		const current = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+		assert.equal(current, "main");
+	});
+
 	it("custom mode fails loudly on a blank or missing branch", async () => {
 		const repo = localRepo();
 		dirs.push(repo);
@@ -154,6 +215,19 @@ describe("dispatch loop honours runOnBranch for ci stages", () => {
 		const { completed } = await runOneCiAnswer(repo, { runOnBranch: "primary" });
 		const cwdLine = String(completed?.output ?? "").trim().split("\n").pop();
 		assert.equal(cwdLine, repo);
+	});
+
+	it("primary with a passed pipeline base runs the command on that branch", async () => {
+		const repo = localRepo();
+		execFileSync("git", ["branch", "feature/base"], { cwd: repo, stdio: "ignore" });
+		execFileSync("git", ["checkout", "-q", "release/next"], { cwd: repo, stdio: "ignore" });
+		const { completed } = await runOneCiAnswer(
+			repo,
+			{ runOnBranch: "primary", primaryBranch: "feature/base" },
+			"git rev-parse --abbrev-ref HEAD",
+		);
+		assert.equal(completed?.outcome, "passed");
+		assert.equal(String(completed?.output ?? "").trim().split("\n").pop(), "feature/base");
 	});
 
 	it("task (default) runs in the task worktree", async () => {

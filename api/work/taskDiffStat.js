@@ -1,7 +1,12 @@
 // Domain: The Work — lines-changed snapshot for task history badges.
-import { diffRangeNumstat, git, defaultBranch } from "../git.js";
+import { diffRangeNumstat, git, branchExists, defaultBranch } from "../git.js";
+// Pure validation comes from the defining module, not the git barrel (see
+// api/work/taskBaseBranch.js): the barrel is mocked out in unit tests and
+// those mocks do not carry pure helpers.
+import { isValidBranchName } from "../git/validation.js";
 import { diffFiles } from "../reviewDiff.js";
 import { resolveTaskBranch } from "./taskBranches.js";
+import { normalizeBaseBranchName } from "./taskBaseBranch.js";
 import { isTaskFilePath } from "./isTaskFilePath.js";
 
 /***
@@ -164,11 +169,15 @@ export function computeStageDelta(current, baseline) {
  *   computeStageDelta against the stage-entry baseline.
  * @example await getTaskDiffStat('/repo', task, { useBranches: true }) => { additions: 12, deletions: 3 }
  * @param {string} cwd - Project working directory.
- * @param {Object} task - The task entity (branch resolved from it).
+ * @param {Object} task - The task entity (branch and pinned pipeline base resolved from it).
  * @param {Object} [opts]
  * @param {boolean} [opts.useBranches=false] - Whether the project uses per-task branches.
+ * @param {string} [opts.baseBranch] - Preferred effective pipeline base
+ *   (pinned snapshot, else the pipeline's live setting); the task's own
+ *   pinned snapshot is used when this is omitted.
  * @param {Function} [opts.diffFilesFn] - Injectable branch-diff reader (tests).
  * @param {Function} [opts.defaultBranchFn] - Injectable default-branch resolver (tests).
+ * @param {Function} [opts.branchExistsFn] - Injectable ref-existence check (tests).
  * @param {Function} [opts.workingTreeDiffFn] - Injectable worktree reader (tests).
  * @returns {Promise<{ additions: number, deletions: number }|null>} Totals, or null when unknown.
  ***/
@@ -177,8 +186,10 @@ export async function getTaskDiffStat(
 	task,
 	{
 		useBranches = false,
+		baseBranch: preferredBase = undefined,
 		diffFilesFn = diffFiles,
 		defaultBranchFn = defaultBranch,
+		branchExistsFn = branchExists,
 		workingTreeDiffFn = defaultWorkingTreeDiff,
 		docsTasksPrefix,
 	} = {},
@@ -187,9 +198,26 @@ export async function getTaskDiffStat(
 		if (!cwd || !task) return null;
 		let files;
 		if (useBranches) {
-			const base = await defaultBranchFn(cwd);
 			const head = resolveTaskBranch(task);
-			if (!base || !head) return null;
+			if (!head) return null;
+			// The badge must agree with the review view, which diffs
+			// against the task's effective pipeline base (pinned
+			// snapshot, else the pipeline's live setting) — not the
+			// repo default — so a feature-pipeline task badges
+			// task-vs-feature. An absent, invalid, missing, or
+			// self-referential preferred base falls back to the repo
+			// default below (never nulls the badge on its own).
+			let base = null;
+			const preferred = normalizeBaseBranchName(preferredBase ?? task?.baseBranch);
+			if (preferred && isValidBranchName(preferred) && preferred !== head) {
+				try {
+					if (await branchExistsFn(cwd, preferred)) base = preferred;
+				} catch {
+					base = null;
+				}
+			}
+			if (!base) base = await defaultBranchFn(cwd);
+			if (!base) return null;
 			files = await diffFilesFn(cwd, base, head);
 		} else {
 			files = await workingTreeDiffFn(cwd);

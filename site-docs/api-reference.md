@@ -81,8 +81,8 @@ step); live-session values are actuals.
 | GET | `/projects/:id/workflow` | Get the project's active workflow state. |
 | PUT | `/projects/:id/workflow` | Replace the project's workflow state. |
 | GET | `/projects/:id/workflows` | List saved workflows for the project. |
-| POST | `/projects/:id/workflows` | Save a workflow for the project. |
-| PATCH | `/projects/:id/workflows/:workflowId` | Update a saved workflow. |
+| POST | `/projects/:id/workflows` | Save a workflow for the project. Accepts an optional `baseBranch` (the branch the pipeline treats as its main branch; absent = repo default, invalid name = 400). |
+| PATCH | `/projects/:id/workflows/:workflowId` | Update a saved workflow. Accepts `baseBranch` (blank/`null` clears it back to the repo default, invalid name = 400). |
 | DELETE | `/projects/:id/workflows/:workflowId` | Delete a saved workflow. |
 | POST | `/projects/:id/workflows/:workflowId/switch` | Switch the active workflow. |
 | POST | `/projects/:id/workflow/jump` | Jump the active workflow to a stage. |

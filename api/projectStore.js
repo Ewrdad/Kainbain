@@ -77,6 +77,7 @@ const {
 	DEFAULT_WORKFLOW_ID,
 	DEFAULT_WORKFLOW_NAME,
 	createDefaultWorkflow,
+	normalizeBaseBranchUpdate,
 	normalizeWorkflow,
 	normalizeWorkflows,
 	slugifyProjectName,
@@ -2461,9 +2462,10 @@ export class ProjectStore {
 	 * @param {string} workflowData.name - Display name of the workflow.
 	 * @param {Array<Object>} [workflowData.stages] - Custom stages for the workflow.
 	 * @param {boolean} [workflowData.isDefault=false] - Whether this workflow is the project default.
+	 * @param {string} [workflowData.baseBranch] - Optional base branch the pipeline treats as its main branch (absent = repo default).
 	 * @returns {Object|null} The created workflow entity.
 	 ***/
-	createWorkflow(projectId, { name, stages, isDefault = false } = {}) {
+	createWorkflow(projectId, { name, stages, isDefault = false, baseBranch } = {}) {
 		const project = this.projects.get(projectId);
 		if (!project) return null;
 
@@ -2483,6 +2485,9 @@ export class ProjectStore {
 			}
 		}
 
+		// An invalid base branch refuses the whole create loudly (the route
+		// turns it into a 400); absent means "repo default", so no key is stored.
+		const base = normalizeBaseBranchUpdate(baseBranch);
 		const newWorkflow = {
 			id,
 			name: cleanName,
@@ -2492,6 +2497,7 @@ export class ProjectStore {
 					? stages
 					: DEFAULT_STAGES.map((s) => ({ ...s })),
 			),
+			...(base.changed && base.baseBranch ? { baseBranch: base.baseBranch } : {}),
 		};
 
 		project.workflows.push(newWorkflow);
@@ -2534,7 +2540,7 @@ export class ProjectStore {
 
 	/***
 	 * MARK: updateWorkflow
-	 * @description Updates an existing named workflow (name, stages, isDefault) and persists changes.
+	 * @description Updates an existing named workflow (name, stages, isDefault, baseBranch) and persists changes.
 	 * @example projectStore.updateWorkflow('proj-1', 'wf-1', { name: 'Renamed Pipeline' }) => { id: 'wf-1', name: 'Renamed Pipeline' }
 	 * @param {string} projectId
 	 * @param {string} workflowId
@@ -2561,6 +2567,18 @@ export class ProjectStore {
 				wf.isDefault = wf.id === target.id;
 			}
 			target.isDefault = true;
+		}
+
+		// A blank/null base branch clears the override back to the repo
+		// default (the key is dropped, not stored empty); an absent key
+		// leaves the field untouched; an invalid name throws (400 at the route).
+		const base = normalizeBaseBranchUpdate(updates.baseBranch);
+		if (base.changed) {
+			if (base.baseBranch) {
+				target.baseBranch = base.baseBranch;
+			} else {
+				delete target.baseBranch;
+			}
 		}
 
 		// If modifying the currently active workflow, sync project.stages
