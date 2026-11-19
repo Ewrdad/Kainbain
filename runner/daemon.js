@@ -733,15 +733,26 @@ export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {})
  * @description Retargets a backend-curated prompt to the prepared worktree:
  *   the backend curates with its own project cwd (it owns task/stage truth),
  *   so every occurrence of that cwd prefix is rewritten to the worktree the
- *   harness will actually run in. Empty prompt (old backend) stays empty so
- *   the caller falls back to its minimal prompt.
+ *   harness will actually run in. For docs-repo projects the backend's
+ *   KainBain home (`docsHome`, the docs-repo checkout) is additionally
+ *   rewritten to the paired docs worktree (`docsWorkdir`), so curated
+ *   `.../docs/tasks/<id>` paths keep working where the docs actually live
+ *   on this Runner. The docs-home rewrite runs FIRST: the default docs
+ *   checkout (`<cwd>-kainbain-docs`) contains the cwd as a prefix, so the
+ *   reverse order would corrupt it. Empty prompt (old backend) stays empty
+ *   so the caller falls back to its minimal prompt.
  * @example applyBackendPrompt({ prompt: 'see /repo/docs', backendCwd: '/repo', workdir: '/w' }) => 'see /w/docs'
- * @param {Object} opts - `{ prompt, backendCwd, workdir }`.
+ * @example applyBackendPrompt({ prompt: 'see /srv/kb/docs', backendCwd: '/repo', workdir: '/w', docsHome: '/srv/kb', docsWorkdir: '/w-docs' }) => 'see /w-docs/docs'
+ * @param {Object} opts - `{ prompt, backendCwd, workdir, docsHome?, docsWorkdir? }`.
  * @returns {string} The retargeted prompt.
  ***/
-export function applyBackendPrompt({ prompt, backendCwd, workdir } = {}) {
-	const text = typeof prompt === "string" ? prompt : "";
-	if (!text || !backendCwd || !workdir || backendCwd === workdir) return text;
+export function applyBackendPrompt({ prompt, backendCwd, workdir, docsHome = null, docsWorkdir = null } = {}) {
+	let text = typeof prompt === "string" ? prompt : "";
+	if (!text) return text;
+	if (docsHome && docsWorkdir && docsHome !== docsWorkdir && docsHome !== backendCwd) {
+		text = text.split(docsHome).join(docsWorkdir);
+	}
+	if (!backendCwd || !workdir || backendCwd === workdir) return text;
 	return text.split(backendCwd).join(workdir);
 }
 
@@ -1922,7 +1933,13 @@ async function executeAssignment({
 			// Backend-curated stage prompt (backend owns curation; the
 			// Runner only retargets the backend cwd prefix to the worktree).
 			// Absent prompt (old backend) falls back to the minimal prompt.
-			let prompt = applyBackendPrompt({ prompt: backendPrompt, backendCwd: project.cwd, workdir });
+			let prompt = applyBackendPrompt({
+				prompt: backendPrompt,
+				backendCwd: project.cwd,
+				workdir,
+				docsHome: resolveRunnerKainbainHome(project?.cwd, project),
+				docsWorkdir,
+			});
 			if (!prompt) {
 				prompt = [`Task goal: ${task.goal || task.title || taskId}`, `Stage: ${stageId}`].join("\n");
 			}
@@ -1982,7 +1999,7 @@ async function executeAssignment({
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
 						...(configHash ? { configHash } : {}),
 						committed: false,
-						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: "",
+						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: "",
 						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
@@ -1997,7 +2014,7 @@ async function executeAssignment({
 					const ci = await runCiCommand({
 						command, workdir: ciWorkdir,
 						timeoutMs: ciTimeoutMs || 600000,
-						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
+						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${docsWorkdir || workdir}/docs/tasks/${taskId}` },
 						onLog: (text) => { sendLogs(text).catch(() => {}); },
 					});
 					state.session = null; stopRenewal();
@@ -2007,9 +2024,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -2104,6 +2121,9 @@ async function executeAssignment({
 				workdir,
 				branch,
 				taskDocsPath: `docs/tasks/${taskId}`,
+				// Docs-repo projects: the paired docs worktree (same kb/<taskId>
+				// branch in the docs repo) is committed and pushed FIRST.
+				docsWorkdir,
 				message: configHash
 					? appendAttestationTrailers(stageMessage, { taskId, stageId, configHash })
 					: stageMessage,
@@ -2145,7 +2165,7 @@ async function executeAssignment({
 					failureReason: verdictDecision.failureReason,
 					...(configHash ? { configHash } : {}),
 					committed: !skipped,
-					taskFiles: collectTaskFiles({ workdir, taskId }),
+					taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }),
 					output: String(output || "").slice(0, 20000),
 					durationMs: Date.now() - runStartedAt,
 				});
@@ -2165,7 +2185,7 @@ async function executeAssignment({
 				outcome: "passed",
 				...(configHash ? { configHash } : {}),
 				committed: !skipped,
-				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
+				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
 			});
