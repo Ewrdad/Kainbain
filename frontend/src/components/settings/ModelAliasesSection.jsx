@@ -1080,8 +1080,11 @@ export function ModelAliasesSection({
     }
   }, [rows.length, rowKeys, isCollapsed, toggleCollapse]);
 
+  // Full width on purpose: the settings panel is much wider than any max-w
+  // cap on desktop, and provider-prefixed model refs in the summary chips
+  // need the room — capping the section is what cut names off.
   return (
-    <div data-testid="model-aliases-section" className="space-y-3 max-w-4xl">
+    <div data-testid="model-aliases-section" className="space-y-3 w-full min-w-0">
       <h3 className="text-sm font-bold uppercase tracking-wide text-text-high flex items-center gap-2">
         <span className="text-primary">🏷️</span> Model Aliases
       </h3>
