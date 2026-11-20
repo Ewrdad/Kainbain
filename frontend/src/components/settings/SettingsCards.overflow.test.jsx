@@ -193,20 +193,28 @@ describe('settings card truncation', () => {
     expect(title).toHaveClass('break-words');
   });
 
-  it('truncates the collapsed summary when model refs are very long', () => {
+  it('keeps the full long model ref readable in the collapsed summary', () => {
     const targets = [{ harness: 'pi', model: LONG_MODEL_REF, percent: 100 }];
     render(
       <ModelAliasesSection aliases={[{ name: 'router', targets }]} onChange={() => {}} harnesses={HARNESSES} />,
     );
 
-    // Cards mount collapsed; the badge carries the full summary text.
-    const badge = screen.getByTestId('model-alias-summary-0');
-    expect(badge).toHaveClass('min-w-0', 'max-w-full');
-    const expectedSummary = formatAliasSummary(targets, HARNESSES);
-    expect(expectedSummary).toContain(LONG_MODEL_REF);
-    const label = within(badge).getByTitle(expectedSummary);
-    expect(label).toHaveClass('min-w-0', 'truncate');
-    expect(label.textContent).toBe(expectedSummary);
+    // Cards mount collapsed; the summary is a wrapping chips row, and the
+    // full long ref stays in the DOM — never cut to a mid-name ellipsis.
+    const summary = screen.getByTestId('model-alias-summary-0');
+    expect(summary).toHaveClass('w-full', 'flex-wrap');
+    const chip = screen.getByTestId('model-alias-summary-chip-0-0');
+    // Full ref on the chip tooltip…
+    expect(chip).toHaveAttribute('title', `100% pi (${LONG_MODEL_REF})`);
+    // …and verbatim in the accessibility tree (sr-only), not hover-only.
+    expect(summary.textContent).toContain(LONG_MODEL_REF);
+    // The model id wraps (break-all) instead of relying on a one-line
+    // ellipsis; the plain-text fallback still carries the same ref.
+    const modelText = chip.querySelector('.break-all');
+    expect(modelText).not.toBeNull();
+    expect(modelText).not.toHaveClass('truncate');
+    expect(modelText.textContent).toContain('quarterly-release-router-');
+    expect(formatAliasSummary(targets, HARNESSES)).toContain(LONG_MODEL_REF);
   });
 
   it('contains very long alias error messages in collapsed and expanded views', () => {
@@ -218,11 +226,12 @@ describe('settings card truncation', () => {
       />,
     );
 
-    // Collapsed: the error badge names the unknown harness verbatim.
+    // Collapsed: the error badge names the unknown harness verbatim on its
+    // own full-width line (never squeezed into the header row).
     const badge = screen.getByTestId('model-alias-error-badge-0');
     expect(badge.textContent).toContain(LONG_HARNESS_ID);
     expect(badge).toHaveClass('break-all');
-    expect(screen.getByTestId('model-alias-error-alert-0')).toHaveClass('min-w-0', 'max-w-full');
+    expect(screen.getByTestId('model-alias-error-alert-0')).toHaveClass('w-full', 'min-w-0');
 
     // Expanded: the same message renders in full inside the card body.
     const toggle = screen.getByTestId('model-alias-toggle-0');

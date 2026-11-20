@@ -1586,8 +1586,16 @@ export function ciWorkdirFor({ runOnBranch, workdir, projectCwd } = {}) {
  * MARK: checkoutPrimaryBase
  * @description Checks the primary checkout onto a backend-passed pipeline
  *   base branch before a primary-mode CI command runs there. Idempotent
- *   no-op when already on the branch. Fails loud when the name is not a
- *   valid git branch name, when the branch is missing, or when the
+ *   no-op when already on the branch. When the branch is missing locally
+ *   it is adopted from the remote (`origin/<base>`, fetched best-effort
+ *   first): the backend pushes an auto-created base precisely so remote
+ *   runners see it, and a runner that never fetched it must not fail a
+ *   stage the backend already prepared. Adoption only — the runner never
+ *   forks a missing base from the default (that would verify the wrong
+ *   code) and never moves an existing local base (the checkout may hold
+ *   operator work; staleness matches the pre-existing main-branch
+ *   contract). Fails loud when the name is not a valid git branch name,
+ *   when the branch exists neither locally nor on the remote, or when the
  *   checkout refuses (dirty tree) — a primary CI run on the wrong branch
  *   would verify the wrong code.
  * @example await checkoutPrimaryBase('/repo', 'feature/base') => undefined (now on 'feature/base')
@@ -1596,10 +1604,43 @@ async function checkoutPrimaryBase(projectCwd, base) {
 	if (!isValidBranchName(base)) {
 		throw new Error(`Refusing to check out suspicious primary branch name '${base}'`);
 	}
+	let localKnown = false;
 	try {
 		await runGit(projectCwd, ["rev-parse", "--verify", `refs/heads/${base}`]);
+		localKnown = true;
 	} catch {
-		throw new Error(`CI stage runOnBranch 'primary' needs branch '${base}' in the primary checkout (the task's pipeline base branch) — it does not exist there`);
+		localKnown = false;
+	}
+	if (!localKnown) {
+		// Best-effort fetch first: without it a base the backend just
+		// pushed is invisible here. A failed fetch (offline, no remote)
+		// only means adoption is unavailable; the loud error below owns it.
+		try {
+			await runGit(projectCwd, ["fetch", "origin"]);
+		} catch {
+			// Fall through to the local/remote existence checks below.
+		}
+		let remoteKnown = false;
+		try {
+			await runGit(projectCwd, ["rev-parse", "--verify", `origin/${base}`]);
+			remoteKnown = true;
+		} catch {
+			remoteKnown = false;
+		}
+		if (!remoteKnown) {
+			throw new Error(`CI stage runOnBranch 'primary' needs branch '${base}' in the primary checkout (the task's pipeline base branch) — it exists neither locally nor on the remote (a best-effort fetch ran first)`);
+		}
+		try {
+			await runGit(projectCwd, ["branch", "--track", base, `origin/${base}`]);
+		} catch {
+			// Tolerate the adopt race (a sibling created it first): only
+			// proceed when the local ref verifiably exists now.
+			try {
+				await runGit(projectCwd, ["rev-parse", "--verify", `refs/heads/${base}`]);
+			} catch {
+				throw new Error(`CI stage runOnBranch 'primary' needs branch '${base}' in the primary checkout (the task's pipeline base branch) — could not adopt it from 'origin/${base}'`);
+			}
+		}
 	}
 	let current = "";
 	try {

@@ -200,7 +200,11 @@ export function CanvasToolbar({
                       role="menuitem"
                       onClick={() => {
                         setIsWorkflowDropdownOpen(false);
-                        setView?.('settings');
+                        // Deep-link the workflows tab itself: bare 'settings'
+                        // lands on the Project tab, stranding the pipeline
+                        // editor (incl. each pipeline's base branch) behind
+                        // a second click the user has no reason to discover.
+                        setView?.('settings', { section: 'workflows' });
                       }}
                       className="w-full text-left px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-primary hover:bg-primary hover:text-on-primary rounded-sm transition-colors flex items-center gap-1 cursor-pointer"
                     >

@@ -863,11 +863,23 @@ describe('ModelAliasesSection collapsible behaviour', () => {
     expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByLabelText('Alias 1 name')).not.toBeInTheDocument();
     const summary = screen.getByTestId('model-alias-summary-0');
-    expect(summary).toHaveTextContent('1 target · 100% pi (google::m1)');
+    // The summary is a wrapping row of per-target chips: a count label plus
+    // one chip carrying percent, harness label, provider badge, and the full
+    // model ref (chip title + sr-only text) — never a truncated string.
+    expect(screen.getByTestId('model-alias-summary-count-0')).toHaveTextContent('1 target');
+    const chip = screen.getByTestId('model-alias-summary-chip-0-0');
+    expect(chip).toHaveTextContent('100%');
+    expect(chip).toHaveTextContent('pi');
+    expect(chip).toHaveTextContent('google');
+    expect(chip).toHaveTextContent('m1');
+    expect(chip).toHaveAttribute('title', '100% pi (google::m1)');
+    expect(summary.textContent).toContain('google::m1');
 
-    // Expanding restores the body.
+    // Expanding restores the body. Re-query the toggle after the click:
+    // expanding swaps the collapsed row for the expanded header, so React
+    // replaces the toggle node.
     fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('model-alias-toggle-0')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByLabelText('Alias 1 name')).toBeInTheDocument();
     expect(screen.getByLabelText('Alias 1 harness')).toBeInTheDocument();
   });
@@ -875,17 +887,16 @@ describe('ModelAliasesSection collapsible behaviour', () => {
   it('expands a collapsed alias card: restores the full targets view and inputs intact', () => {
     render(<ModelAliasesSection aliases={ALIAS_ROWS} onChange={() => {}} harnesses={HARNESSES} />);
 
-    const toggleBtn = screen.getByTestId('model-alias-toggle-0');
     // Starts collapsed; expand it.
     expect(screen.queryByLabelText('Alias 1 name')).not.toBeInTheDocument();
-    fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByTestId('model-alias-toggle-0'));
+    expect(screen.getByTestId('model-alias-toggle-0')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByLabelText('Alias 1 name')).toBeInTheDocument();
     expect(screen.getByLabelText('Alias 1 harness')).toBeInTheDocument();
 
     // Collapse again hides them.
-    fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByTestId('model-alias-toggle-0'));
+    expect(screen.getByTestId('model-alias-toggle-0')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByLabelText('Alias 1 name')).not.toBeInTheDocument();
   });
 
@@ -911,12 +922,11 @@ describe('ModelAliasesSection collapsible behaviour', () => {
     expect(screen.getByLabelText('Alias 1 name')).toHaveValue('custom-name');
 
     // Collapse alias 1
-    const toggleBtn = screen.getByTestId('model-alias-toggle-0');
-    fireEvent.click(toggleBtn);
+    fireEvent.click(screen.getByTestId('model-alias-toggle-0'));
     expect(screen.queryByLabelText('Alias 1 name')).not.toBeInTheDocument();
 
     // Expand alias 1
-    fireEvent.click(toggleBtn);
+    fireEvent.click(screen.getByTestId('model-alias-toggle-0'));
     expect(screen.getByLabelText('Alias 1 name')).toHaveValue('custom-name');
   });
 
@@ -933,8 +943,6 @@ describe('ModelAliasesSection collapsible behaviour', () => {
 
     render(<ModelAliasesSection aliases={invalidAlias} onChange={() => {}} harnesses={HARNESSES} />);
 
-    const toggleBtn = screen.getByTestId('model-alias-toggle-0');
-
     // Collapsed by default: error badge is already on the header.
     const errorBadge = screen.getByTestId('model-alias-error-badge-0');
     expect(errorBadge).toBeInTheDocument();
@@ -944,7 +952,7 @@ describe('ModelAliasesSection collapsible behaviour', () => {
 
     // Clicking error badge automatically expands the card
     fireEvent.click(errorBadge);
-    expect(toggleBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('model-alias-toggle-0')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByLabelText('Alias 1 name')).toBeInTheDocument();
   });
 
@@ -1090,9 +1098,11 @@ describe('ModelAliasesSection collapse edge cases', () => {
     rerender(<ModelAliasesSection aliases={reset} onChange={() => {}} harnesses={HARNESSES} />);
     expect(screen.getAllByTestId('model-alias-row')).toHaveLength(2);
     expect(screen.getByTestId('model-alias-toggle-0')).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByTestId('model-alias-summary-0')).toHaveTextContent(
-      '1 target · 100% pi (google::m1)',
-    );
+    const chip = screen.getByTestId('model-alias-summary-chip-0-0');
+    expect(chip).toHaveTextContent('100%');
+    expect(chip).toHaveTextContent('m1');
+    expect(chip).toHaveAttribute('title', '100% pi (google::m1)');
+    expect(screen.getByTestId('model-alias-summary-0').textContent).toContain('google::m1');
   });
 
   it('survives an external shrink (parent drops a row) without crashing', () => {
@@ -1146,8 +1156,10 @@ describe('ModelAliasesSection collapse edge cases', () => {
     const toggles = screen.getAllByTestId('model-alias-toggle-0');
     expect(toggles).toHaveLength(2);
     fireEvent.click(toggles[0]);
-    expect(toggles[0]).toHaveAttribute('aria-expanded', 'true');
-    expect(toggles[1]).toHaveAttribute('aria-expanded', 'false');
+    // Re-query after the click: expanding replaces the toggle node.
+    const after = screen.getAllByTestId('model-alias-toggle-0');
+    expect(after[0]).toHaveAttribute('aria-expanded', 'true');
+    expect(after[1]).toHaveAttribute('aria-expanded', 'false');
   });
 });
 

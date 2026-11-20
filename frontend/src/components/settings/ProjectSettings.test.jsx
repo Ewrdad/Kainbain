@@ -795,10 +795,13 @@ test('tab config, section allowlists, and search index agree (no drift)', () => 
   expect(PROJECT_FORM_SECTIONS).toEqual(
     PROJECT_SETTINGS_TABS.filter((tab) => tab.sharesProjectForm).map((tab) => tab.id),
   );
-  // Every searchable setting lives on a form tab (the only tabs with
-  // elementIds to jump to), and every form tab has a heading for the h2.
+  // Every searchable setting lives on a tab that renders stable elementIds
+  // to jump to: the form tabs, plus the workflows tab (its panel exposes
+  // stable input ids such as the pipeline base-branch field). Every form tab
+  // has a heading for the h2.
+  const SEARCHABLE_SECTIONS = [...PROJECT_FORM_SECTIONS, 'workflows'];
   for (const entry of SETTINGS_SEARCH_INDEX) {
-    expect(PROJECT_FORM_SECTIONS).toContain(entry.tab);
+    expect(SEARCHABLE_SECTIONS).toContain(entry.tab);
     // The jump-to-setting highlight needs a real DOM id: a future index edit
     // with an unknown tab or a blank elementId fails here instead of silently
     // jumping nowhere at runtime (the search-select handler ignores those).
@@ -1052,6 +1055,10 @@ test('every search index entry resolves to an element on its tab', async () => {
     expect(document.getElementById(entry.elementId)).not.toBeNull();
   }
   expect(entriesFor('files-repos').length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByText('Named Workflows'));
+  for (const entry of entriesFor('workflows')) {
+    expect(document.getElementById(entry.elementId)).not.toBeNull();
+  }
   unmount();
 
   renderWithKainBain(<ProjectSettings />, {

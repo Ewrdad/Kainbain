@@ -62,7 +62,18 @@ describe('searchSettings', () => {
 
   it('covers every project-related tab', () => {
     const tabs = new Set(SETTINGS_SEARCH_INDEX.map((entry) => entry.tab));
-    expect(tabs).toEqual(new Set(['project', 'aliases', 'files-repos', 'addresses']));
+    // The workflows tab is searchable too: its panel exposes stable elementIds
+    // (e.g. the pipeline base-branch field), so settings search must find it.
+    expect(tabs).toEqual(
+      new Set(['project', 'aliases', 'files-repos', 'addresses', 'workflows']),
+    );
+  });
+
+  it('finds the pipeline base branch on the workflows tab', () => {
+    expect(searchSettings('base branch')[0]?.id).toBe('pipeline-base-branch');
+    expect(searchSettings('pipeline base')[0]?.id).toBe('pipeline-base-branch');
+    const hit = findBestMatch('branch main pipeline');
+    expect(hit).toMatchObject({ id: 'pipeline-base-branch', tab: 'workflows' });
   });
 
   it('names each entry with the current label of its home tab', () => {
