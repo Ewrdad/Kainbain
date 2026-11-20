@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, resolveRunnerDocsRepoUrl, resolveRunnerKainbainHome, shouldSyncTaskDocs, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, runnerTaskDocsRelPath, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, resolveRunnerDocsRepoUrl, resolveRunnerKainbainHome, shouldSyncTaskDocs, touchWorkdir } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { runImpromptuJob } from "./impromptu.js";
@@ -1931,6 +1931,10 @@ async function executeAssignment({
 				event: "started",
 			});
 			const docsRepoUrl = resolveRunnerDocsRepoUrl(project) || (typeof claim?.docsRepoUrl === "string" && claim.docsRepoUrl.trim() ? claim.docsRepoUrl.trim() : null);
+			// The backend's KainBain home (the docs checkout for docs-repo
+			// projects, else the project cwd): curated backend paths under it
+			// are rewritten into the paired docs worktree below.
+			const runnerDocsHome = resolveRunnerKainbainHome(project?.cwd, project);
 			const { workdir, branch, mode, reused, recoveredTo, baseSha, evicted, docsWorkdir = null, docsRecoveredTo = null } = await prepareWorkdir({
 				repoUrl: project.gitUrl || project.repoUrl || null,
 				localPath: project.cwd || null,
@@ -1941,7 +1945,7 @@ async function executeAssignment({
 			});
 			state.workdir = workdir;
 			state.docsWorkdir = docsWorkdir;
-			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}` : ""})${docsWorkdir ? ` + docs worktree ${docsWorkdir}${docsRecoveredTo ? ` (residue parked on ${docsRecoveredTo})` : ""}` : ""}.`);
+			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}${evicted.docsParkedTo ? ` (docs residue parked on ${evicted.docsParkedTo})` : ""}` : ""})${docsWorkdir ? ` + docs worktree ${docsWorkdir}${docsRecoveredTo ? ` (residue parked on ${docsRecoveredTo})` : ""}` : ""}.`);
 			// Task prompt inputs (idea files, reference images) land in the
 			// live task folder outside the task branch — mirror them into
 			// the worktree so the harness actually sees them. With a separate
@@ -1988,7 +1992,7 @@ async function executeAssignment({
 				prompt: backendPrompt,
 				backendCwd: project.cwd,
 				workdir,
-				docsHome: resolveRunnerKainbainHome(project?.cwd, project),
+				docsHome: runnerDocsHome,
 				docsWorkdir,
 			});
 			if (!prompt) {
@@ -2057,15 +2061,39 @@ async function executeAssignment({
 					});
 				}
 				try {
-					const command = applyBackendPrompt({ prompt: ciCommand, backendCwd: project.cwd, workdir: ciWorkdir });
+					// Task/custom modes run in Runner worktrees, so curated docs
+					// paths follow the docs into the paired docs worktree — without
+					// this the cwd-prefix rewrite corrupts the docs-home path (it
+					// starts with the backend cwd). Primary mode runs IN the
+					// primary checkout, where the backend docs home is already
+					// real, so no docs rewrite applies there.
+					const command = applyBackendPrompt({
+						prompt: ciCommand,
+						backendCwd: project.cwd,
+						workdir: ciWorkdir,
+						...(ciWorkdir !== project.cwd ? { docsHome: runnerDocsHome, docsWorkdir } : {}),
+					});
 					logger.log(`CI stage command: ${command} (cwd ${ciWorkdir})`);
+					// The docs base follows the command: task/custom modes point at
+					// the paired docs worktree for docs-repo projects, while primary
+					// mode (running in the primary checkout) points at the backend
+					// docs home. Legacy projects keep the task-worktree base in
+					// every mode, exactly as before.
+					const separateRunnerDocsHome =
+						runnerDocsHome && project.cwd && path.resolve(runnerDocsHome) !== path.resolve(project.cwd)
+							? runnerDocsHome
+							: null;
+					const ciTaskDocs = path.join(
+						ciWorkdir === project.cwd && separateRunnerDocsHome ? separateRunnerDocsHome : docsWorkdir || workdir,
+						runnerTaskDocsRelPath(project?.docsDirName, taskId),
+					);
 					// Backend-curated assignment env (continuity markers et al.)
 					// flows to the child under the daemon-owned identity keys,
 					// which always win so an assignment can never spoof them.
 					const ci = await runCiCommand({
 						command, workdir: ciWorkdir,
 						timeoutMs: ciTimeoutMs || 600000,
-						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${docsWorkdir || workdir}/docs/tasks/${taskId}` },
+						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: ciTaskDocs },
 						onLog: (text) => { sendLogs(text).catch(() => {}); },
 					});
 					state.session = null; stopRenewal();
@@ -2171,7 +2199,7 @@ async function executeAssignment({
 			const { sha, pushed, pushSkipped, beforeSha, pushState, skipped } = await commitAndPush({
 				workdir,
 				branch,
-				taskDocsPath: `docs/tasks/${taskId}`,
+				taskDocsPath: runnerTaskDocsRelPath(project?.docsDirName, taskId),
 				// Docs-repo projects: the paired docs worktree (same kb/<taskId>
 				// branch in the docs repo) is committed and pushed FIRST.
 				docsWorkdir,

@@ -507,7 +507,7 @@ test('adopt modal omits blank optional fields and shows a registration error inl
   expect(await screen.findByRole('alert')).toHaveTextContent(/does not exist/);
 });
 
-test('create project modal keeps the docs repo option under a collapsed Advanced section by default', () => {
+test('create project modal shows the docs repo fields by default (Advanced expanded)', () => {
   const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'X' });
   renderWithKainBain(<Header />, {
     projects,
@@ -517,15 +517,14 @@ test('create project modal keeps the docs repo option under a collapsed Advanced
     setIsProjectDropdownOpen: vi.fn(),
   });
   fireEvent.click(screen.getByText('+ New Project'));
-  expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
   const toggle = screen.getByRole('button', { name: /advanced options/i });
-  expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  // The collapsed toggle names the option it hides, so the setting is
-  // findable without expanding first.
-  expect(toggle).toHaveTextContent(/separate docs repo/i);
-  fireEvent.click(toggle);
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
+  // The toggle names the option so it stays findable when collapsed.
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle).toHaveTextContent(/separate docs repo/i);
+  expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
 });
 
 test('create project modal forwards the advanced docs repo URL', () => {
@@ -539,7 +538,6 @@ test('create project modal forwards the advanced docs repo URL', () => {
   });
   fireEvent.click(screen.getByText('+ New Project'));
   fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Stealth' } });
-  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }));
   fireEvent.change(screen.getByLabelText('Docs Repository URL (optional)'), {
     target: { value: 'git@github.com:me/stealth-docs.git' },
   });
@@ -597,6 +595,26 @@ test('adopt modal forwards docs repo URL and optional local path from the Advanc
     kainbainDirName: undefined,
     docsRepo: { url: 'https://git.example.com/me/adopted-docs.git', localPath: '/srv/kb/adopted' },
   });
+});
+
+test('create project modal shows the parsed server error sentence, not the transport wrapper', async () => {
+  const err = new Error('API 409 on /projects: {"error":"should not leak"}');
+  err.body = '{"error":"Docs repo URL is already claimed by project \'Other\'"}';
+  const createProject = vi.fn().mockRejectedValue(err);
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+  fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Clash' } });
+  fireEvent.submit(screen.getByLabelText('Project Name').closest('form'));
+
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent(/already claimed/);
+  expect(alert).not.toHaveTextContent(/API 409/);
 });
 
 test('adopt modal omits docsRepo entirely when the advanced URL is blank', () => {

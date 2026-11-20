@@ -10,6 +10,7 @@ import { ModelAliasesSection, validateAliasList } from './ModelAliasesSection';
 import { accentTokens } from '../../theme/accentTokens';
 import { ALIAS_HARNESS_ID, findAliasUsages } from '../../../../shared/modelAliases.js';
 import { msToMinutes } from '../../utils/timeoutUnits';
+import { serverErrorMessage } from '../../utils/serverErrorMessage';
 import { parseRetrySettings } from './projectSettingsValidation';
 import { PROJECT_FORM_SECTIONS } from './projectSettingsTabs';
 import { ProjectBasicsSection } from './ProjectBasicsSection';
@@ -35,6 +36,7 @@ import { PathsAndReposSection } from './PathsAndReposSection';
  * @param {Function} props.onProjectUpdated - Callback when project is updated.
  * @param {string} [props.section] - Visible tab ('project'|'aliases'|'files-repos'|'addresses').
  * @param {Function} [props.onDirtyChange] - Called with true/false as edits are made or saved.
+ * @param {Function} [props.onRequestSection] - Requests a tab switch (the Project tab's docs-repo summary jumps to Files & Repos through it).
  * @example <ProjectSettingsForm project={project} projectId="p1" onProjectUpdated={select} section="aliases" onDirtyChange={setDirty} />
  ***/
 export function ProjectSettingsForm({
@@ -43,6 +45,7 @@ export function ProjectSettingsForm({
   onProjectUpdated,
   section = 'project',
   onDirtyChange,
+  onRequestSection = null,
 }) {
   // Fail-safe: an unknown section id renders the project tab instead of a
   // blank page. The allowlist is shared with the tab bar (see
@@ -444,15 +447,18 @@ export function ProjectSettingsForm({
       }
     }
     // Guard: docsRepo validation mirrors the backend (api/project/docsRepo.js)
-    // — the URL must look like a git remote with no whitespace, and the
-    // optional local checkout path must be absolute. The API re-validates and
-    // 400s, so this only saves a round trip.
+    // — the URL must look like a git remote (max 2048 chars) with no
+    // whitespace, and the optional local checkout path must be absolute (max
+    // 4096 chars). The API re-validates and 400s, so this only saves a round
+    // trip.
     const trimmedDocsRepoUrl = docsRepoUrl.trim();
     const trimmedDocsRepoPath = docsRepoLocalPath.trim();
     const DOCS_REPO_URL_PATTERN = /^(?:[^/@\s]+@[^/@\s]+:.+|.*:\/\/.*|\/.*)$/;
     if (
       trimmedDocsRepoUrl &&
-      (/\s/.test(trimmedDocsRepoUrl) || !DOCS_REPO_URL_PATTERN.test(trimmedDocsRepoUrl))
+      (trimmedDocsRepoUrl.length > 2048 ||
+        /[\s\x00-\x1f\x7f]/.test(trimmedDocsRepoUrl) ||
+        !DOCS_REPO_URL_PATTERN.test(trimmedDocsRepoUrl))
     ) {
       setValidationError(
         'Docs repository URL must be a git remote (https://…, ssh://…, git@host:path, or an absolute local path) with no whitespace.',
@@ -461,7 +467,10 @@ export function ProjectSettingsForm({
       notifyError?.('Invalid docs repository URL', 'Invalid Docs Repo');
       return;
     }
-    if (trimmedDocsRepoPath && !trimmedDocsRepoPath.startsWith('/')) {
+    if (
+      trimmedDocsRepoPath &&
+      (!trimmedDocsRepoPath.startsWith('/') || trimmedDocsRepoPath.length > 4096)
+    ) {
       setValidationError('Docs repo local path must be an absolute path on this machine.');
       setSaveState('error');
       notifyError?.('Invalid docs repo local path', 'Invalid Docs Repo');
@@ -600,10 +609,16 @@ export function ProjectSettingsForm({
     } catch (e) {
       logger.error('Failed to save settings', e);
       setSaveState('error');
-      // A 409 means another tab/browser saved newer settings (possibly new
-      // aliases) after this page loaded — reloading first is the fix, not
-      // retrying the same stale payload.
-      if (e?.status === 409) {
+      const serverMessage = serverErrorMessage(e, '');
+      const hasServerBody = typeof e?.body === 'string' && !!e.body;
+      // A 409 usually means another tab/browser saved newer settings
+      // (possibly new aliases) after this page loaded — reloading first is
+      // the fix, not retrying the same stale payload. EXCEPTION: a parsed
+      // server error that is NOT the concurrency text (e.g. a 409
+      // docs-repo claim conflict) carries its own fix and must not
+      // masquerade as a concurrency conflict. A body-less 409 keeps the
+      // reload guidance (harmless for any real 409 — they always carry one).
+      if (e?.status === 409 && (!hasServerBody || /modified concurrently/i.test(serverMessage))) {
         setValidationError(
           'Settings changed in another tab or browser — reload the page and re-apply your edits, then save again.',
         );
@@ -613,7 +628,13 @@ export function ProjectSettingsForm({
         );
         return;
       }
-      notifyError?.('Failed to save project configuration', 'Save Error');
+      // Any other failure surfaces the server's own sentence (a 400
+      // INVALID_DOCS_REPO_* or a 409 claim conflict) inline and in the toast,
+      // instead of a generic "failed to save" that hides the fix.
+      if (serverMessage) {
+        setValidationError(serverMessage);
+      }
+      notifyError?.(serverMessage || 'Failed to save project configuration', 'Save Error');
     }
   };
 
@@ -663,6 +684,12 @@ export function ProjectSettingsForm({
             hiddenProjectIds={hiddenProjectIds}
             projectId={projectId}
             toggleHideProject={toggleHideProject}
+            docsRepoUrl={docsRepoUrl}
+            onJumpToFilesRepos={
+              typeof onRequestSection === 'function'
+                ? () => onRequestSection('files-repos')
+                : null
+            }
           />
           <RetryTimeoutsSection
             maxAutoIterations={maxAutoIterations}

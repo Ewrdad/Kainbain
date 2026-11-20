@@ -13,7 +13,9 @@ const ACCENT_PRESETS = [
  * MARK: ProjectBasicsSection
  * @description Project Details block of the project settings form: project
  *   name, the wired AI harness + default-model control, the custom-harness
- *   command line, the accent theme picker, and the hide/archive toggle.
+ *   command line, the accent theme picker, the hide/archive toggle, and a
+ *   separate-docs-repo summary row that jumps to Files & Repos (the setting
+ *   itself lives there — this row keeps it visible on the landing tab).
  *   Pure presentational section — all state lives in `ProjectSettingsForm`.
  * @example <ProjectBasicsSection projectName="My App" setProjectName={setName} models={[]} labeledHarnesses={[]} defaultModel="" onDefaultModelChange={fn} effectiveHarnessId="pi" handleHarnessChange={fn} refreshing={false} refresh={fn} isHarnessDisabled={false} isCustomHarness={false} harnessCommand="" onHarnessCommandChange={fn} showDefaultModelMismatch={false} onClearDefaultModel={fn} onDismissMismatch={fn} defaultModelForMismatch="" effectiveHarnessLabel="pi" showHarnessGuidance={false} guidanceHints={[]} accentColor="#7bdb85" handleAccentChange={fn} validationError="" hiddenProjectIds={[]} projectId="p1" toggleHideProject={fn} />
  * @param {Object} props
@@ -46,6 +48,8 @@ const ACCENT_PRESETS = [
  * @param {Array} props.hiddenProjectIds - Archived project ids.
  * @param {string} props.projectId - Active project identifier.
  * @param {Function} props.toggleHideProject - Hide/archive toggle.
+ * @param {string} [props.docsRepoUrl] - Draft separate docs-repo URL ('' = off).
+ * @param {Function} [props.onJumpToFilesRepos] - Jumps to the Files & Repos tab.
  ***/
 export function ProjectBasicsSection({
   projectName,
@@ -77,7 +81,10 @@ export function ProjectBasicsSection({
   hiddenProjectIds,
   projectId,
   toggleHideProject,
+  docsRepoUrl = '',
+  onJumpToFilesRepos = null,
 }) {
+  const docsRepoEnabled = typeof docsRepoUrl === 'string' && docsRepoUrl.trim() !== '';
   return (
     <div className="space-y-4 max-w-2xl">
       <h3 className="text-sm font-bold uppercase tracking-wide text-text-high flex items-center gap-2">
@@ -335,6 +342,39 @@ export function ProjectBasicsSection({
         >
           {hiddenProjectIds?.includes?.(projectId) ? 'Hidden (Archived)' : 'Visible'}
         </button>
+      </div>
+
+      {/* Separate docs repo summary: the setting lives in Files & Repos —
+          this row keeps its state visible on the landing tab with a jump. */}
+      <div className="flex items-center justify-between gap-3 p-3 bg-surface-container border border-border-standard rounded-sm">
+        <div className="min-w-0">
+          <span className="text-xs font-bold uppercase text-text-high block">
+            Separate Docs Repository:{' '}
+            <span data-testid="docs-repo-summary-state" className="text-primary">
+              {docsRepoEnabled ? 'On' : 'Off'}
+            </span>
+          </span>
+          <span className="text-[10px] text-text-muted block truncate">
+            {docsRepoEnabled ? (
+              <>
+                KainBain docs and state live in{' '}
+                <code className="font-mono text-primary">{docsRepoUrl.trim()}</code>
+              </>
+            ) : (
+              'KainBain docs and state live inside the main repo.'
+            )}
+          </span>
+        </div>
+        {typeof onJumpToFilesRepos === 'function' && (
+          <button
+            id="project-docs-repo-jump"
+            type="button"
+            onClick={onJumpToFilesRepos}
+            className="shrink-0 px-3 py-1.5 rounded-sm text-xs font-bold uppercase cursor-pointer transition-colors bg-surface-deep border border-border-standard text-text-muted hover:text-on-surface"
+          >
+            {docsRepoEnabled ? 'Manage in Files & Repos' : 'Configure in Files & Repos'}
+          </button>
+        )}
       </div>
     </div>
   );

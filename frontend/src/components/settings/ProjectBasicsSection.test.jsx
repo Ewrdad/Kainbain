@@ -146,4 +146,25 @@ describe('ProjectBasicsSection', () => {
     fireEvent.click(screen.getByTestId('default-model-mismatch-keep'));
     expect(onDismissMismatch).toHaveBeenCalled();
   });
+
+  it('shows the docs repo summary as Off without a jump target by default', () => {
+    renderWithKainBain(<ProjectBasicsSection {...baseProps} />);
+    expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('Off');
+    expect(screen.queryByRole('button', { name: /files & repos/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the docs repo URL and jumps to Files & Repos when enabled', () => {
+    const onJumpToFilesRepos = vi.fn();
+    renderWithKainBain(
+      <ProjectBasicsSection
+        {...baseProps}
+        docsRepoUrl="https://git.example.com/me/docs.git"
+        onJumpToFilesRepos={onJumpToFilesRepos}
+      />,
+    );
+    expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('On');
+    expect(screen.getByText('https://git.example.com/me/docs.git')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /manage in files & repos/i }));
+    expect(onJumpToFilesRepos).toHaveBeenCalled();
+  });
 });

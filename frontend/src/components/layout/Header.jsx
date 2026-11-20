@@ -19,6 +19,7 @@ import {
 import { requestCompactMonitorView } from '../observability/monitorCompact';
 import { openSystemSettings } from '../settings/openSystemSettings';
 import { getRepoHostFileUrl } from '../../services/repoHost';
+import { serverErrorMessage } from '../../utils/serverErrorMessage';
 
 /***
  * MARK: SystemMenu
@@ -309,7 +310,10 @@ export function Header() {
   const [newProjName, setNewProjName] = useState('');
   const [newProjGitUrl, setNewProjGitUrl] = useState('');
   const [newProjDocsRepoUrl, setNewProjDocsRepoUrl] = useState('');
-  const [createAdvancedOpen, setCreateAdvancedOpen] = useState(false);
+  // Expanded by default (like import): the separate-docs-repo option must be
+  // visible without hunting for it — a collapsed disclosure hid it so well
+  // that reviewers could not find the setting at all.
+  const [createAdvancedOpen, setCreateAdvancedOpen] = useState(true);
   const [createError, setCreateError] = useState('');
   const [isRegisteringProject, setIsRegisteringProject] = useState(false);
   const [adoptPath, setAdoptPath] = useState('');
@@ -317,9 +321,9 @@ export function Header() {
   const [adoptKainbainDir, setAdoptKainbainDir] = useState('');
   const [adoptDocsRepoUrl, setAdoptDocsRepoUrl] = useState('');
   const [adoptDocsRepoPath, setAdoptDocsRepoPath] = useState('');
-  // Expanded by default on import: shared/public repos are exactly where
-  // KainBain traces must stay out, so the separate-docs-repo option must be
-  // visible without hunting for it (the create dialog stays collapsed).
+  // Expanded by default on import (like create): shared/public repos are
+  // exactly where KainBain traces must stay out, so the separate-docs-repo
+  // option must be visible without hunting for it.
   const [adoptAdvancedOpen, setAdoptAdvancedOpen] = useState(true);
   const [adoptError, setAdoptError] = useState('');
 
@@ -430,11 +434,13 @@ export function Header() {
       setNewProjName('');
       setNewProjGitUrl('');
       setNewProjDocsRepoUrl('');
-      setCreateAdvancedOpen(false);
+      setCreateAdvancedOpen(true);
       setIsCreatingProject(false);
       setIsProjectDropdownOpen(false);
     } catch (err) {
-      setCreateError(err?.message || 'Failed to create the project.');
+      // The server's own sentence (e.g. a docsRepo 400/409), not the
+      // transport wrapper — the dialog stays open with the fix inline.
+      setCreateError(serverErrorMessage(err, 'Failed to create the project.'));
     }
   };
 
@@ -488,7 +494,9 @@ export function Header() {
       setIsRegisteringProject(false);
       setIsProjectDropdownOpen(false);
     } catch (err) {
-      setAdoptError(err?.message || 'Failed to register the project directory.');
+      // The server's own sentence (e.g. a docsRepo 400/409), not the
+      // transport wrapper — the dialog stays open with the fix inline.
+      setAdoptError(serverErrorMessage(err, 'Failed to register the project directory.'));
     }
   };
 
@@ -815,9 +823,8 @@ export function Header() {
               </p>
             </div>
 
-            {/* Advanced: separate docs repo (collapsed by default). The
-                toggle names the option it hides so the setting is findable
-                without expanding it first. */}
+            {/* Advanced: separate docs repo (expanded by default). The
+                toggle names the option so it stays findable when collapsed. */}
             <div>
               <button
                 type="button"

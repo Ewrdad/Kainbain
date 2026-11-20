@@ -47,6 +47,7 @@ import {
 	hasDocsRepo,
 	normalizeDocsRepoSettings,
 	resolveDocsRepoLocalPath,
+	resolveKainbainHome,
 } from "./project/docsRepo.js";
 import {
 	docsRepoPointerFor,
@@ -2010,21 +2011,33 @@ export class ProjectStore {
 		// claimed by another project is a 409. Thrown before the record is
 		// touched.
 		const docsRepoTouched = updates.docsRepo !== undefined;
+		// Effective locations for the stealth guards below: a cwd/gitUrl
+		// change in the SAME update already applies here, or the guard would
+		// check the new docs repo against the old checkout/remote. (An
+		// unchanged cwd deletes its key during normalization above, so a
+		// present `updates.cwd` is always a real move.)
+		const effectiveGuardCwd = updates.cwd !== undefined ? updates.cwd : project.cwd;
+		const effectiveGuardUrls = [
+			updates.gitUrl !== undefined ? updates.gitUrl : project.gitUrl,
+			updates.gitRepo !== undefined ? updates.gitRepo : project.gitRepo,
+			updates.repoUrl !== undefined ? updates.repoUrl : project.repoUrl,
+			detectGitRemote(effectiveGuardCwd).repoUrl,
+		];
 		let docsRepoRaw = null;
 		if (docsRepoTouched) {
 			docsRepoRaw = updates.docsRepo;
 			updates.docsRepo = assertValidDocsRepoForWrite(updates.docsRepo);
 			if (updates.docsRepo) {
 				if (!updates.docsRepo.localPath) {
-					updates.docsRepo.localPath = this._defaultDocsRepoLocalPath(project.cwd);
+					updates.docsRepo.localPath = this._defaultDocsRepoLocalPath(effectiveGuardCwd);
 				}
 				// Stealth guard: the docs checkout must live outside the main
 				// repo and its URL must differ from the main remote — checked
 				// before provisioning or saving anything.
 				assertDocsRepoSeparateFromMain({
 					docsRepo: updates.docsRepo,
-					projectCwd: project.cwd,
-					mainRepoUrls: [project.gitUrl, project.repoUrl, detectGitRemote(project.cwd).repoUrl],
+					projectCwd: effectiveGuardCwd,
+					mainRepoUrls: effectiveGuardUrls,
 				});
 				this._assertDocsRepoUnclaimed(
 					updates.docsRepo,
@@ -2049,6 +2062,22 @@ export class ProjectStore {
 					kainbainLinkName: resolveKainbainDirName(project),
 				});
 			}
+		} else if (
+			hasDocsRepo(project) &&
+			(updates.cwd !== undefined ||
+				updates.gitUrl !== undefined ||
+				updates.gitRepo !== undefined ||
+				updates.repoUrl !== undefined)
+		) {
+			// The stealth invariant must survive moves: a cwd move that lands
+			// on (or inside) the stored docs checkout, or a remote re-point
+			// at the docs URL, is refused before the record is touched — the
+			// same guard as the docsRepo write path, applied to the move.
+			assertDocsRepoSeparateFromMain({
+				docsRepo: project.docsRepo,
+				projectCwd: effectiveGuardCwd,
+				mainRepoUrls: effectiveGuardUrls,
+			});
 		}
 		// Normalize an incoming alias list (trim, drop invalids, dedupe);
 		// an empty result clears the list (undefined), like the harness.
@@ -2063,6 +2092,11 @@ export class ProjectStore {
 			);
 			updates.modelAliases = incoming.length ? incoming : undefined;
 		}
+		// A present `updates.cwd` is always a real move (an unchanged cwd
+		// deletes its key during normalization); the previous checkout is
+		// captured before the assignment overwrites it so the docs-repo
+		// pointer below can be re-keyed onto the new checkout.
+		const previousCwd = updates.cwd !== undefined ? project.cwd : null;
 		Object.assign(project, updates, { updatedAt: new Date().toISOString() });
 		for (const { from, to } of aliasRenames) {
 			applyAliasRename(project, from, to);
@@ -2105,6 +2139,22 @@ export class ProjectStore {
 				);
 			} else {
 				removeDocsRepoPointer(project.cwd, this._registryOverrides());
+			}
+		}
+		// A cwd move re-keys the pointer (keyed by main checkout): the old
+		// checkout's entry is dropped, and a kept docs repo is remembered
+		// under the new checkout — otherwise the moved project vanishes on
+		// restart (stealth: nothing in the new main repo to find). A move
+		// combined with a docsRepo switch/clear is already handled above, so
+		// only the stale old entry needs dropping then.
+		if (previousCwd) {
+			removeDocsRepoPointer(previousCwd, this._registryOverrides());
+			if (!docsRepoTouched && project.docsRepo?.localPath) {
+				rememberDocsRepoPointer(
+					project.cwd,
+					project.docsRepo.localPath,
+					this._registryOverrides(),
+				);
 			}
 		}
 		return project;
@@ -2184,12 +2234,13 @@ export class ProjectStore {
 	 * @description Removes the superseded `project.json` from a project's
 	 *   previous state folder after `kainbainDirName` changed, so a restart can
 	 *   never re-adopt the stale record and silently revert the setting (or
-	 *   split state across two folders). Only the config file is removed, and
-	 *   only when the new config was written successfully and the old file is
-	 *   this project's own config (its id matches, or — for id-less legacy
-	 *   configs — it names this project's cwd); another project's config is
-	 *   never deleted. Sessions, worktrees, and quarantine stay on disk for
-	 *   the operator to move. Never throws.
+	 *   split state across two folders). The stale file is resolved under the
+	 *   KainBain home (the docs checkout for docs-repo projects). Only the
+	 *   config file is removed, and only when the new config was written
+	 *   successfully and the old file is this project's own config (its id
+	 *   matches, or — for id-less legacy configs — it names this project's
+	 *   cwd); another project's config is never deleted. Sessions, worktrees,
+	 *   and quarantine stay on disk for the operator to move. Never throws.
 	 * @example projectStore._discardStaleStateConfig(project, '.kainbain')
 	 * @param {Object} project - The saved project record (post-update).
 	 * @param {string} previousName - The previous effective state folder name.
@@ -2207,8 +2258,14 @@ export class ProjectStore {
 			/* eslint-disable security/detect-non-literal-fs-filename */
 			const newConfig = resolveProjectConfigPath(cwd, project);
 			if (!newConfig || !fs.existsSync(newConfig)) return false;
+			// The stale config lives in the KainBain home (the docs checkout
+			// for docs-repo projects — resolving under the main cwd would
+			// miss it there, and the lingering stale default would win on
+			// restart and silently revert the rename). Legacy projects resolve
+			// the home to the cwd itself, so their behaviour is unchanged.
+			const home = resolveKainbainHome(cwd, project) || path.resolve(cwd);
 			const oldConfig = path.join(
-				path.resolve(cwd),
+				home,
 				previousName,
 				"project.json",
 			);
@@ -2229,7 +2286,7 @@ export class ProjectStore {
 			/* eslint-enable security/detect-non-literal-fs-filename */
 			console.warn(
 				`[projectStore] state folder changed to '${resolveKainbainDirName(project)}'; removed the stale config '${oldConfig}'. ` +
-					`Move any sessions/worktrees from '${path.join(cwd, previousName)}' by hand, then restart.`,
+					`Move any sessions/worktrees from '${path.join(home, previousName)}' by hand, then restart.`,
 			);
 			return true;
 		} catch (err) {
@@ -2365,13 +2422,23 @@ export class ProjectStore {
 
 	/***
 	 * MARK: deleteProject
-	 * @description Deletes a project from the store.
+	 * @description Deletes a project from the store. A docs-repo project's
+	 *   engine-global pointer is dropped too, so the deleted project can
+	 *   never resurrect from its orphaned docs config on rescan.
 	 * @example projectStore.deleteProject('proj-1') => true
 	 * @param {string} id
 	 * @returns {boolean}
 	 ***/
 	deleteProject(id) {
+		const project = this.projects.get(id);
 		const deleted = this.projects.delete(id);
+		// A deleted docs-repo project must not resurrect: its engine-global
+		// pointer (cwd → docs checkout) would otherwise redirect the next
+		// scan of that directory at the orphaned docs config — re-adopting
+		// the deleted project (with its old id) on restart or re-adoption.
+		if (deleted && project?.cwd) {
+			removeDocsRepoPointer(project.cwd, this._registryOverrides());
+		}
 		if (this.activeProjectId === id) {
 			const remaining = Array.from(this.projects.keys());
 			this.activeProjectId = remaining.length > 0 ? remaining[0] : null;

@@ -265,6 +265,168 @@ describe("register + PATCH docsRepo", () => {
 		expect(docsRepoPointerFor(project.cwd, { registryFile: tempRegistry })).toBeNull();
 	});
 
+	it("DELETE drops the pointer so the deleted project never resurrects on rescan", async () => {
+		const localPath = path.join(tempRoot, "docs-checkouts", "deleted-kb");
+		const create = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Deleted App",
+				gitUrl: "https://git.example.com/team/app-deleted.git",
+				docsRepo: { localPath },
+			},
+		});
+		expect(create.statusCode).toBe(201);
+		const created = JSON.parse(create.payload);
+		expect(docsRepoPointerFor(created.cwd, { registryFile: tempRegistry })).toBe(localPath);
+
+		const removed = await app.inject({ method: "DELETE", url: `/projects/${created.id}` });
+		expect(removed.statusCode).toBe(200);
+		expect(docsRepoPointerFor(created.cwd, { registryFile: tempRegistry })).toBeNull();
+
+		// A fresh store (simulated restart) must NOT re-adopt the deleted
+		// project from its orphaned docs config.
+		const fresh = new ProjectStore({
+			projectsRoot: tempProjectsRoot,
+			notesRoot: tempNotesRoot,
+			registryFile: tempRegistry,
+			autoScan: true,
+		});
+		expect(fresh.listProjects().find((p) => p.id === created.id)).toBeUndefined();
+	});
+
+	it("PATCH cwd re-keys the pointer so the moved project survives a restart", async () => {
+		const localPath = path.join(tempRoot, "docs-checkouts", "moved-kb");
+		const create = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Moved App",
+				gitUrl: "https://git.example.com/team/app-moved.git",
+				docsRepo: { localPath },
+			},
+		});
+		expect(create.statusCode).toBe(201);
+		const created = JSON.parse(create.payload);
+
+		const newCwd = path.join(tempProjectsRoot, "moved-app-checkout");
+		fs.mkdirSync(newCwd, { recursive: true });
+		const patch = await app.inject({
+			method: "PATCH",
+			url: `/projects/${created.id}`,
+			payload: { cwd: newCwd },
+		});
+		expect(patch.statusCode).toBe(200);
+		expect(JSON.parse(patch.payload).cwd).toBe(newCwd);
+		// Old checkout entry dropped, new checkout remembered.
+		expect(docsRepoPointerFor(created.cwd, { registryFile: tempRegistry })).toBeNull();
+		expect(docsRepoPointerFor(newCwd, { registryFile: tempRegistry })).toBe(localPath);
+
+		const fresh = new ProjectStore({
+			projectsRoot: tempProjectsRoot,
+			notesRoot: tempNotesRoot,
+			registryFile: tempRegistry,
+			autoScan: true,
+		});
+		const found = fresh.listProjects().find((p) => p.id === created.id);
+		expect(found).toBeDefined();
+		expect(found.cwd).toBe(newCwd);
+		expect(found.docsRepo?.localPath).toBe(localPath);
+	});
+
+	it("PATCH cwd into the docs checkout is refused (stealth guard survives moves)", async () => {
+		const localPath = path.join(tempRoot, "docs-checkouts", "guarded-move-kb");
+		const create = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Guarded Move App",
+				gitUrl: "https://git.example.com/team/app-guarded-move.git",
+				docsRepo: { localPath },
+			},
+		});
+		expect(create.statusCode).toBe(201);
+		const created = JSON.parse(create.payload);
+
+		const nested = path.join(localPath, "nested-main");
+		fs.mkdirSync(nested, { recursive: true });
+		const patch = await app.inject({
+			method: "PATCH",
+			url: `/projects/${created.id}`,
+			payload: { cwd: nested },
+		});
+		expect(patch.statusCode).toBe(400);
+		expect(JSON.parse(patch.payload).error).toMatch(/OUTSIDE the main project repo/i);
+		// Record untouched.
+		const fetched = await app.inject({ method: "GET", url: `/projects/${created.id}` });
+		expect(JSON.parse(fetched.payload).cwd).toBe(created.cwd);
+	});
+
+	it("PATCH gitUrl onto the docs URL is refused (main remote must stay separate)", async () => {
+		const docsUrl = "https://git.example.com/me/guarded-remote-kb.git";
+		const localPath = path.join(tempRoot, "docs-checkouts", "guarded-remote-kb");
+		const create = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Guarded Remote App",
+				gitUrl: "https://git.example.com/team/app-guarded-remote.git",
+				docsRepo: { url: docsUrl, localPath },
+			},
+		});
+		expect(create.statusCode).toBe(201);
+		const created = JSON.parse(create.payload);
+
+		const patch = await app.inject({
+			method: "PATCH",
+			url: `/projects/${created.id}`,
+			payload: { gitUrl: docsUrl },
+		});
+		expect(patch.statusCode).toBe(400);
+		expect(JSON.parse(patch.payload).error).toMatch(/DIFFERENT repository/i);
+		// Record untouched.
+		const fetched = await app.inject({ method: "GET", url: `/projects/${created.id}` });
+		expect(JSON.parse(fetched.payload).gitUrl).toBe(created.gitUrl);
+	});
+
+	it("PATCH kainbainDirName on a docs-repo project retires the stale docs-home config", async () => {
+		const localPath = path.join(tempRoot, "docs-checkouts", "renamed-state-kb");
+		const create = await app.inject({
+			method: "POST",
+			url: "/projects",
+			payload: {
+				name: "Renamed State App",
+				gitUrl: "https://git.example.com/team/app-renamed-state.git",
+				docsRepo: { localPath },
+			},
+		});
+		expect(create.statusCode).toBe(201);
+		const created = JSON.parse(create.payload);
+		expect(fs.existsSync(path.join(localPath, ".kainbain", "project.json"))).toBe(true);
+
+		const patch = await app.inject({
+			method: "PATCH",
+			url: `/projects/${created.id}`,
+			payload: { kainbainDirName: ".kb" },
+		});
+		expect(patch.statusCode).toBe(200);
+		expect(JSON.parse(patch.payload).kainbainDirName).toBe(".kb");
+		// New config written in the docs home, stale default retired there —
+		// a lingering stale default would win on restart and revert the rename.
+		expect(fs.existsSync(path.join(localPath, ".kb", "project.json"))).toBe(true);
+		expect(fs.existsSync(path.join(localPath, ".kainbain", "project.json"))).toBe(false);
+
+		const fresh = new ProjectStore({
+			projectsRoot: tempProjectsRoot,
+			notesRoot: tempNotesRoot,
+			registryFile: tempRegistry,
+			autoScan: true,
+		});
+		const found = fresh.listProjects().find((p) => p.id === created.id);
+		expect(found).toBeDefined();
+		expect(found.kainbainDirName).toBe(".kb");
+	});
+
 	it("a fresh store rediscovers a docs-repo project through the pointer", async () => {
 		const localPath = path.join(tempRoot, "docs-checkouts", "rediscover-kb");
 		const create = await app.inject({

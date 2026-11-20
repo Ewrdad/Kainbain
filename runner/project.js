@@ -475,6 +475,27 @@ export async function preserveEvictedWorkdir(workdir) {
 }
 
 /***
+ * MARK: preserveWorkdirPairForRemoval
+ * @description Parks unpushed residue for a task workdir AND its paired docs
+ *   worktree (`<dir>-docs`) before pair-atomic removal (eviction/reap): each
+ *   side gets its own `kb-recovery/*` branch in its own repo, so dropping a
+ *   docs-repo task's slot never loses docs residue the code-side check cannot
+ *   see. Legacy workdirs (no `-docs` twin) preserve exactly as before.
+ * @example await preserveWorkdirPairForRemoval('/w/kb-t1') => { parkedTo: null, docsParkedTo: 'kb-recovery/t1/2026-…' }
+ * @param {string} dir - Code task workdir.
+ * @returns {Promise<{parkedTo: string|null, docsParkedTo: string|null}>} Recovery branches per side (null when clean).
+ ***/
+export async function preserveWorkdirPairForRemoval(dir) {
+	const parkedTo = await preserveEvictedWorkdir(dir);
+	let docsParkedTo = null;
+	const docsTwin = docsWorkdirFor(dir);
+	if (docsTwin && docsTwin !== dir && fs.existsSync(docsTwin)) {
+		docsParkedTo = await preserveEvictedWorkdir(docsTwin);
+	}
+	return { parkedTo, docsParkedTo };
+}
+
+/***
  * MARK: removeTaskWorkdir
  * @description Removes one task workdir and its worktree registration. Finds
  *   the owning repo (the mode repo, the backend checkout, or any mirror
@@ -570,20 +591,20 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
  * MARK: evictOldestWorkdir
  * @description Frees one worktree slot past the cap by removing the
  *   least-recently-used STALE workdir (no touch within `staleMs`). Unpushed
- *   residue is parked on a `kb-recovery/*` branch first (see
- *   `preserveEvictedWorkdir`); workdirs touched recently are never evicted,
- *   so a live run on a sibling Runner is safe. Tries oldest-first and
- *   resolves null when nothing is evictable (all fresh, all removals
- *   failed) — the caller then reports WORKTREE_CAP_REACHED instead of
- *   deleting live work.
- * @example await evictOldestWorkdir({ workRoot: '/w' }) => { evicted: '/w/kb-old', parkedTo: null }
+ *   residue is parked on a `kb-recovery/*` branch first — the code worktree
+ *   AND its paired docs worktree each (see `preserveWorkdirPairForRemoval`);
+ *   workdirs touched recently are never evicted, so a live run on a sibling
+ *   Runner is safe. Tries oldest-first and resolves null when nothing is
+ *   evictable (all fresh, all removals failed) — the caller then reports
+ *   WORKTREE_CAP_REACHED instead of deleting live work.
+ * @example await evictOldestWorkdir({ workRoot: '/w' }) => { evicted: '/w/kb-old', parkedTo: null, docsParkedTo: null }
  * @param {Object} opts
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} [opts.currentTaskId] - Never evicts this task's own workdir.
  * @param {number} [opts.staleMs] - Staleness threshold (default WORKTREE_EVICT_STALE_MS).
  * @param {string} [opts.repoDir] - Mode repo dir for worktree removal.
  * @param {string} [opts.localPath] - Backend checkout for worktree removal.
- * @returns {Promise<{evicted: string, parkedTo: string|null}|null>} Eviction record, or null.
+ * @returns {Promise<{evicted: string, parkedTo: string|null, docsParkedTo: string|null}|null>} Eviction record, or null (`docsParkedTo` names the docs twin's recovery branch; null for legacy workdirs).
  ***/
 export async function evictOldestWorkdir({ workRoot, currentTaskId = null, staleMs = WORKTREE_EVICT_STALE_MS, repoDir = null, localPath = null } = {}) {
 	const orphans = listOrphanWorkdirs(workRoot, currentTaskId);
@@ -596,11 +617,11 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
 		.sort((a, b) => a.mtime - b.mtime);
 	for (const { dir } of aged) {
 		try {
-			const parkedTo = await preserveEvictedWorkdir(dir);
+			const { parkedTo, docsParkedTo } = await preserveWorkdirPairForRemoval(dir);
 			const gone = await removeTaskWorkdir({ workRoot, repoDir, localPath, dir });
 			if (gone) {
 				recordWorktreeEviction();
-				return { evicted: dir, parkedTo };
+				return { evicted: dir, parkedTo, docsParkedTo };
 			}
 		} catch {
 			// Try the next-oldest candidate instead of failing the deploy.
@@ -649,7 +670,7 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
 			}
 		}
 		try {
-			await preserveEvictedWorkdir(dir);
+			await preserveWorkdirPairForRemoval(dir);
 		} catch {
 			// Preservation is best-effort; removal still reclaims the slot.
 		}
@@ -710,7 +731,7 @@ export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
 				// Not found in any project = the task is gone: a true orphan.
 				if (!found || terminal) {
 					try {
-						await preserveEvictedWorkdir(dir);
+						await preserveWorkdirPairForRemoval(dir);
 					} catch {
 						// Preservation is best-effort; removal still reclaims the slot.
 					}
@@ -817,6 +838,25 @@ export function resolveRunnerDocsDirName(value) {
 	const lowered = name.toLowerCase();
 	if (lowered === "." || lowered === ".." || lowered === ".kainbain" || lowered === ".git" || lowered === "node_modules") return "docs";
 	return name;
+}
+
+/***
+ * MARK: runnerTaskDocsRelPath
+ * @description The task-docs folder relative to a Runner worktree root:
+ *   `<docsDir>/tasks/<taskId>`, honouring the project's custom docs folder
+ *   name (garbage degrades to `docs`, like `resolveRunnerDocsDirName`).
+ *   The single source for the shape the daemon's `KAINBAIN_TASK_DOCS` env,
+ *   the `commitAndPush` force-add, and `collectTaskFiles` all share — it
+ *   resolves identically inside the code worktree and the paired docs
+ *   worktree, so docs-repo projects need no second spelling.
+ * @example runnerTaskDocsRelPath({ docsDirName: 'k-docs' }, 't1') => 'k-docs/tasks/t1'
+ * @example runnerTaskDocsRelPath(null, 't1') => 'docs/tasks/t1'
+ * @param {*} value - String, project record, or `{ docsDirName }` object.
+ * @param {string} taskId - Task id.
+ * @returns {string} Relative task-docs path.
+ ***/
+export function runnerTaskDocsRelPath(value, taskId) {
+	return `${resolveRunnerDocsDirName(value)}/tasks/${taskId}`;
 }
 
 /***
@@ -1090,6 +1130,15 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 		} else {
 			docsMode = "adopt";
 			docsRepoDir = docsLocalPath;
+			// Fail loudly (not via a cryptic `git worktree add` error below)
+			// when the adopted docs checkout is missing or not a repo — the
+			// classic cause is a localPath-only docs repo dispatched to a
+			// remote Runner, where the backend's path does not exist.
+			if (!fs.existsSync(path.join(docsRepoDir, ".git"))) {
+				throw new Error(
+					`docsLocalPath '${docsRepoDir}' is not a git checkout on this Runner (no .git) — a docs repo without a URL can only run where its checkout exists; give the project a docsRepo.url so remote Runners can clone it`,
+				);
+			}
 		}
 		await ensureRepoHooksPath(docsRepoDir);
 	}

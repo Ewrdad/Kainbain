@@ -285,6 +285,7 @@ export function ProjectSettings() {
               onProjectUpdated={selectProject}
               section={effectiveSection}
               onDirtyChange={setFormDirty}
+              onRequestSection={handleSectionChange}
             />
           </div>
         )}

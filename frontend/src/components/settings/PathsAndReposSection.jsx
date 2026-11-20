@@ -1,5 +1,3 @@
-import { AppLinkSection } from './AppLinkSection';
-
 /***
  * MARK: PathsAndReposSection
  * @description Files & Repositories block of the project settings form:
@@ -241,7 +239,9 @@ export function PathsAndReposSection({
                 separate (usually private) repo instead of the main repo — the main repo stays free
                 of KainBain traces. Uses the same login as the main repo. Task branches (
                 <code className="font-mono text-primary">kb/&lt;taskId&gt;</code>) stay in sync
-                across both repos. Clear the field and save to disable again.
+                across both repos. Existing docs stay where they are — only new work goes to the
+                docs repo (see the user guide for the manual move). Clear the field and save to
+                disable again.
               </p>
             </div>
 

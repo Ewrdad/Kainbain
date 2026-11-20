@@ -2,34 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useKainBain } from '../../context/KainBainContext';
 import { api } from '../../services/api';
 import { logger } from '../../services/logger';
+import { serverErrorMessage } from '../../utils/serverErrorMessage';
 import { Modal } from '../Modal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { TruncatedText } from '../common/TruncatedText';
 
-/***
- * MARK: serverErrorMessage
- * @description Extracts the operator-facing message from a failed `request()`:
- *   the JSON `{ error }` body the API sends, falling back to the raw error
- *   text. Exported for tests.
- * @example serverErrorMessage({ body: '{"error":"Taken"}' }) => 'Taken'
- * @param {Error} err - Rejection from the shared request helper.
- * @param {string} [fallback] - Message when nothing usable is attached.
- * @returns {string}
- ***/
-export function serverErrorMessage(err, fallback = 'Request failed') {
-  const raw = err?.body;
-  if (typeof raw === 'string' && raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.error === 'string' && parsed.error) {
-        return parsed.error;
-      }
-    } catch {
-      return raw;
-    }
-  }
-  return err?.message || fallback;
-}
+// Re-exported so existing import sites keep working; the helper lives in
+// utils/ now that the settings form and project dialogs share it.
+export { serverErrorMessage };
 
 /***
  * MARK: isSkillFile

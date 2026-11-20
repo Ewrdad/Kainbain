@@ -430,6 +430,110 @@ describe("runSingleAssignment", () => {
 		assert.ok(!completed.posture.includes("m-pin"));
 	});
 
+	it("rewrites curated docs paths into the paired docs worktree for a CI stage (task mode)", async () => {
+		const repo = localRepo();
+		// Default sibling layout: the docs home STARTS WITH the backend cwd,
+		// so a naive cwd-prefix rewrite would corrupt it (the prefix trap).
+		const docsHome = `${repo}-kainbain-docs`;
+		fs.mkdirSync(docsHome, { recursive: true });
+		execFileSync("git", ["init", "-q"], { cwd: docsHome, stdio: "ignore" });
+		execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: docsHome, stdio: "ignore" });
+		execFileSync("git", ["config", "user.name", "t"], { cwd: docsHome, stdio: "ignore" });
+		fs.writeFileSync(path.join(docsHome, "f.txt"), "x");
+		execFileSync("git", ["add", "."], { cwd: docsHome, stdio: "ignore" });
+		execFileSync("git", ["commit", "-qm", "init"], { cwd: docsHome, stdio: "ignore" });
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo, docsHome);
+		let completed = null;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo, docsRepo: { localPath: docsHome } }),
+			getTask: async () => ({ id: "t1", goal: "run tests", currentStageId: "ci-1" }),
+			claim: async () => ({
+				executionId: "e1",
+				epoch: 1,
+				kind: "ci",
+				command: `echo DOCS=$KAINBAIN_TASK_DOCS MARKER=${docsHome}/docs/tasks/t1/PLAN.md`,
+			}),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed = args;
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.accepted, true);
+		const expectedDocsWorkdir = path.join(config.workRoot, "kb-t1-docs");
+		assert.ok(
+			completed.output.includes(`DOCS=${expectedDocsWorkdir}/docs/tasks/t1`),
+			`env points at the docs worktree, got: ${completed.output}`,
+		);
+		assert.ok(
+			completed.output.includes(`MARKER=${expectedDocsWorkdir}/docs/tasks/t1/PLAN.md`),
+			`curated path rewritten into the docs worktree, got: ${completed.output}`,
+		);
+		assert.ok(!completed.output.includes(docsHome), `no backend-home leak, got: ${completed.output}`);
+	});
+
+	it("keeps backend docs-home paths for a CI stage in primary mode", async () => {
+		// Primary mode runs IN the primary checkout, where the backend docs
+		// home is already real — rewriting it into the Runner docs worktree
+		// would point the command at the wrong tree.
+		const repo = localRepo();
+		const docsHome = `${repo}-kainbain-docs`;
+		fs.mkdirSync(docsHome, { recursive: true });
+		execFileSync("git", ["init", "-q"], { cwd: docsHome, stdio: "ignore" });
+		execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: docsHome, stdio: "ignore" });
+		execFileSync("git", ["config", "user.name", "t"], { cwd: docsHome, stdio: "ignore" });
+		fs.writeFileSync(path.join(docsHome, "f.txt"), "x");
+		execFileSync("git", ["add", "."], { cwd: docsHome, stdio: "ignore" });
+		execFileSync("git", ["commit", "-qm", "init"], { cwd: docsHome, stdio: "ignore" });
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo, docsHome);
+		let completed = null;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo, docsRepo: { localPath: docsHome } }),
+			getTask: async () => ({ id: "t1", goal: "run tests", currentStageId: "ci-1" }),
+			claim: async () => ({
+				executionId: "e1",
+				epoch: 1,
+				kind: "ci",
+				runOnBranch: "primary",
+				command: `echo DOCS=$KAINBAIN_TASK_DOCS MARKER=${docsHome}/docs/tasks/t1/PLAN.md`,
+			}),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed = args;
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.accepted, true);
+		assert.ok(
+			completed.output.includes(`DOCS=${docsHome}/docs/tasks/t1`),
+			`env points at the backend docs home, got: ${completed.output}`,
+		);
+		assert.ok(
+			completed.output.includes(`MARKER=${docsHome}/docs/tasks/t1/PLAN.md`),
+			`curated path untouched, got: ${completed.output}`,
+		);
+	});
+
 	it("asks for the pasted credential once the join is approved", async () => {
 		const config = baseConfig({ credential: "" });
 		dirs.push(config.workRoot);

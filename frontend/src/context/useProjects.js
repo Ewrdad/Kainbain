@@ -248,6 +248,7 @@ export function useProjects({ onSelectProject, onNotification } = {}) {
    * @param {string} payload.path
    * @param {string} [payload.name]
    * @param {string} [payload.kainbainDirName]
+   * @param {Object} [payload.docsRepo] - Separate docs repo `{ url, localPath? }` for KainBain docs/state (advanced option).
    * @returns {Promise<Object|null>}
    ***/
   const registerProject = useCallback(

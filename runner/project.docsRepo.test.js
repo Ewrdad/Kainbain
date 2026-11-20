@@ -6,9 +6,13 @@ import os from "node:os";
 import path from "node:path";
 import {
 	docsWorkdirFor,
+	evictOldestWorkdir,
 	prepareWorkdir,
+	preserveWorkdirPairForRemoval,
+	reapTaskWorkdirIfTerminal,
 	resolveRunnerDocsRepoUrl,
 	resolveRunnerKainbainHome,
+	runnerTaskDocsRelPath,
 	shouldSyncTaskDocs,
 	slugForRepo,
 	RunnerGitError,
@@ -84,6 +88,14 @@ describe("docs-repo runner helpers", () => {
 			false,
 		);
 		assert.equal(shouldSyncTaskDocs({ project: {}, docsWorkdir: "/w/kb-t1-docs" }), false);
+	});
+
+	it("runnerTaskDocsRelPath honours the custom docs folder name", () => {
+		assert.equal(runnerTaskDocsRelPath(null, "t1"), "docs/tasks/t1");
+		assert.equal(runnerTaskDocsRelPath({}, "t1"), "docs/tasks/t1");
+		assert.equal(runnerTaskDocsRelPath({ docsDirName: "k-docs" }, "t1"), "k-docs/tasks/t1");
+		assert.equal(runnerTaskDocsRelPath("k-docs", "t1"), "k-docs/tasks/t1");
+		assert.equal(runnerTaskDocsRelPath({ docsDirName: "not a name" }, "t1"), "docs/tasks/t1");
 	});
 });
 
@@ -293,6 +305,122 @@ describe("prepareWorkdir with a separate docs repo (adopt mode)", () => {
 			stdio: ["ignore", "pipe", "ignore"],
 		}).trim();
 		assert.equal(primaryBranch, "main");
+	});
+
+	it("fails loudly (not cryptically) when the adopted docs checkout is missing", async () => {
+		// The classic cause is a localPath-only docs repo dispatched to a
+		// remote Runner, where the backend's path does not exist.
+		await assert.rejects(
+			() =>
+				prepareWorkdir({
+					localPath: codeRepo,
+					docsLocalPath: path.join(tmp, "no-such-docs-checkout"),
+					workRoot: tmp,
+					taskId: "t-missing",
+				}),
+			/docsLocalPath '.*' is not a git checkout on this Runner.*docsRepo\.url/s,
+		);
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-t-missing")));
+		assert.ok(!fs.existsSync(path.join(tmp, "kb-t-missing-docs")));
+	});
+});
+
+describe("eviction and reap preserve the paired docs worktree", () => {
+	let tmp;
+	let codeRepo;
+	let docsRepo;
+	beforeEach(() => {
+		tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-docs-evict-"));
+		codeRepo = localRepo("kb-runner-docs-evict-code-");
+		docsRepo = localRepo("kb-runner-docs-evict-doc-");
+	});
+	afterEach(() => {
+		for (const d of [tmp, codeRepo, docsRepo]) {
+			fs.rmSync(d, { recursive: true, force: true });
+		}
+	});
+
+	it("preserveWorkdirPairForRemoval parks both sides on their own recovery branches", async () => {
+		const out = await prepareWorkdir({
+			localPath: codeRepo,
+			docsLocalPath: docsRepo,
+			workRoot: tmp,
+			taskId: "t1",
+		});
+		fs.writeFileSync(path.join(out.workdir, "code-residue.txt"), "code");
+		fs.writeFileSync(path.join(out.docsWorkdir, "docs-residue.txt"), "docs");
+		const { parkedTo, docsParkedTo } = await preserveWorkdirPairForRemoval(out.workdir);
+		assert.match(parkedTo, /^kb-recovery\/t1\//);
+		assert.match(docsParkedTo, /^kb-recovery\/t1\//);
+		// Each recovery branch lives in its own repo and carries its residue.
+		const codeFiles = execFileSync("git", ["-C", codeRepo, "ls-tree", "-r", "--name-only", parkedTo], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		assert.ok(codeFiles.includes("code-residue.txt"));
+		const docsFiles = execFileSync("git", ["-C", docsRepo, "ls-tree", "-r", "--name-only", docsParkedTo], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		assert.ok(docsFiles.includes("docs-residue.txt"));
+	});
+
+	it("evictOldestWorkdir parks docs residue before removing the pair", async () => {
+		const out = await prepareWorkdir({
+			localPath: codeRepo,
+			docsLocalPath: docsRepo,
+			workRoot: tmp,
+			taskId: "t1",
+		});
+		// Docs side dirty, code side clean: the code-only check would see
+		// nothing to preserve.
+		fs.writeFileSync(path.join(out.docsWorkdir, "docs-note.md"), "unpushed docs residue");
+		const outcome = await evictOldestWorkdir({
+			workRoot: tmp,
+			currentTaskId: "other-task",
+			staleMs: -1,
+			localPath: codeRepo,
+		});
+		assert.ok(outcome, "stale pair evicted");
+		assert.equal(outcome.evicted, out.workdir);
+		assert.equal(outcome.parkedTo, null);
+		assert.match(outcome.docsParkedTo, /^kb-recovery\/t1\//);
+		const docsFiles = execFileSync("git", ["-C", docsRepo, "ls-tree", "-r", "--name-only", outcome.docsParkedTo], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		assert.ok(docsFiles.includes("docs-note.md"), "docs residue survives eviction");
+		assert.ok(!fs.existsSync(out.workdir));
+		assert.ok(!fs.existsSync(out.docsWorkdir));
+	});
+
+	it("reapTaskWorkdirIfTerminal parks docs residue before reaping the pair", async () => {
+		const out = await prepareWorkdir({
+			localPath: codeRepo,
+			docsLocalPath: docsRepo,
+			workRoot: tmp,
+			taskId: "t2",
+		});
+		fs.writeFileSync(path.join(out.docsWorkdir, "docs-note.md"), "unpushed docs residue");
+		const client = {
+			getTask: async () => ({ id: "t2", status: "completed" }),
+			getProject: async () => ({ id: "p", cwd: codeRepo }),
+		};
+		const res = await reapTaskWorkdirIfTerminal({
+			client,
+			projectId: "p",
+			taskId: "t2",
+			workRoot: tmp,
+			localPath: codeRepo,
+		});
+		assert.equal(res, "reaped");
+		const branches = execFileSync("git", ["-C", docsRepo, "branch", "--list", "kb-recovery/*"], {
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		assert.match(branches, /kb-recovery\/t2\//, "docs residue parked in the docs repo");
+		assert.ok(!fs.existsSync(out.workdir));
+		assert.ok(!fs.existsSync(out.docsWorkdir));
 	});
 });
 

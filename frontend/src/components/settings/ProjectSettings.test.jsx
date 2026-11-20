@@ -281,6 +281,122 @@ test('an unchanged docs repo is not re-sent on save (no re-provisioning)', async
   expect(api.updateProject.mock.calls[0][1]).not.toHaveProperty('docsRepo');
 });
 
+test('the Project tab summarizes the docs repo and jumps to Files & Repos', async () => {
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+  });
+  // The model picker renders once model discovery resolves.
+  await screen.findByLabelText('Default AI Model');
+  // Landing tab shows the Off summary with a jump (not the fields themselves).
+  expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('Off');
+  expect(
+    screen.queryByLabelText('Separate Docs Repository URL (optional)'),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /configure in files & repos/i }));
+  expect(screen.getByText('Multi-Location Paths & Repositories')).toBeInTheDocument();
+  expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toBeInTheDocument();
+});
+
+test('the Project tab summary names the docs repo URL when enabled', async () => {
+  const projectWithDocsRepo = {
+    ...projects[0],
+    docsRepo: { url: 'git@github.com:me/proj-docs.git', branchMode: 'synced' },
+  };
+  renderWithKainBain(<ProjectSettings />, {
+    projects: [projectWithDocsRepo],
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+  });
+  await screen.findByLabelText('Default AI Model');
+  expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('On');
+  expect(screen.getByText('git@github.com:me/proj-docs.git')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /manage in files & repos/i }));
+  expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toHaveValue(
+    'git@github.com:me/proj-docs.git',
+  );
+});
+
+test('a server 400 on save surfaces the server sentence inline and in the toast', async () => {
+  // Client validation cannot know the stealth nesting rule (absolute path,
+  // valid URL) — the server refuses, and its sentence must reach the user.
+  const err = new Error('API 400 on /projects/p1');
+  err.status = 400;
+  err.body = '{"error":"docsRepo.localPath \'/x\' must live OUTSIDE the main project repo"}';
+  api.updateProject.mockRejectedValue(err);
+  const notifyError = vi.fn();
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+    notifyError,
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  fireEvent.change(screen.getByLabelText('Separate Docs Repository URL (optional)'), {
+    target: { value: 'git@github.com:me/proj-docs.git' },
+  });
+  fireEvent.change(screen.getByLabelText('Docs Repository Local Path (optional)'), {
+    target: { value: '/srv/kb/proj-docs' },
+  });
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(screen.getByRole('alert')).toHaveTextContent(/OUTSIDE the main project repo/i);
+  });
+  expect(notifyError).toHaveBeenCalledWith(
+    expect.stringMatching(/OUTSIDE the main project repo/i),
+    'Save Error',
+  );
+});
+
+test('a 409 claim conflict shows the server sentence, not the reload guidance', async () => {
+  const err = new Error('API 409 on /projects/p1');
+  err.status = 409;
+  err.body = '{"error":"Docs repo path \'/srv/kb\' is already claimed by project \'Other\'"}';
+  api.updateProject.mockRejectedValue(err);
+  const notifyError = vi.fn();
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+    notifyError,
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  fireEvent.change(screen.getByLabelText('Separate Docs Repository URL (optional)'), {
+    target: { value: 'git@github.com:me/proj-docs.git' },
+  });
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(screen.getByRole('alert')).toHaveTextContent(/already claimed/i);
+  });
+  expect(screen.getByRole('alert')).not.toHaveTextContent(/another tab/i);
+  expect(notifyError).toHaveBeenCalledWith(
+    expect.stringMatching(/already claimed/i),
+    'Save Error',
+  );
+});
+
+test('an over-long docs repo URL is refused client-side before any save', async () => {
+  api.updateProject.mockResolvedValue({ id: 'p1' });
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+    updateProjectInState: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('Files & Repos'));
+  fireEvent.change(screen.getByLabelText('Separate Docs Repository URL (optional)'), {
+    target: { value: `https://git.example.com/${'a'.repeat(2025)}` },
+  });
+  fireEvent.click(screen.getByText('Save Configuration'));
+  await waitFor(() => {
+    expect(screen.getByRole('alert')).toHaveTextContent(/git remote/i);
+  });
+  expect(api.updateProject).not.toHaveBeenCalled();
+});
+
 test('a docs repo URL with whitespace is refused client-side before any save', async () => {
   api.updateProject.mockResolvedValue({ id: 'p1' });
   renderWithKainBain(<ProjectSettings />, {
