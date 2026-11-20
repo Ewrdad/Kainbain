@@ -82,4 +82,53 @@ describe('WorkflowCanvas Task Creation', () => {
       expect(mockSetSelectedTask).toHaveBeenCalledWith(mockTask);
     });
   });
+
+  it('previews the active pipeline base branch in the inline add-task form', async () => {
+    vi.mocked(useKainBain).mockReturnValue({
+      stages: mockStages,
+      tasks: [],
+      setSelectedTask: vi.fn(),
+      createTask: vi.fn(),
+      executeTaskStage: vi.fn(),
+      activeProjectId: 'proj-1',
+      activeWorkflowId: 'wf-feature',
+      projects: [],
+      projectWorkflows: [{ id: 'wf-feature', name: 'Feature', baseBranch: 'feature/auth' }],
+      uiPreferences: {},
+    });
+
+    render(<WorkflowCanvas />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Add Task/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/Add Task/i));
+    expect(screen.getByText('New task will branch off feature/auth')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Change in pipeline settings' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no base preview when the active pipeline uses the repo default', async () => {
+    vi.mocked(useKainBain).mockReturnValue({
+      stages: mockStages,
+      tasks: [],
+      setSelectedTask: vi.fn(),
+      createTask: vi.fn(),
+      executeTaskStage: vi.fn(),
+      activeProjectId: 'proj-1',
+      activeWorkflowId: 'wf-1',
+      projects: [],
+      projectWorkflows: [{ id: 'wf-1', name: 'Main Pipeline', isDefault: true }],
+      uiPreferences: {},
+    });
+
+    render(<WorkflowCanvas />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Add Task/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/Add Task/i));
+    expect(screen.queryByText(/New task will branch off/)).toBeNull();
+  });
 });
