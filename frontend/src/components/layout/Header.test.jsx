@@ -639,6 +639,45 @@ test('adopt modal omits docsRepo entirely when the advanced URL is blank', () =>
   });
 });
 
+// Scroll contract (short-viewport clip fix): with Advanced expanded by
+// default, the create/adopt content is taller than short windows — the
+// dialog must cap its height and scroll its form, or the docs-repo field
+// and the final button clip out of reach with no way to reveal them.
+test('create project modal caps height and scrolls so the docs repo field stays reachable', () => {
+  const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'X' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+  const dialog = screen.getByRole('dialog', { name: /Create New Project/i });
+  expect(dialog.className).toContain('max-h-[90vh]');
+  const form = screen.getByLabelText('Project Name').closest('form');
+  expect(form.className).toContain('overflow-y-auto');
+  expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
+});
+
+test('adopt modal caps height and scrolls so the docs repo fields stay reachable', () => {
+  const registerProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Adopted' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    registerProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ Add Existing Project…'));
+  const dialog = screen.getByRole('dialog', { name: /Add Existing Project/i });
+  expect(dialog.className).toContain('max-h-[90vh]');
+  const form = screen.getByLabelText('Project Directory').closest('form');
+  expect(form.className).toContain('overflow-y-auto');
+  expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
+  expect(screen.getByLabelText('Docs Repo Local Path (optional)')).toBeInTheDocument();
+});
+
 test('renders the Go to App pill when the active project has an app link', () => {
   renderWithKainBain(<Header />, {
     projects: [

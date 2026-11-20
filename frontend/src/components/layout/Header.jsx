@@ -752,14 +752,18 @@ export function Header() {
           baked-in frontend ref and /status build.commit provably disagree. */}
       <VersionMismatchBanner />
 
-      {/* New Project Modal */}
+      {/* New Project Modal. Scroll contract: the header stays pinned and the
+          form scrolls (max-h-90vh + overflow-y-auto, the SystemGuideModal /
+          UiPreferencesModal pattern) — with Advanced expanded by default the
+          content is taller than short viewports, and without the scroll the
+          docs-repo field and Create button clip out of reach. */}
       {isCreatingProject && (
         <Modal
           onClose={closeCreateProjectModal}
           labelledBy="new-project-title"
-          dialogClassName="w-full max-w-md bg-surface border border-border-standard rounded-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
+          dialogClassName="w-full max-w-md max-h-[90vh] bg-surface border border-border-standard rounded-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
         >
-          <header className="p-6 border-b border-border-standard bg-surface-container flex items-center justify-between">
+          <header className="p-6 shrink-0 border-b border-border-standard bg-surface-container flex items-center justify-between">
             <h2
               id="new-project-title"
               className="text-lg font-bold text-on-surface tracking-tight flex items-center gap-2"
@@ -776,7 +780,10 @@ export function Header() {
             </button>
           </header>
 
-          <form onSubmit={handleCreateProjectSubmit} className="p-6 space-y-4">
+          <form
+            onSubmit={handleCreateProjectSubmit}
+            className="p-6 space-y-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar"
+          >
             <div>
               <label
                 htmlFor="new-project-name-input"
@@ -877,14 +884,17 @@ export function Header() {
         </Modal>
       )}
 
-      {/* Add Existing Project (adopt) Modal */}
+      {/* Add Existing Project (adopt) Modal. Same scroll contract as New
+          Project above (taller still: path + name + state folder + Advanced
+          docs-repo URL + local path) — the form scrolls beneath the pinned
+          header so every field stays reachable on short viewports. */}
       {isRegisteringProject && (
         <Modal
           onClose={closeAdoptProjectModal}
           labelledBy="adopt-project-title"
-          dialogClassName="w-full max-w-md bg-surface border border-border-standard rounded-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
+          dialogClassName="w-full max-w-md max-h-[90vh] bg-surface border border-border-standard rounded-md shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200"
         >
-          <header className="p-6 border-b border-border-standard bg-surface-container flex items-center justify-between">
+          <header className="p-6 shrink-0 border-b border-border-standard bg-surface-container flex items-center justify-between">
             <h2
               id="adopt-project-title"
               className="text-lg font-bold text-on-surface tracking-tight flex items-center gap-2"
@@ -901,7 +911,10 @@ export function Header() {
             </button>
           </header>
 
-          <form onSubmit={handleAdoptProjectSubmit} className="p-6 space-y-4">
+          <form
+            onSubmit={handleAdoptProjectSubmit}
+            className="p-6 space-y-4 flex-1 min-h-0 overflow-y-auto custom-scrollbar"
+          >
             <div>
               <label
                 htmlFor="adopt-project-path-input"
