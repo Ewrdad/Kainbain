@@ -60,13 +60,38 @@ describe('AliasTargetChip', () => {
     expect(screen.getByTestId('chip')).toHaveAttribute('title', `100% pi (${longRef})`);
   });
 
-  it('shows the reasoning level as a muted suffix when present', () => {
+  it('shows the reasoning level as a muted suffix when present (4-segment ref)', () => {
+    // A real ::level suffix only exists on the 4-segment form
+    // (harness::provider::id::level) per the shared grammar — assert the
+    // muted suffix span itself, not the sr-only full ref that always
+    // contains the raw string.
+    const summary = aliasTargetSummary(
+      { harness: 'pi', model: 'pi::google::m1::high', percent: 100 },
+      HARNESSES,
+    );
+    expect(summary.reasoning).toBe('high');
+    const { container } = render(<AliasTargetChip summary={summary} testId="chip" />);
+    const modelText = container.querySelector('.break-all');
+    const suffix = modelText.querySelector('.text-text-muted');
+    expect(suffix).not.toBeNull();
+    expect(suffix.textContent).toBe('::high');
+    expect(modelText.textContent).toContain('m1');
+    // The provider badge still splits off the harness half of the ref.
+    expect(screen.getByTestId('chip')).toHaveTextContent('google');
+  });
+
+  it('does not invent a reasoning suffix for a 3-segment ref (grammar: harness::provider::id)', () => {
+    // `google::m1::high` parses as harness=google, provider=m1, id=high —
+    // no reasoning level — so no muted suffix span may render.
     const summary = aliasTargetSummary(
       { harness: 'pi', model: 'google::m1::high', percent: 100 },
       HARNESSES,
     );
-    render(<AliasTargetChip summary={summary} testId="chip" />);
-    expect(screen.getByTestId('chip')).toHaveTextContent('::high');
+    expect(summary.reasoning).toBeNull();
+    const { container } = render(<AliasTargetChip summary={summary} testId="chip" />);
+    const modelText = container.querySelector('.break-all');
+    expect(modelText).not.toBeNull();
+    expect(modelText.querySelector('.text-text-muted')).toBeNull();
   });
 
   it('omits the provider badge for bare model ids', () => {

@@ -28,7 +28,7 @@ section root capped at max-w-2xl (672px) even on a 1440px+ desktop page
 │ └────────────────────────────┘ └────────────────────────────┘ │
 │ [⚠ error badge — own full-width line when present]            │
 └───────────────────────────────────────────────────────────────┘
-section root widened to max-w-4xl (896px) — this section only
+section root spans the FULL width of the settings panel (no max-w cap) — this section only
 ```
 
 ## Decisions
@@ -50,8 +50,12 @@ section root widened to max-w-4xl (896px) — this section only
 - **(c) Truncation order.** chip wraps to next line → model id wraps
   (`break-all`) → single-line ellipsis only as last resort on the alias *name*
   (unchanged). Model refs are never ellipsized.
-- **(d) Container width.** `max-w-2xl` → `max-w-4xl` on the alias section root
-  only (other settings tabs keep `max-w-2xl` — intentional, noted in PR).
+- **(d) Container width.** `max-w-2xl` → **no width cap at all** (`w-full
+  min-w-0`) on the alias section root only, so the section uses the full width
+  of the settings panel on desktop. Human review correction (final review
+  2026-11-20): an intermediate `max-w-4xl` (896px) still wasted most of a
+  1440px+ page — "make the most of the full width" means uncapped. Other
+  settings tabs keep their `max-w-*` — intentional, noted in PR.
 - **(e) Mobile.** No separate breakpoint needed: chips line is a full-width
   block under the header at every width; at 390px each chip takes the full row.
 - **Provider split semantics** (`splitModelRefProvider`): strip optional
@@ -64,9 +68,10 @@ section root widened to max-w-4xl (896px) — this section only
 
 ## Mock verification (scratchpad `design-spike/mock.html`, headless chromium)
 
-- 1440px: section uses 896px (max-w-4xl); all three chips (incl. a 204-char
-  model id) render with `scrollWidth == clientWidth` — zero clipping; no
-  horizontal page scroll.
+- 1440px: section spans the full panel width (no `max-w-*` on the root —
+  verified `className` carries `w-full` and no `max-w-` class); all three
+  chips (incl. a 204-char model id) render with `scrollWidth == clientWidth`
+  — zero clipping; no horizontal page scroll.
 - 390px: chips drop to full-width rows under the header; 204-char model id
   wraps inside its chip, fully contained, no page scroll.
 
