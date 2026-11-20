@@ -150,6 +150,29 @@ test('submit stays disabled on an empty title', () => {
   expect(screen.getByLabelText('Submit new task')).toBeDisabled();
 });
 
+test('inline form previews a custom pipeline base with a settings link', () => {
+  const setView = vi.fn();
+  renderColumn({
+    addingTaskStageId: 's-1',
+    newTaskTitle: 'Fix login bug',
+    pipelineBaseBranch: 'feature/auth',
+    setView,
+  });
+  expect(screen.getByText('New task will branch off feature/auth')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Change in pipeline settings' }));
+  expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
+});
+
+test('inline form shows no base preview on the repo default', () => {
+  const { unmount } = renderColumn({ addingTaskStageId: 's-1', newTaskTitle: 'Fix it' });
+  expect(screen.queryByText(/New task will branch off/)).toBeNull();
+  unmount();
+
+  // Blank and wrong-typed values degrade to the same empty state.
+  renderColumn({ addingTaskStageId: 's-1', newTaskTitle: 'Fix it', pipelineBaseBranch: '   ' });
+  expect(screen.queryByText(/New task will branch off/)).toBeNull();
+});
+
 test('settings trigger expands the drawer', () => {
   const setExpandedSettingsStageId = vi.fn();
   renderColumn({ setExpandedSettingsStageId });

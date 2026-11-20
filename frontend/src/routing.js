@@ -204,6 +204,16 @@ export function normalizeLegacyUrl(loc = defaultLocation()) {
         if (queryView === 'task' || queryView === 'task-review' || queryView === 'tasks') {
           return '#/';
         }
+        // A legacy section rides along to the tab it names (both settings
+        // pages deep-link their tabs the same way); an unknown id fails
+        // safe to the default tab on the target page, never a blank page.
+        if (queryView === 'settings' || queryView === 'system-settings') {
+          const section = params.get('section');
+          if (section && section.trim()) {
+            // eslint-disable-next-line security/detect-object-injection -- queryView is already proven a key of this map by the !== undefined guard above
+            return `#${LEGACY_VIEW_PATHS[queryView]}/${encodeURIComponent(section.trim())}`;
+          }
+        }
         return `#${LEGACY_VIEW_PATHS[queryView] === '/' ? '/' : LEGACY_VIEW_PATHS[queryView]}`;
       }
     } catch {

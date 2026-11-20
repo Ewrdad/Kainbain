@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import { useKainBain } from '../../context/KainBainContext';
 import { SkillsSection } from './SkillsSection';
 import { SelectDropdown } from '../common/SelectDropdown';
@@ -38,16 +38,17 @@ const HIGHLIGHT_HIDE_DELAY_MS = 2100;
 export function ProjectSettings() {
   const { projects, activeProjectId, selectProject } = useKainBain();
   const { section: routeSection } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const activeProject = projects.find((p) => p.id === activeProjectId);
   // Deep link: `/settings/:section` opens that tab (task surfaces link here
   // so the user lands on the tab that edits what they were looking at).
-  // Unknown ids fail safe to the project tab without rewriting the URL.
-  // The sync is mount-only by design: tab clicks write the URL back (see
-  // handleSectionChange), but the tab never follows later URL edits, so the
-  // unsaved-edits guard stays the single decider for leaving the form.
+  // The route param wins, `?section=` is the fallback — the same precedence
+  // as SystemSettingsPage. Unknown ids fail safe to the project tab without
+  // rewriting the URL.
+  const requestedSection = routeSection || searchParams.get('section') || undefined;
   const [settingsSection, setSettingsSection] = useState(() =>
-    PROJECT_SETTINGS_SECTIONS.includes(routeSection) ? routeSection : 'project',
+    PROJECT_SETTINGS_SECTIONS.includes(requestedSection) ? requestedSection : 'project',
   );
   // Fail-safe: an unknown section id (e.g. a stale 'ui' from before UI
   // customization moved to System Settings) falls back to the project form
@@ -75,9 +76,11 @@ export function ProjectSettings() {
    * @description Tab switch guard: leaving the project-related tabs
    *   (Project/Aliases/Files & Repos/Addresses) with unsaved edits asks for
    *   confirmation first. Moving between project tabs never warns — the
-   *   shared form stays mounted and keeps the edits.
+   *   shared form stays mounted and keeps the edits. Also the single path
+   *   for URL-driven switches (see the deep-link follow effect below), so
+   *   the guard stays the single decider for leaving the form.
    ***/
-  const handleSectionChange = (nextSection) => {
+  const handleSectionChange = useCallback((nextSection) => {
     // Fail-safe: an unknown section id is ignored, never stored — storing it
     // would only be masked by the effectiveSection fallback and would hide
     // the bad caller. Returns whether the switch was accepted so callers
@@ -100,7 +103,38 @@ export function ProjectSettings() {
     // instead of always resetting to Project.
     navigate(`/settings/${encodeURIComponent(nextSection)}`, { replace: true });
     return true;
-  };
+  }, [effectiveSection, formDirty, navigate]);
+  // Deep-link follow: same-view navigations (header Settings while on the
+  // workflows tab, a pasted `/settings/<tab>` URL, back/forward) change the
+  // URL without remounting this page — the mount initializer above never
+  // re-runs, so without this detection the tab and the URL desync. Whenever
+  // the URL names a different tab than the visible one, the guarded switch
+  // runs (the mount already consumed the mount-time URL, and tab clicks set
+  // both together, so steady-state renders no-op here). The switch settles
+  // async (react-hooks/set-state-in-effect): the guarded switch runs off
+  // the synchronous effect body — the same pattern as the settings-section
+  // loaders — one microtask after navigation. A superseding render cancels
+  // the pending switch and re-evaluates, so only the latest URL ever wins
+  // and an unmount can never yank the tab (or the URL) back after the user
+  // moved on. When the guard blocks the switch, the URL is rewritten back
+  // to the visible tab instead of stranding a lie in the address bar.
+  // Unknown ids are ignored (fail safe, keep tab, leave URL), matching the
+  // mount behaviour.
+  useEffect(() => {
+    const target = requestedSection === undefined ? 'project' : requestedSection;
+    if (!PROJECT_SETTINGS_SECTIONS.includes(target)) return undefined;
+    if (target === settingsSection) return undefined;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled) return;
+      if (!handleSectionChange(target)) {
+        navigate(`/settings/${encodeURIComponent(effectiveSection)}`, { replace: true });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedSection, settingsSection, effectiveSection, handleSectionChange, navigate]);
   const focusTabAt = (index) => {
     const count = PROJECT_SETTINGS_TABS.length;
     if (count === 0) return;
