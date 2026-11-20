@@ -92,4 +92,15 @@ describe('AliasTargetChip', () => {
     expect(screen.getByTestId('chip')).toHaveTextContent('80%');
     expect(screen.getByTestId('chip')).toHaveTextContent('pi');
   });
+
+  it('fails safe on a missing or partial summary prop (empty chip, no crash)', () => {
+    const { container, rerender } = render(<AliasTargetChip summary={null} testId="chip" />);
+    expect(screen.getByTestId('chip')).toBeInTheDocument();
+    expect(screen.getByTestId('chip').textContent).toBe('');
+    expect(container.querySelector('.sr-only')).toBeNull();
+
+    rerender(<AliasTargetChip summary={{ percentText: '50%' }} testId="chip" />);
+    expect(screen.getByTestId('chip')).toHaveTextContent('50%');
+    expect(screen.getByTestId('chip').textContent).not.toContain('undefined');
+  });
 });

@@ -17,7 +17,9 @@ import { aliasTargetSummary } from './aliasTargetSummary';
  *   wrapper, badge test ids, and click-to-expand behaviour. All historic test
  *   ids survive: `model-alias-toggle-{i}`, `model-alias-header-{i}`,
  *   `model-alias-summary-{i}` (now the chips container), `model-alias-error-alert-{i}`
- *   / `model-alias-error-badge-{i}`.
+ *   / `model-alias-error-badge-{i}`. Fails safe: a non-array `targets` renders
+ *   an empty "0 targets" chips line, and a blank alias name falls back to
+ *   `Alias {index+1}` — neither can crash the row.
  * @example <AliasCollapsedRow index={0} aliasName="router" targets={targets} targetHarnesses={harnesses}
  *   rowError="" disabled={false} onToggle={() => toggle(key)} onDelete={() => deleteRow(0)} reliabilityLine={node} />
  *   => header line "▸ router … ✕" plus a wrapping chips line "50% Muse [google] gemini-3-pro …"

@@ -128,4 +128,11 @@ describe('AliasCollapsedRow', () => {
     expect(screen.getByTestId('model-alias-summary-chip-0-0')).toHaveTextContent('unassigned');
     expect(document.getElementById('model-alias-header-0')).toHaveTextContent('Alias 1');
   });
+
+  it('fails safe on a non-array targets prop (empty chips line, no crash)', () => {
+    renderRow({ targets: null });
+    expect(screen.getByTestId('model-alias-summary-0')).toHaveTextContent('0 targets');
+    expect(screen.queryByTestId('model-alias-summary-chip-0-0')).not.toBeInTheDocument();
+    expect(screen.getByTestId('model-alias-toggle-0')).toBeInTheDocument();
+  });
 });

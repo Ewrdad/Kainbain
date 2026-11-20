@@ -11,22 +11,25 @@
  *   (already shown by the harness label). Input is the structured
  *   `aliasTargetSummary` result; a `none`-selection harness or blank model
  *   renders just percent + harness label, exactly like the text summary.
+ *   Fails safe: a missing or malformed `summary` prop renders an empty chip
+ *   instead of throwing.
  * @example <AliasTargetChip summary={aliasTargetSummary(t, harnesses)} testId="model-alias-summary-chip-0-0" />
  *   => a chip reading "50% Muse [google] gemini-3-pro-preview" with the full ref on title + sr-only
+ * @example <AliasTargetChip summary={null} testId="chip" /> => an empty chip (no crash)
  * @param {Object} props
- * @param {Object} props.summary - Structured chip summary from `aliasTargetSummary`.
+ * @param {Object} [props.summary] - Structured chip summary from `aliasTargetSummary`; defaults field-by-field when absent.
  * @param {string} [props.testId] - Test id for the chip root.
  ***/
 export function AliasTargetChip({ summary, testId }) {
   const {
-    percentText,
-    harnessLabel,
-    modelRef,
-    showModel,
-    provider,
-    modelId,
-    reasoning,
-  } = summary;
+    percentText = '',
+    harnessLabel = '',
+    modelRef = '',
+    showModel = false,
+    provider = '',
+    modelId = '',
+    reasoning = null,
+  } = summary ?? {};
   // The tooltip always carries the complete stored ref (plus its share and
   // harness context) — hover must never be the only place the full ref lives,
   // because the sr-only span below covers the accessibility tree.
