@@ -654,7 +654,10 @@ function AliasTargetRow({
               {typeof target?.model === 'string' && target.model.trim() !== '' && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <p
-                    className="text-[10px] font-mono text-amber-600 dark:text-amber-400"
+                    // break-all: a very long stored ref wraps here instead of
+                    // overflowing the card (same wrap-before-ellipsis order
+                    // as the collapsed chips — model text is never clipped).
+                    className="text-[10px] font-mono text-amber-600 dark:text-amber-400 break-all"
                     data-testid={`model-alias-kept-model-${aliasIndex}-${targetIndex}`}
                     title="Kept with a warning — ignored at dispatch until the harness offers a catalogue"
                   >
