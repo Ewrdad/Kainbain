@@ -269,6 +269,10 @@ describe("Runner Routes Integration", () => {
 
 	it("renews a live hold via claim-heartbeat: 200, still fenced past TTL", async () => {
 		const credential = await onboard("heartbeat-1");
+		// Second Runner boards BEFORE the task exists: onboard costs two
+		// HTTP round-trips, and any of that latency inside the timed window
+		// eats the 1000ms lease's margins and flakes this test under load.
+		const credential2 = await onboard("heartbeat-2");
 		const taskRes = await app.inject({
 			method: "POST",
 			url: "/tasks",
@@ -300,7 +304,6 @@ describe("Runner Routes Integration", () => {
 		expect(beat.statusCode).toBe(200);
 		expect(JSON.parse(beat.payload)).toMatchObject({ epoch: lease.epoch });
 		await new Promise((r) => setTimeout(r, 700));
-		const credential2 = await onboard("heartbeat-2");
 		const conflict = await app.inject({
 			method: "POST",
 			url: `/tasks/${target}/claim`,
