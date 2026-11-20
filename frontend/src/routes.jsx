@@ -40,6 +40,7 @@ export function AppRoutes() {
       <Route path="/orchestrator" element={<Navigate to="/" replace />} />
       <Route path="/explorer" element={<ProjectExplorer />} />
       <Route path="/settings" element={<ProjectSettings />} />
+      <Route path="/settings/:section" element={<ProjectSettings />} />
       <Route path="/system-settings" element={<SystemSettingsPage />} />
       <Route path="/system-settings/:section" element={<SystemSettingsPage />} />
       <Route path="/observability" element={<ObservabilityDashboard />} />

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router';
 import { useKainBain } from '../../context/KainBainContext';
 import { SkillsSection } from './SkillsSection';
 import { SelectDropdown } from '../common/SelectDropdown';
@@ -36,8 +37,18 @@ const HIGHLIGHT_HIDE_DELAY_MS = 2100;
  ***/
 export function ProjectSettings() {
   const { projects, activeProjectId, selectProject } = useKainBain();
+  const { section: routeSection } = useParams();
+  const navigate = useNavigate();
   const activeProject = projects.find((p) => p.id === activeProjectId);
-  const [settingsSection, setSettingsSection] = useState('project');
+  // Deep link: `/settings/:section` opens that tab (task surfaces link here
+  // so the user lands on the tab that edits what they were looking at).
+  // Unknown ids fail safe to the project tab without rewriting the URL.
+  // The sync is mount-only by design: tab clicks write the URL back (see
+  // handleSectionChange), but the tab never follows later URL edits, so the
+  // unsaved-edits guard stays the single decider for leaving the form.
+  const [settingsSection, setSettingsSection] = useState(() =>
+    PROJECT_SETTINGS_SECTIONS.includes(routeSection) ? routeSection : 'project',
+  );
   // Fail-safe: an unknown section id (e.g. a stale 'ui' from before UI
   // customization moved to System Settings) falls back to the project form
   // instead of rendering a blank page.
@@ -83,6 +94,11 @@ export function ProjectSettings() {
       return false;
     }
     setSettingsSection(nextSection);
+    // The URL names the visible tab (REPLACE, never push: tab clicks must
+    // not stack history entries, so the back button keeps leaving the page
+    // exactly as before). Refresh and copied links then land on this tab
+    // instead of always resetting to Project.
+    navigate(`/settings/${encodeURIComponent(nextSection)}`, { replace: true });
     return true;
   };
   const focusTabAt = (index) => {

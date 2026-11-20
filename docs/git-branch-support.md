@@ -28,7 +28,10 @@ Two further settings control workspace isolation and dirty-tree recovery
 
 Each named workflow (pipeline) can name its own **base branch** — the branch
 that pipeline treats as its main branch. Set it in the pipeline settings
-(`Base branch` field, blank = repo default) or via
+(Project Settings → Named Workflows tab, `#/settings/workflows`; `Base
+branch` field, blank = repo default) — the task detail page and the
+create-task dialog both link there from the base branch they display, and
+settings search finds it under "base branch" — or via
 `POST/PATCH /projects/:id/workflows…` (`baseBranch`, stored in
 `.kainbain/project.json`). Every "default branch" step in this document then
 means the task's **effective base branch**: task branches are created off it,

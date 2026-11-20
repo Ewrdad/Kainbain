@@ -64,6 +64,7 @@ test.each([
   ['/', 'view-orchestrator'],
   ['/explorer', 'view-explorer'],
   ['/settings', 'view-settings'],
+  ['/settings/workflows', 'view-settings'],
   ['/system-settings', 'view-system-settings'],
   ['/system-settings/models', 'view-system-settings'],
   ['/observability', 'view-observability'],
