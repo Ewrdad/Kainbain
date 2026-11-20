@@ -43,6 +43,25 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes – skip checks for all automatic runner saves, not just emergency backups"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Put the task back in the queue so it can be tried again later"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Write a clear warning in the logs so it can be found later (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
