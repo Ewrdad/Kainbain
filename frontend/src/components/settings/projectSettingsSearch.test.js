@@ -42,6 +42,17 @@ describe('searchSettings', () => {
     expect(searchSettings('use task branches')[0]?.id).toBe('task-branches');
   });
 
+  it('finds the separate docs repo settings by label and keyword', () => {
+    expect(searchSettings('separate docs repo')[0]?.id).toBe('docs-repo-url');
+    expect(searchSettings('stealth')[0]?.id).toBe('docs-repo-url');
+    expect(searchSettings('docs repo local path')[0]?.id).toBe('docs-repo-path');
+    const urlHit = searchSettings('separate')[0];
+    expect(urlHit.tab).toBe('files-repos');
+    expect(urlHit.elementId).toBe('project-docs-repo-url-input');
+    // The pre-existing git-remote entry still wins plain "git" queries.
+    expect(searchSettings('git')[0]?.id).toBe('git-repo');
+  });
+
   it('requires every word to hit (one miss disqualifies the entry)', () => {
     // No single setting is about both git and timeouts.
     expect(searchSettings('git timeout')).toEqual([]);

@@ -317,7 +317,10 @@ export function Header() {
   const [adoptKainbainDir, setAdoptKainbainDir] = useState('');
   const [adoptDocsRepoUrl, setAdoptDocsRepoUrl] = useState('');
   const [adoptDocsRepoPath, setAdoptDocsRepoPath] = useState('');
-  const [adoptAdvancedOpen, setAdoptAdvancedOpen] = useState(false);
+  // Expanded by default on import: shared/public repos are exactly where
+  // KainBain traces must stay out, so the separate-docs-repo option must be
+  // visible without hunting for it (the create dialog stays collapsed).
+  const [adoptAdvancedOpen, setAdoptAdvancedOpen] = useState(true);
   const [adoptError, setAdoptError] = useState('');
 
   // MARK: toolbar-collapse sync (task 34793321)
@@ -481,7 +484,7 @@ export function Header() {
       setAdoptKainbainDir('');
       setAdoptDocsRepoUrl('');
       setAdoptDocsRepoPath('');
-      setAdoptAdvancedOpen(false);
+      setAdoptAdvancedOpen(true);
       setIsRegisteringProject(false);
       setIsProjectDropdownOpen(false);
     } catch (err) {
@@ -812,7 +815,9 @@ export function Header() {
               </p>
             </div>
 
-            {/* Advanced: separate docs repo (collapsed by default) */}
+            {/* Advanced: separate docs repo (collapsed by default). The
+                toggle names the option it hides so the setting is findable
+                without expanding it first. */}
             <div>
               <button
                 type="button"
@@ -827,7 +832,7 @@ export function Header() {
                 >
                   chevron_right
                 </span>
-                Advanced options
+                Advanced options: separate docs repo
               </button>
               {createAdvancedOpen && (
                 <div id="create-project-advanced" className="mt-3">
@@ -951,9 +956,10 @@ export function Header() {
               />
             </div>
 
-            {/* Advanced: separate docs repo (collapsed by default) — the
-                natural place on an import, since shared/public repos are
-                exactly where KainBain traces must stay out. */}
+            {/* Advanced: separate docs repo (expanded by default on
+                import) — the natural place on an import, since shared/public
+                repos are exactly where KainBain traces must stay out. The
+                toggle names the option so it stays findable when collapsed. */}
             <div>
               <button
                 type="button"
@@ -968,7 +974,7 @@ export function Header() {
                 >
                   chevron_right
                 </span>
-                Advanced options
+                Advanced options: separate docs repo
               </button>
               {adoptAdvancedOpen && (
                 <div id="adopt-project-advanced" className="mt-3">

@@ -195,58 +195,80 @@ export function PathsAndReposSection({
             </p>
           </div>
 
-          {/* Separate docs repo (advanced): all KainBain docs/state live in
-              this repo's checkout; nothing KainBain-related is written into
-              the main repo (no docs symlink, no state folder, no .gitignore
-              entries). Blank URL disables it again. */}
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="project-docs-repo-url-input"
-              className="text-xs font-bold uppercase text-text-muted tracking-wider"
-            >
-              Separate Docs Repository URL (optional)
-            </label>
-            <input
-              id="project-docs-repo-url-input"
-              type="text"
-              value={docsRepoUrl}
-              onChange={(e) => setDocsRepoUrl(e.target.value)}
-              className="p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface"
-              placeholder="https://git.example.com/me/my-repo-kainbain-docs.git"
-              data-testid="project-docs-repo-url-input"
-            />
-            <p className="text-[10px] text-text-muted">
-              When set, task docs, plans, reports and the KainBain state folder live in this
-              separate (usually private) repo instead of the main repo — the main repo stays free
-              of KainBain traces. Uses the same login as the main repo. Task branches (
-              <code className="font-mono text-primary">kb/&lt;taskId&gt;</code>) stay in sync
-              across both repos. Clear the field and save to disable again.
+          {/* Separate docs repo: all KainBain docs/state live in this
+              repo's checkout; nothing KainBain-related is written into the
+              main repo (no docs symlink, no state folder, no .gitignore
+              entries). Blank URL disables it again. Kept in its own bordered
+              block with a heading so it is easy to spot when scanning the
+              Files & Repositories tab. */}
+          <div className="border border-border-standard rounded-sm bg-surface-deep p-4 space-y-4">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-text-high flex items-center gap-2">
+              <span className="text-primary">📚</span> Separate Docs Repository
+            </h4>
+            <p data-testid="docs-repo-status" className="text-[10px] text-text-muted">
+              {project?.docsRepo?.url ? (
+                <>
+                  Enabled — KainBain docs and state live in{' '}
+                  <code className="font-mono text-primary break-all">{project.docsRepo.url}</code>{' '}
+                  and task branches (<code className="font-mono text-primary">kb/&lt;taskId&gt;</code>)
+                  stay in sync across both repos.
+                </>
+              ) : (
+                <>
+                  Disabled — KainBain docs and state live inside the main repo. Set the URL below
+                  to move all new docs/state into a separate (usually private) repo instead.
+                </>
+              )}
             </p>
-          </div>
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="project-docs-repo-url-input"
+                className="text-xs font-bold uppercase text-text-muted tracking-wider"
+              >
+                Separate Docs Repository URL (optional)
+              </label>
+              <input
+                id="project-docs-repo-url-input"
+                type="text"
+                value={docsRepoUrl}
+                onChange={(e) => setDocsRepoUrl(e.target.value)}
+                className="p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface"
+                placeholder="https://git.example.com/me/my-repo-kainbain-docs.git"
+                data-testid="project-docs-repo-url-input"
+              />
+              <p className="text-[10px] text-text-muted">
+                When set, task docs, plans, reports and the KainBain state folder live in this
+                separate (usually private) repo instead of the main repo — the main repo stays free
+                of KainBain traces. Uses the same login as the main repo. Task branches (
+                <code className="font-mono text-primary">kb/&lt;taskId&gt;</code>) stay in sync
+                across both repos. Clear the field and save to disable again.
+              </p>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <label
-              htmlFor="project-docs-repo-path-input"
-              className="text-xs font-bold uppercase text-text-muted tracking-wider"
-            >
-              Docs Repository Local Path (optional)
-            </label>
-            <input
-              id="project-docs-repo-path-input"
-              type="text"
-              value={docsRepoLocalPath}
-              onChange={(e) => setDocsRepoLocalPath(e.target.value)}
-              disabled={!docsRepoUrl.trim()}
-              className={`p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface ${
-                !docsRepoUrl.trim() ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-              placeholder="Defaults to <project-dir>-kainbain-docs"
-              data-testid="project-docs-repo-path-input"
-            />
-            <p className="text-[10px] text-text-muted">
-              Absolute path of the docs-repo checkout on this machine. Leave blank to use the
-              default sibling directory.
-            </p>
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="project-docs-repo-path-input"
+                className="text-xs font-bold uppercase text-text-muted tracking-wider"
+              >
+                Docs Repository Local Path (optional)
+              </label>
+              <input
+                id="project-docs-repo-path-input"
+                type="text"
+                value={docsRepoLocalPath}
+                onChange={(e) => setDocsRepoLocalPath(e.target.value)}
+                disabled={!docsRepoUrl.trim()}
+                className={`p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface ${
+                  !docsRepoUrl.trim() ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                placeholder="Defaults to <project-dir>-kainbain-docs"
+                data-testid="project-docs-repo-path-input"
+              />
+              <p className="text-[10px] text-text-muted">
+                Absolute path of the docs-repo checkout on this machine. Leave blank to use the
+                default sibling directory.
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-col gap-2">

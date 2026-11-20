@@ -157,4 +157,22 @@ describe('PathsAndReposSection', () => {
     fireEvent.change(pathInput, { target: { value: '/srv/kb/other' } });
     expect(setDocsRepoLocalPath).toHaveBeenCalledWith('/srv/kb/other');
   });
+
+  it('shows the docs repo block with a heading and a disabled status when unset', () => {
+    renderWithKainBain(<PathsAndReposSection {...baseProps} />);
+    expect(screen.getByText('Separate Docs Repository')).toBeInTheDocument();
+    expect(screen.getByTestId('docs-repo-status')).toHaveTextContent(/disabled/i);
+  });
+
+  it('shows an enabled status naming the docs repo URL when set', () => {
+    renderWithKainBain(
+      <PathsAndReposSection
+        {...baseProps}
+        project={{ id: 'p1', name: 'Project A', docsRepo: { url: 'https://git.example.com/me/docs.git' } }}
+      />,
+    );
+    const status = screen.getByTestId('docs-repo-status');
+    expect(status).toHaveTextContent(/enabled/i);
+    expect(status).toHaveTextContent('https://git.example.com/me/docs.git');
+  });
 });

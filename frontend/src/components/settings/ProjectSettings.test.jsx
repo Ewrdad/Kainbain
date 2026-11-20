@@ -932,9 +932,10 @@ test('every search index entry resolves to an element on its tab', async () => {
     expect(document.getElementById(entry.elementId)).not.toBeNull();
   }
   fireEvent.click(screen.getByText('Files & Repos'));
-  for (const entry of entriesFor('files')) {
+  for (const entry of entriesFor('files-repos')) {
     expect(document.getElementById(entry.elementId)).not.toBeNull();
   }
+  expect(entriesFor('files-repos').length).toBeGreaterThan(0);
   unmount();
 
   renderWithKainBain(<ProjectSettings />, {

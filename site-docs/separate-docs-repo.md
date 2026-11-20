@@ -19,9 +19,9 @@ A project can instead store **everything KainBain** in a separate, private git r
 
 ## Setting it up
 
-**On create or import** (recommended, especially on import): open the *Advanced options* disclosure in the New Project / Add Existing Project dialog and fill in **Docs Repository URL**. On import you can also set **Docs Repo Local Path** — the absolute path where the docs repo is (or will be) checked out on this machine. When left blank, KainBain provisions a sibling `<project-dir>-kainbain-docs` directory.
+**On create or import** (recommended, especially on import): the Add Existing Project dialog shows **Docs Repository URL** (and **Docs Repo Local Path**) right in the form — the *Advanced options: separate docs repo* section is expanded by default on import. In the New Project dialog the same section starts collapsed; expand it to fill in the URL. **Docs Repo Local Path** is the absolute path where the docs repo is (or will be) checked out on this machine. When left blank, KainBain provisions a sibling `<project-dir>-kainbain-docs` directory.
 
-**On an existing project**: Project Settings → Files & Repositories carries the same fields; saving provisions the docs repo and moves all *new* KainBain docs/state into it.
+**On an existing project**: Project Settings → Files & Repositories carries the same fields in a *Separate Docs Repository* block (with an Enabled/Disabled status line); typing "separate docs repo" in the settings search jumps straight to it. Saving provisions the docs repo and moves all *new* KainBain docs/state into it.
 
 The docs repo URL is stored credential-redacted; authentication uses the same login as the main repo (ambient git credentials — same host, same credential helper). One docs repo per project; a second project claiming the same URL or path is refused with a 409.
 

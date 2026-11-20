@@ -20,7 +20,7 @@ area stands in as **Docs Steward**.
 | `api/crew/` | Harness roster, model discovery, session capabilities | Crew reviewer |
 | `api/agent/` | Harness boundary (pi, antigravity, muse, vibe, opencode, custom, mock), contracts, `logStream/` | Crew reviewer |
 | `api/git/` | (WP-4) Command-family git operations: errors, validation, exec, staleLock, status, working-tree status/recovery, branch, commit, merge, remote — each under 420 LOC, covered by co-located `*.test.js` | Work reviewer |
-| `api/project/` | (WP-3) Project normalizers/utilities: `stageNormalizers`, `retrySettings`, `appStatus`, `workflowDefaults`, `aliasRenames`, `deployCommands`, `projectSlug`, `gitRemote`, `projectConfigDiscovery` — each under 400 LOC; consumed only through `api/projectStore.js` | House reviewer |
+| `api/project/` | (WP-3) Project normalizers/utilities: `stageNormalizers`, `retrySettings`, `appStatus`, `workflowDefaults`, `aliasRenames`, `deployCommands`, `projectSlug`, `gitRemote`, `projectConfigDiscovery`, `docsRepo`/`docsRepoPointer` (separate docs repo) — each under 400 LOC; consumed only through `api/projectStore.js` | House reviewer |
 | `api/routes/` | Fastify route registrars (thin); `tasks.js` is a 45-line facade → work/flow/watch route modules | House reviewer |
 | `api/skills/` | Skills registry and stage skill injection | Flow reviewer |
 | `api/index.js` | Fastify server wiring only; registration, no business logic (resolvers in `api/projectResolution.js`, `api/sessionResolution.js`, CORS in `api/cors.js`) | House reviewer |

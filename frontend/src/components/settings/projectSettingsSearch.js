@@ -171,6 +171,20 @@ const SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES = [
     elementId: 'project-centralized-docs-input',
   },
   {
+    id: 'docs-repo-url',
+    tab: 'files-repos',
+    label: 'Separate Docs Repository URL',
+    keywords: ['separate', 'docs', 'repository', 'repo', 'private', 'stealth', 'remote', 'url', 'state'],
+    elementId: 'project-docs-repo-url-input',
+  },
+  {
+    id: 'docs-repo-path',
+    tab: 'files-repos',
+    label: 'Docs Repository Local Path',
+    keywords: ['docs', 'repository', 'repo', 'local', 'path', 'checkout', 'separate'],
+    elementId: 'project-docs-repo-path-input',
+  },
+  {
     id: 'git-repo',
     tab: 'files-repos',
     label: 'Git Repository URL',

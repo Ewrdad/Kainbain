@@ -520,6 +520,9 @@ test('create project modal keeps the docs repo option under a collapsed Advanced
   expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
   const toggle = screen.getByRole('button', { name: /advanced options/i });
   expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  // The collapsed toggle names the option it hides, so the setting is
+  // findable without expanding first.
+  expect(toggle).toHaveTextContent(/separate docs repo/i);
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
@@ -548,6 +551,25 @@ test('create project modal forwards the advanced docs repo URL', () => {
   });
 });
 
+test('adopt modal shows the docs repo fields by default (Advanced expanded on import)', () => {
+  const registerProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Adopted' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    registerProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ Add Existing Project…'));
+  const toggle = screen.getByRole('button', { name: /advanced options/i });
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
+  expect(screen.getByLabelText('Docs Repo Local Path (optional)')).toBeInTheDocument();
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
+});
+
 test('adopt modal forwards docs repo URL and optional local path from the Advanced section', async () => {
   const registerProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Adopted' });
   renderWithKainBain(<Header />, {
@@ -561,7 +583,6 @@ test('adopt modal forwards docs repo URL and optional local path from the Advanc
   fireEvent.change(screen.getByLabelText('Project Directory'), {
     target: { value: '/repos/adopted' },
   });
-  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }));
   fireEvent.change(screen.getByLabelText('Docs Repository URL (optional)'), {
     target: { value: 'https://git.example.com/me/adopted-docs.git' },
   });
