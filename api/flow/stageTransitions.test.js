@@ -943,3 +943,54 @@ describe("timeline run attribution", () => {
 		expect(done.currentRunAttribution).toBeNull();
 	});
 });
+
+describe("gitFailureStreak clearing", () => {
+	const STREAK = {
+		stageId: "s-1",
+		signature: "hook-rejected|pre-commit|stage-commit|a.png",
+		count: 3,
+	};
+
+	it("operator moves and success advances clear the streak", () => {
+		const moved = makeStore();
+		moved.seed("p-1", task({ gitFailureStreak: { ...STREAK } }));
+		moveToStage(moved, "p-1", "t-1", "s-2", "Moved", undefined, undefined, {
+			operatorMove: true,
+		});
+		expect(moved.getTask("p-1", "t-1")).not.toHaveProperty("gitFailureStreak");
+
+		const jumped = makeStore();
+		jumped.seed("p-1", task({ gitFailureStreak: { ...STREAK } }));
+		moveToStage(jumped, "p-1", "t-1", "s-2", "Jumped", undefined, undefined, {
+			operatorMove: true,
+		});
+		expect(jumped.getTask("p-1", "t-1")).not.toHaveProperty("gitFailureStreak");
+
+		const advanced = makeStore();
+		advanced.seed("p-1", task({ gitFailureStreak: { ...STREAK } }));
+		moveToStage(advanced, "p-1", "t-1", "s-2", "Advanced");
+		expect(advanced.getTask("p-1", "t-1")).not.toHaveProperty("gitFailureStreak");
+	});
+
+	it("failback moves preserve the streak so the walk-back accumulates", () => {
+		const store = makeStore();
+		store.seed(
+			"p-1",
+			task({ currentStageId: "s-2", gitFailureStreak: { ...STREAK, stageId: "s-2" } }),
+		);
+		moveToStage(store, "p-1", "t-1", "s-1", "Failed back");
+		expect(store.getTask("p-1", "t-1").gitFailureStreak).toMatchObject({ count: 3 });
+	});
+
+	it("operator retry and resume clear the streak", async () => {
+		const retried = makeStore();
+		retried.seed("p-1", task({ status: "failed", gitFailureStreak: { ...STREAK } }));
+		await retryStage(retried, "p-1", "t-1", { stages: STAGES });
+		expect(retried.getTask("p-1", "t-1")).not.toHaveProperty("gitFailureStreak");
+
+		const resumed = makeStore();
+		resumed.seed("p-1", task({ status: "interrupted", gitFailureStreak: { ...STREAK } }));
+		await resumeTask(resumed, "p-1", "t-1", { stages: STAGES });
+		expect(resumed.getTask("p-1", "t-1")).not.toHaveProperty("gitFailureStreak");
+	});
+});

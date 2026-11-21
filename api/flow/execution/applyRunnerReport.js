@@ -7,6 +7,8 @@ import { resolveStagesForTask } from "../stageResolution.js";
 import { normalizeStageType } from "../../projectStore.js";
 import { ALIAS_HARNESS_ID } from "../../../shared/modelAliases.js";
 import { routeStageError } from "./routeStageError.js";
+import { sanitizeGitFailure } from "./sanitizeGitFailure.js";
+import { recordGitFailureStreak } from "./recordGitFailureStreak.js";
 import { parkTaskForSurvey } from "./parkTaskForSurvey.js";
 import { kickSurveyImageJob } from "../../imageGen/surveyImages.js";
 import { decideAgentStageVerdict } from "../../../shared/stageVerdict.js";
@@ -48,6 +50,11 @@ import { decideAgentStageVerdict } from "../../../shared/stageVerdict.js";
  *   stage slot, so the persisted report names the model that actually ran.
  * @param {string} [args.outcome.failureKind] - Failure taxonomy kind.
  * @param {string} [args.outcome.failureReason] - Failure message.
+ * @param {Object} [args.outcome.gitFailure] - Structured commit/hook
+ *   failure (`GitFailureDetails`, re-sanitized here so direct callers get
+ *   the same redaction+caps as the route): persists as
+ *   `lastError.gitDiagnostics` and its hook output renders into the
+ *   failure report, lastError, and timeline excerpt.
  * @param {string} [args.outcome.duration] - Run duration seconds.
  * @param {string} [args.outcome.runnerId] - Reporting Runner.
  * @returns {Promise<Object>} `{ advanced, status, ... }`.
@@ -163,6 +170,14 @@ export async function applyRunnerReport({
 
 	if (outcome.status === "failed") {
 		const err = new Error(outcome.failureReason || "Stage failed on the Runner");
+		// The runner's outcome kind rides on the routed error so the stored
+		// classification (lastError, timeline, events) agrees with the
+		// routing decision: an explicit "commit-failed" tag classifies as
+		// logical/commit-failed instead of text-derived unknown. Other kinds
+		// have no classifier branch and behave exactly as before.
+		if (typeof outcome.failureKind === "string" && outcome.failureKind) {
+			err.failureKind = outcome.failureKind;
+		}
 		// The runner's completion payload carries the leading slice of the
 		// run output (runner/daemon.js caps it at 20k characters). Keep it
 		// on the error so the failure
@@ -171,6 +186,26 @@ export async function applyRunnerReport({
 		// (task b5716327). handleStageFailure already renders error.stdout
 		// into the report, lastError, and timeline excerpt.
 		if (redactedOutput) err.stdout = redactedOutput;
+		// Structured commit/hook failure (re-sanitized: the sanitizer is
+		// idempotent, so the route-cleaned payload passes through
+		// unchanged while direct callers get the same redaction+caps).
+		// The hook output leads error.stdout so the existing pipeline
+		// renders it into the failure report, lastError, and timeline
+		// excerpt with zero further changes; the envelope rides as
+		// gitDiagnostics for the task UI callout and Tier-3 failback.
+		const gitFailure = sanitizeGitFailure(outcome.gitFailure);
+		if (gitFailure) {
+			err.gitDiagnostics = { kind: gitFailure.kind, ...gitFailure };
+			const hookText = gitFailure.hookOutput.trim();
+			if (hookText) {
+				err.stdout = redactedOutput ? `${hookText}\n\n${redactedOutput}` : hookText;
+			}
+		}
+		// Consecutive-failure streak (parked auto-dispatch after three
+		// same-signature strikes): recorded before routing, because
+		// failback clears lastError while the streak must survive the
+		// walk-back. A failure without deterministic git detail clears it.
+		recordGitFailureStreak({ task, stageId: stage.id, gitFailure });
 		return routeStageError(
 			store,
 			projectId,
@@ -203,6 +238,8 @@ export async function applyRunnerReport({
 	}
 
 	const at = Date.now();
+	// A passed run ends any git-failure episode: the tree commits again.
+	recordGitFailureStreak({ task, stageId: stage.id, gitFailure: null });
 	recordReliabilitySample(store, projectId, taskId, {
 		harnessId: outcome.harnessId || "unknown",
 		failureKind: "none",

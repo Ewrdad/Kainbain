@@ -74,6 +74,69 @@ export function isRejectedTask(task) {
 }
 
 /***
+ * MARK: getGitDiagnostics
+ * @description Reads the structured git diagnostics for a task, when the
+ * engine recorded any (`merge-conflict` SHAs from the backend merge path,
+ * the runner's `GitFailureDetails` envelope for commit/hook failures).
+ * @example getGitDiagnostics({ lastError: { gitDiagnostics: { kind: "merge-conflict" } } }).kind => "merge-conflict"
+ * @example getGitDiagnostics({ status: "failed" }) => null
+ * @param {Object} [task] - Task object, may carry `lastError.gitDiagnostics`.
+ * @returns {Object|null} Diagnostics object, or null when absent/malformed.
+ ***/
+export function getGitDiagnostics(task) {
+  const diagnostics = task?.lastError?.gitDiagnostics;
+  return diagnostics && typeof diagnostics === 'object' && !Array.isArray(diagnostics)
+    ? diagnostics
+    : null;
+}
+
+/***
+ * MARK: isCommitFailureTask
+ * @description Tells whether a task's current failure is a runner-reported
+ * commit/hook failure carrying the `GitFailureDetails` envelope (failing
+ * command, hook output, affected files, remedy). Shape-based, not
+ * kind-based: the backend's own `merge-conflict`/`sync-blocked`
+ * diagnostics share kinds but not this shape, so they keep rendering as
+ * plain text while every present and future envelope-shaped kind renders
+ * the structured callout.
+ * @example isCommitFailureTask({ lastError: { gitDiagnostics: { kind: "hook-rejected", hookOutput: "x", files: [], remedy: "y" } } }) => true
+ * @example isCommitFailureTask({ lastError: { gitDiagnostics: { kind: "merge-conflict" } } }) => false
+ * @param {Object} [task] - Task object, may carry `lastError.gitDiagnostics`.
+ * @returns {boolean} True when the structured commit-failure block should render.
+ ***/
+export function isCommitFailureTask(task) {
+  const diagnostics = getGitDiagnostics(task);
+  if (!diagnostics) return false;
+  if (typeof diagnostics.kind !== 'string' || !diagnostics.kind.trim()) return false;
+  return (
+    typeof diagnostics.hookOutput === 'string' &&
+    Array.isArray(diagnostics.files) &&
+    typeof diagnostics.remedy === 'string'
+  );
+}
+
+/***
+ * MARK: pickFailureBannerTitle
+ * @description Picks the failure banner heading for a task: deliberate
+ * rejections stay "Stage Rejected", runner-reported commit/hook failures
+ * read "Commit Failed", and everything else keeps "Stage Execution
+ * Failed". One helper so the full page and the overlay details tab can
+ * never disagree.
+ * @example pickFailureBannerTitle({ isRejected: true, isCommitFailure: false }) => "⚠️ Stage Rejected"
+ * @example pickFailureBannerTitle({ isRejected: false, isCommitFailure: true }) => "⚠️ Commit Failed"
+ * @example pickFailureBannerTitle({ isRejected: false, isCommitFailure: false }) => "⚠️ Stage Execution Failed"
+ * @param {Object} [flags] - Banner flags.
+ * @param {boolean} [flags.isRejected] - Deliberate rejection.
+ * @param {boolean} [flags.isCommitFailure] - Structured commit/hook failure.
+ * @returns {string} Banner heading text.
+ ***/
+export function pickFailureBannerTitle({ isRejected = false, isCommitFailure = false } = {}) {
+  if (isRejected) return '⚠️ Stage Rejected';
+  if (isCommitFailure) return '⚠️ Commit Failed';
+  return '⚠️ Stage Execution Failed';
+}
+
+/***
  * MARK: firstLine
  * @description Shortens a failure reason to its first line so history rows
  * keep their current density. Longer lines are cut with an ellipsis.

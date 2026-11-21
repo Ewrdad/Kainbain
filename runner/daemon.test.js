@@ -46,6 +46,7 @@ import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSu
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { hashStageConfig, parseAttestationTrailers } from "../shared/stageAttestation.js";
+import { slugForRepo } from "./project.js";
 
 /***
  * MARK: waitFor
@@ -1563,8 +1564,9 @@ describe("runDispatchLoop", () => {
 	});
 
 	it("contains a failed assignment: releases the task and keeps polling", async () => {
-		// A worktree-setup throw (here: no repo at the project path, the
-		// same generic-error shape as a hook-rejected recovery commit)
+		// A worktree-setup throw (here: no repo at the project path — a
+		// generic, non-gitFailure error, since recovery snapshots bypass
+		// hooks and structured git failures report-and-return instead)
 		// must fail one task, not the runner: the loop logs, the task is
 		// released via interrupt, and the next assignment still runs.
 		const repo = localRepo();
@@ -3353,5 +3355,528 @@ describe("factsFor build identity", () => {
 		} finally {
 			fs.rmSync(config.workRoot, { recursive: true, force: true });
 		}
+	});
+});
+
+const HOOK_REPLAY_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+
+function wireReplayBinaryGuard(dir) {
+	fs.mkdirSync(path.join(dir, "scripts", "githooks"), { recursive: true });
+	for (const name of ["githooks/pre-commit", "check-binary-guard.mjs", "check-proof-and-hygiene.mjs"]) {
+		fs.copyFileSync(path.join(HOOK_REPLAY_ROOT, "scripts", name), path.join(dir, "scripts", name));
+	}
+	git(dir, ["config", "core.hooksPath", "scripts/githooks"]);
+}
+
+function git(dir, args) {
+	execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+}
+
+function corruptReplayPng(dir, rel) {
+	const full = path.join(dir, rel);
+	fs.mkdirSync(path.dirname(full), { recursive: true });
+	fs.writeFileSync(full, Buffer.from([0xef, 0xbf, 0xbd, 0x50, 0x4e, 0x47, 0x0d, 0x0a]));
+	return rel;
+}
+
+function guardedReplayOrigin(dirs) {
+	// Bare origin with main + kb/t1, the production binary guard committed
+	// on main so every checkout carries it.
+	const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-replay-origin-"));
+	git(origin, ["init", "-q", "--bare"]);
+	const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-replay-seed-"));
+	execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+	git(seed, ["config", "user.email", "t@t.t"]);
+	git(seed, ["config", "user.name", "t"]);
+	wireReplayBinaryGuard(seed);
+	fs.writeFileSync(path.join(seed, "f.txt"), "x");
+	git(seed, ["add", "."]);
+	git(seed, ["commit", "-qm", "init with guard"]);
+	git(seed, ["branch", "-M", "main"]);
+	git(seed, ["push", "-q", "origin", "main"]);
+	git(seed, ["checkout", "-qb", "kb/t1"]);
+	git(seed, ["push", "-q", "origin", "kb/t1"]);
+	execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+	dirs.push(origin, seed);
+	return { origin, seed };
+}
+
+function replayClient({ origin, completed, interrupts, claimExtra = {} }) {
+	return stubClient({
+		heartbeat: async () => ({ status: "active" }),
+		getProject: async () => ({ id: "p1", gitUrl: origin }),
+		getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+		claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+		progress: async () => ({ recorded: true }),
+		logs: async () => ({ accepted: true }),
+		complete: async (args) => {
+			completed.push(args);
+			return { accepted: true };
+		},
+		interrupt: async (args) => {
+			interrupts.push(args || {});
+			return { interrupted: true };
+		},
+	});
+}
+
+function stageCorruptingHarness(workRoot, rel = "stage-shot.png") {
+	// A harness whose stage output trips the binary guard at the
+	// stage-end commit — the deterministic-failure driver now that
+	// recovery commits bypass hooks.
+	return () => ({
+		async createSession() {
+			return {
+				isStreaming: false,
+				messages: [],
+				getLastAssistantText: () => "done",
+				subscribe: () => () => {},
+				prompt: async () => {
+					corruptReplayPng(path.join(workRoot, "kb-t1"), rel);
+					return "done";
+				},
+				abort: () => {},
+				dispose: async () => {},
+			};
+		},
+	});
+}
+
+describe("runSingleAssignment commit/hook failures (incident replay)", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("parks a reused worktree holding corrupt PNGs past the guard, then runs the stage", async () => {
+		// The live incident shape, retargeted to the reconciled behavior:
+		// a reused worktree holds 3 corrupt PNGs that trip the production
+		// binary guard. The recovery snapshot bypasses hooks, so the
+		// residue parks on kb-recovery/* and the stage runs to its normal
+		// completion — no failed completion, no interrupt, no crash.
+		// (Hook rejections still surface as structured failed completions
+		// on task-branch commits; see the stage-commit test below.)
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		// Reused worktree from a previous run, holding unpushed residue.
+		const reused = path.join(config.workRoot, "kb-t1");
+		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
+		git(reused, ["checkout", "-q", "kb/t1"]);
+		git(reused, ["config", "user.email", "t@t.t"]);
+		git(reused, ["config", "user.name", "t"]);
+		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
+		corruptReplayPng(reused, "a.png");
+		corruptReplayPng(reused, "b.png");
+		corruptReplayPng(reused, "c.png");
+		const completed = [];
+		const interrupts = [];
+		const errors = [];
+		const out = await runSingleAssignment({
+			config,
+			client: replayClient({ origin, completed, interrupts }),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (line) => errors.push(String(line)) },
+		});
+		assert.equal(out.gitFailureReported, undefined);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "passed");
+		assert.equal(completed[0].gitFailure, undefined);
+		assert.equal(interrupts.length, 0);
+		assert.ok(!errors.some((line) => line.includes("commit failed")), "no commit-failure log line");
+		const branches = execFileSync("git", ["branch", "--list", "kb-recovery/t1/*"], { cwd: reused, encoding: "utf8" }).trim();
+		assert.ok(branches.length > 0, "residue parked on a kb-recovery/t1/* branch");
+		const parked = branches.split("\n")[0].trim().replace(/^\*\s*/, "");
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", parked], { cwd: reused, encoding: "utf8" });
+		for (const rel of ["a.png", "b.png", "c.png"]) {
+			assert.ok(kept.split("\n").includes(rel), `recovery branch preserves ${rel}`);
+		}
+	});
+
+	it("reports a hook-rejected stage commit with the stage-commit phase", async () => {
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		// The agent stage produces a corrupt PNG; the stage-end commit trips
+		// the guard in a freshly prepared worktree.
+		const writingHarness = () => ({
+			async createSession() {
+				return {
+					isStreaming: false,
+					messages: [],
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => {
+						corruptReplayPng(path.join(config.workRoot, "kb-t1"), "stage-shot.png");
+						return "done";
+					},
+					abort: () => {},
+					dispose: async () => {},
+				};
+			},
+		});
+		const out = await runSingleAssignment({
+			config,
+			client: replayClient({ origin, completed, interrupts }),
+			loadHarness: writingHarness,
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.gitFailureReported, true);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "commit-failed");
+		assert.equal(completed[0].gitFailure.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure.phase, "stage-commit");
+		assert.deepEqual(completed[0].gitFailure.files, ["stage-shot.png"]);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("proves the loop is dead: N deterministic failures report N times with no crash and no reason-less interrupt", async () => {
+		// Retargeted to the stage-commit path (recovery commits bypass
+		// hooks): each stage produces a corrupt PNG, each stage-end
+		// commit is hook-rejected, each assignment returns normally.
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const quiet = { log: () => {}, warn: () => {}, error: () => {} };
+		for (let i = 0; i < 3; i += 1) {
+			// Each assignment returns normally: zero process exits across
+			// three consecutive deterministic failures.
+			const out = await runSingleAssignment({
+				config,
+				client: replayClient({ origin, completed, interrupts }),
+				loadHarness: stageCorruptingHarness(config.workRoot),
+				logger: quiet,
+			});
+			assert.equal(out.gitFailureReported, true);
+		}
+		assert.equal(completed.length, 3);
+		assert.ok(
+			completed.every(
+				(report) =>
+					report.outcome === "failed" &&
+					report.gitFailure?.kind === "hook-rejected" &&
+					report.gitFailure?.phase === "stage-commit",
+			),
+		);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("keeps transient git faults on interrupt+rethrow, now with the reason", async () => {
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const missing = path.join(os.tmpdir(), `kb-no-such-origin-${Date.now()}`);
+		await assert.rejects(
+			runSingleAssignment({
+				config,
+				client: replayClient({ origin: missing, completed, interrupts }),
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {}, error: () => {} },
+			}),
+		);
+		assert.equal(completed.length, 0);
+		assert.equal(interrupts.length, 1);
+		assert.ok(typeof interrupts[0].reason === "string" && interrupts[0].reason.length > 0);
+		assert.ok(interrupts[0].reason.includes("clone"));
+	});
+});
+
+describe("runDispatchLoop git-failure backoff", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("pauses one poll cycle after a deterministic git failure instead of re-claiming immediately", async () => {
+		// Retargeted to the stage-commit path (recovery commits bypass
+		// hooks): the stage produces a corrupt PNG, the stage-end commit
+		// is hook-rejected, and the loop backs off one poll cycle.
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		let polls = 0;
+		const logs = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? { assigned: true, projectId: "p1", taskId: "t1", executionId: "e1", epoch: 1 }
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: stageCorruptingHarness(config.workRoot),
+			logger: { log: (line) => logs.push(String(line)), warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].gitFailure?.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure?.phase, "stage-commit");
+		assert.equal(interrupts.length, 0);
+		assert.ok(logs.some((line) => line.includes("backing off one poll cycle")));
+	});
+
+	it("reports N consecutive deterministic git failures with 0 exits and 0 reason-less interrupts", async () => {
+		// The loop-dead proof: the same poisoned task re-claimed three
+		// times reports three failed completions and the process stays
+		// alive throughout — no throw (no systemd restart), no
+		// reason-less interrupt. (The backend parks the task after the
+		// third strike; the dispatch stub below keeps assigning so this
+		// test proves the runner side alone never spins.) Retargeted to
+		// the stage-commit path: each stage produces a corrupt PNG that
+		// the guard rejects at the stage-end commit.
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls <= 3
+					? { assigned: true, projectId: "p1", taskId: "t1", executionId: `e${polls}`, epoch: polls }
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: stageCorruptingHarness(config.workRoot),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.assignments, 3);
+		assert.equal(completed.length, 3);
+		for (const report of completed) {
+			assert.equal(report.outcome, "failed");
+			assert.equal(report.failureKind, "commit-failed");
+			assert.equal(report.gitFailure?.kind, "hook-rejected");
+			assert.equal(report.gitFailure?.phase, "stage-commit");
+			assert.ok(report.gitFailure?.files?.includes("stage-shot.png"));
+		}
+		assert.equal(interrupts.length, 0);
+	});
+});
+
+describe("executeIntegrationAssignment git failures", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	function conflictingOrigin() {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-origin-"));
+		git(origin, ["init", "-q", "--bare"]);
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		git(seed, ["config", "user.email", "t@t.t"]);
+		git(seed, ["config", "user.name", "t"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "base\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "init"]);
+		git(seed, ["branch", "-M", "main"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		git(seed, ["checkout", "-qb", "kb/t1"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "task side\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "task work"]);
+		git(seed, ["push", "-q", "origin", "kb/t1"]);
+		git(seed, ["checkout", "-q", "main"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "main side\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "main work"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		dirs.push(origin, seed);
+		return origin;
+	}
+
+	function integrationClient({ origin, completed, interrupts, reports, integration }) {
+		return stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "merge-1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1, kind: "integrate", integration }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			integrationHeartbeat: async () => ({ executionId: "ie1", epoch: 1 }),
+			integrationReport: async (args) => {
+				reports.push(args);
+				return { accepted: true };
+			},
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+	}
+
+	function shasOf(origin, ...refs) {
+		const probe = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-probe-"));
+		dirs.push(probe);
+		execFileSync("git", ["clone", "-q", origin, probe], { stdio: "ignore" });
+		return refs.map((ref) => execFileSync("git", ["rev-parse", ref], { cwd: probe, encoding: "utf8" }).trim());
+	}
+
+	it("carries merge conflicts to the task as structured merge-conflict detail", async () => {
+		const origin = conflictingOrigin();
+		const [expectedTargetSha, expectedTaskSha] = shasOf(origin, "origin/main", "origin/kb/t1");
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const reports = [];
+		const out = await runSingleAssignment({
+			config,
+			client: integrationClient({
+				origin,
+				completed,
+				interrupts,
+				reports,
+				integration: {
+					taskBranch: "kb/t1",
+					expectedTaskSha,
+					targetBranch: "main",
+					expectedTargetSha,
+					mergeAttemptId: "merge-t1-1",
+					integrationExecutionId: "ie1",
+					integrationEpoch: 1,
+				},
+			}),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.ok(out);
+		assert.equal(reports.length, 1);
+		assert.equal(reports[0].outcome, "conflict");
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].gitFailure.kind, "merge-conflict");
+		assert.equal(completed[0].gitFailure.phase, "merge");
+		assert.deepEqual(completed[0].gitFailure.files, ["base.txt"]);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("settles a hook-rejected merge commit as failed with detail instead of crashing", async () => {
+		// The merge itself is clean, but a repo hook refuses the merge
+		// commit: the lease settles as failed and the task carries the
+		// structured payload — no interrupt, no throw.
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-inthook-origin-"));
+		git(origin, ["init", "-q", "--bare"]);
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-inthook-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		git(seed, ["config", "user.email", "t@t.t"]);
+		git(seed, ["config", "user.name", "t"]);
+		fs.mkdirSync(path.join(seed, "scripts", "githooks"), { recursive: true });
+		// `git merge` never runs `pre-commit` — it runs
+		// `prepare-commit-msg`/`commit-msg` — so the rejecting hook must
+		// be one of those for the merge commit to be refused.
+		fs.writeFileSync(path.join(seed, "scripts", "githooks", "prepare-commit-msg"), "#!/bin/sh\necho 'merge hook says no' >&2\nexit 1\n");
+		fs.chmodSync(path.join(seed, "scripts", "githooks", "prepare-commit-msg"), 0o755);
+		fs.writeFileSync(path.join(seed, "base.txt"), "base");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "init with hook"]);
+		git(seed, ["branch", "-M", "main"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		git(seed, ["checkout", "-qb", "kb/t1"]);
+		fs.writeFileSync(path.join(seed, "task.txt"), "task work");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "task work"]);
+		git(seed, ["push", "-q", "origin", "kb/t1"]);
+		execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+		dirs.push(origin, seed);
+		const [expectedTargetSha, expectedTaskSha] = shasOf(origin, "origin/main", "origin/kb/t1");
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		// The mirror carries the hooks path (as ensureRepoHooksPath leaves
+		// it after a task checkout); the ephemeral merge worktree inherits it.
+		const mirror = path.join(config.workRoot, "mirrors", slugForRepo(origin));
+		fs.mkdirSync(path.dirname(mirror), { recursive: true });
+		execFileSync("git", ["clone", "-q", origin, mirror], { stdio: "ignore" });
+		git(mirror, ["config", "core.hooksPath", "scripts/githooks"]);
+		const completed = [];
+		const interrupts = [];
+		const reports = [];
+		const out = await runSingleAssignment({
+			config,
+			client: integrationClient({
+				origin,
+				completed,
+				interrupts,
+				reports,
+				integration: {
+					taskBranch: "kb/t1",
+					expectedTaskSha,
+					targetBranch: "main",
+					expectedTargetSha,
+					mergeAttemptId: "merge-t1-1",
+					integrationExecutionId: "ie1",
+					integrationEpoch: 1,
+				},
+			}),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.ok(out);
+		assert.equal(reports.length, 1);
+		assert.equal(reports[0].outcome, "failed");
+		assert.ok(reports[0].detail.includes("merge hook says no") || reports[0].detail.includes("blocked"));
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "commit-failed");
+		assert.equal(completed[0].gitFailure.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure.phase, "merge");
+		assert.equal(interrupts.length, 0);
+		// Nothing landed on the target.
+		const [tipAfter] = shasOf(origin, "origin/main");
+		assert.equal(tipAfter, expectedTargetSha);
 	});
 });

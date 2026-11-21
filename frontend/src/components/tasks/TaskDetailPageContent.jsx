@@ -31,7 +31,8 @@ import { DiffStatBadge } from './DiffStatBadge';
 import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
 import { FailureMessage } from './FailureMessage';
-import { isRejectedTask } from './failureReason';
+import { GitFailureDetails } from './GitFailureDetails';
+import { pickFailureBannerTitle, isCommitFailureTask, isRejectedTask } from './failureReason';
 import { BlockedByEditor } from './BlockedByEditor';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
 import { TaskDetailHistoryPane } from './TaskDetailHistoryPane';
@@ -324,6 +325,10 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   const isRejectedFailure = isRejectedTask(task);
   const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
+  // Runner-reported commit/hook failures render their structured envelope
+  // (hook, files, remedy, full output) under the reason, with a heading
+  // that names the commit instead of the stage.
+  const isCommitFailure = isFailed && isCommitFailureTask(task);
   const failureMessage =
     task?.failureReason || task?.lastError?.message || 'Stage execution failed.';
   const formattedKey = task?.id ? formatTaskKey(task.id) : '';
@@ -882,7 +887,7 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-error animate-pulse shadow-[0_0_8px_rgba(248,81,73,0.6)]" />
                     <span className="text-xs font-bold uppercase tracking-wider text-error font-mono flex items-center gap-1">
-                      {isRejected ? '⚠️ Stage Rejected' : '⚠️ Stage Execution Failed'}
+                      {pickFailureBannerTitle({ isRejected, isCommitFailure })}
                     </span>
                   </div>
                   {(task?.lastError?.stageName || taskStage?.name) && (
@@ -897,6 +902,12 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                   taskId={task?.id}
                   className="p-3 bg-surface-container rounded border border-error/30 font-mono text-xs text-error break-words whitespace-pre-wrap leading-relaxed select-text"
                 />
+                {isCommitFailure && (
+                  <GitFailureDetails
+                    diagnostics={task?.lastError?.gitDiagnostics}
+                    className="p-3 bg-surface-container rounded border border-error/30 text-error space-y-2"
+                  />
+                )}
                 <div className="flex items-center gap-3 pt-1">
                   <button
                     type="button"
