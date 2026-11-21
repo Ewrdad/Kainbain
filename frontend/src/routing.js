@@ -11,7 +11,7 @@
  * |--------------|-----------------------|----------------------------------|
  * | Orchestrator | `/`                   | `#/orchestrator`, `?view=...`    |
  * | Files & Repo | `/explorer`           | `?view=explorer`                 |
- * | Settings     | `/settings`           | `?view=settings`                 |
+ * | Settings     | `/settings/:section?` | `?view=settings`                 |
  * | System Settings| `/system-settings/:section?` | (none)                    |
  * | Observability| `/observability`      | `?view=observability`            |
  * | Docs         | `/docs/:slug?`        | `#docs`, `?view=docs`            |
@@ -26,7 +26,10 @@
  * System Menu entry and the `S` shortcut open it in a new window by default
  * (`openSystemSettings`), falling back to same-tab `setView('system-settings')`
  * when the popout is blocked or the viewport is phone-narrow. The `:section`
- * segment (or `?section=`) deep-links a settings tab.
+ * segment (or `?section=`) deep-links a settings tab. Project Settings
+ * (`/settings/:section?`) deep-links the same way so task surfaces can link
+ * straight to the tab that edits what they display (e.g. `#/settings/workflows`
+ * for the pipeline base branch).
  *
  * Refresh guarantees:
  * - Refresh re-opens the CURRENT route (docs slug, task id preserved).
@@ -44,6 +47,7 @@ export const ROUTES = {
   orchestrator: '/',
   explorer: '/explorer',
   settings: '/settings',
+  settingsSection: '/settings/:section',
   systemSettings: '/system-settings',
   systemSettingsSection: '/system-settings/:section',
   observability: '/observability',
@@ -66,7 +70,7 @@ export const ROUTES = {
  * @param {Object} [opts]
  * @param {string} [opts.taskId] - Task id for task-detail/task-review paths.
  * @param {string} [opts.slug] - Docs slug for the docs article path.
- * @param {string} [opts.section] - Settings tab id for the system-settings path.
+ * @param {string} [opts.section] - Settings tab id for the settings/system-settings paths.
  * @returns {string|null} Canonical path, or null for unknown views.
  * @example viewToPath('docs', { slug: 'architecture' }) => '/docs/architecture'
  ***/
@@ -79,7 +83,7 @@ export function viewToPath(view, opts = {}) {
     case 'explorer':
       return '/explorer';
     case 'settings':
-      return '/settings';
+      return section ? `/settings/${encodeURIComponent(section)}` : '/settings';
     case 'system-settings':
       return section ? `/system-settings/${encodeURIComponent(section)}` : '/system-settings';
     case 'observability':
@@ -118,6 +122,10 @@ export function routeToView(pathname) {
   if (path === '/' || path === '/orchestrator') return { view: 'orchestrator' };
   if (path === '/explorer') return { view: 'explorer' };
   if (path === '/settings') return { view: 'settings' };
+  const settingsMatch = path.match(/^\/settings\/([^/]+)$/);
+  if (settingsMatch) {
+    return { view: 'settings', section: safeDecode(settingsMatch[1]) };
+  }
   if (path === '/system-settings') return { view: 'system-settings' };
   const systemSettingsMatch = path.match(/^\/system-settings\/([^/]+)$/);
   if (systemSettingsMatch) {
@@ -196,6 +204,16 @@ export function normalizeLegacyUrl(loc = defaultLocation()) {
         if (queryView === 'task' || queryView === 'task-review' || queryView === 'tasks') {
           return '#/';
         }
+        // A legacy section rides along to the tab it names (both settings
+        // pages deep-link their tabs the same way); an unknown id fails
+        // safe to the default tab on the target page, never a blank page.
+        if (queryView === 'settings' || queryView === 'system-settings') {
+          const section = params.get('section');
+          if (section && section.trim()) {
+            // eslint-disable-next-line security/detect-object-injection -- queryView is already proven a key of this map by the !== undefined guard above
+            return `#${LEGACY_VIEW_PATHS[queryView]}/${encodeURIComponent(section.trim())}`;
+          }
+        }
         return `#${LEGACY_VIEW_PATHS[queryView] === '/' ? '/' : LEGACY_VIEW_PATHS[queryView]}`;
       }
     } catch {
@@ -227,6 +245,9 @@ export function normalizeLegacyUrl(loc = defaultLocation()) {
     if (asRoute.view === 'task-survey') return `#/tasks/${asRoute.taskId}/survey`;
     if (asRoute.view === 'system-settings') {
       return `#${viewToPath('system-settings', { section: asRoute.section })}`;
+    }
+    if (asRoute.view === 'settings') {
+      return `#${viewToPath('settings', { section: asRoute.section })}`;
     }
     return `#${viewToPath(asRoute.view)}`;
   }

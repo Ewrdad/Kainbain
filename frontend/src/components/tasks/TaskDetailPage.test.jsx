@@ -1279,6 +1279,33 @@ describe('TaskDetailPage Copy Checkout buttons', () => {
     });
     expect(screen.getByText('Base branch: repo default')).toBeInTheDocument();
   });
+
+  test('pinned base-branch line links to the pipeline settings tab', () => {
+    const setView = vi.fn();
+    renderWithKainBain(
+      <TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1', baseBranch: 'feature/pinned' }} />,
+      {
+        stages: sampleStages,
+        projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+        projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+        setView,
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change pipeline base' }));
+    expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
+  });
+
+  test('pipeline base-branch line links to the pipeline settings tab', () => {
+    const setView = vi.fn();
+    renderWithKainBain(<TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1' }} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+      projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+      setView,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit in pipeline settings' }));
+    expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
+  });
 });
 
 describe('TaskDetailPage survey entry points', () => {

@@ -109,6 +109,14 @@ export function WorkflowCanvas() {
 
   const activeWfId = activeWorkflowId || activeWorkflow?.id || 'wf-default';
 
+  // The active pipeline's base branch (trimmed, or null for the repo
+  // default): StageColumn previews it in the inline add-task form so a
+  // feature-pipeline user sees which branch the new task will fork.
+  const activePipelineBaseBranch =
+    typeof activeWorkflow?.baseBranch === 'string' && activeWorkflow.baseBranch.trim()
+      ? activeWorkflow.baseBranch.trim()
+      : null;
+
   const [expandedSettingsStageId, setExpandedSettingsStageId] = useState(null);
   // Shared model catalogue (flat models + per-harness view) for the in-column
   // stage settings; falls back to the curated list when the API is unavailable.
@@ -448,6 +456,8 @@ export function WorkflowCanvas() {
         getSkillByName={getSkillByName}
         nowMs={nowMs}
         onCardListScroll={handleToolbarScroll}
+        pipelineBaseBranch={activePipelineBaseBranch}
+        setView={setView}
       />
     );
   };
