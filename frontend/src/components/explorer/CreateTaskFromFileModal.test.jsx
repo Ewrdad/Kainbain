@@ -185,4 +185,18 @@ describe('CreateTaskFromFileModal', () => {
       ).toBeInTheDocument();
     });
   });
+
+  it('links to pipeline settings to change the base the new task will use', () => {
+    const setView = vi.fn();
+    const { onClose } = renderModal({
+      setView,
+      projectWorkflows: [
+        { id: 'wf-1', name: 'Feature', stages: featureStages, baseBranch: 'feature/x' },
+        { id: 'wf-2', name: 'Hotfix', stages: hotfixStages },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Change in pipeline settings' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
+  });
 });

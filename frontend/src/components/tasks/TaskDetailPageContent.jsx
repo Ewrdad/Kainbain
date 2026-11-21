@@ -1092,11 +1092,22 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                   </p>
                 )}
                 {baseBranchText && (
-                  <p
-                    className="text-[11px] font-mono text-text-muted break-all"
-                    title="The branch this task branched off and merges back into"
-                  >
-                    {baseBranchText}
+                  <p className="text-[11px] font-mono text-text-muted break-all">
+                    <span title="The branch this task branched off and merges back into">
+                      {baseBranchText}
+                    </span>{' '}
+                    <button
+                      type="button"
+                      onClick={() => setView?.('settings', { section: 'workflows' })}
+                      title={
+                        pinnedBaseBranch
+                          ? 'This task keeps its pinned base branch; change the pipeline base for future tasks'
+                          : 'Change the pipeline base branch for future tasks'
+                      }
+                      className="underline underline-offset-2 hover:text-on-surface cursor-pointer"
+                    >
+                      {pinnedBaseBranch ? 'Change pipeline base' : 'Edit in pipeline settings'}
+                    </button>
                   </p>
                 )}
               </div>

@@ -1563,6 +1563,65 @@ describe("runDispatchLoop", () => {
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
 	});
 
+	it("contains a failed assignment: releases the task and keeps polling", async () => {
+		// A worktree-setup throw (here: no repo at the project path, the
+		// same generic-error shape as a hook-rejected recovery commit)
+		// must fail one task, not the runner: the loop logs, the task is
+		// released via interrupt, and the next assignment still runs.
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		const seen = [];
+		const completed = [];
+		const interrupted = [];
+		const errors = [];
+		let projects = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				seen.push(1);
+				if (seen.length === 1) {
+					return { assigned: true, projectId: "p1", taskId: "t-fail", executionId: "e1", epoch: 1 };
+				}
+				if (seen.length === 2) {
+					return { assigned: true, projectId: "p1", taskId: "t-ok", executionId: "e2", epoch: 1 };
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => {
+				projects += 1;
+				return projects === 1
+					? { id: "p1", cwd: path.join(config.workRoot, "no-such-repo") }
+					: { id: "p1", cwd: repo };
+			},
+			getTask: async (projectId, taskId) => ({ id: taskId, goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async (args) => {
+				interrupted.push(args);
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (m) => errors.push(String(m)) },
+		});
+		assert.equal(out.assignments, 2);
+		assert.equal(out.idle, true);
+		assert.equal(interrupted.length, 1);
+		assert.equal(interrupted[0].taskId, "t-fail");
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].taskId, "t-ok");
+		assert.ok(errors.some((m) => m.includes("t-fail")), "loop logs the failed task");
+	});
+
 	it("serves one impromptu job on an idle iteration, then idles out", async () => {
 		const repo = localRepo();
 		const config = loopConfig();

@@ -198,6 +198,13 @@ const SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES = [
     keywords: ['review', 'baseline', 'reset', 'merge'],
     elementId: 'project-reset-review-baseline-input',
   },
+  {
+    id: 'pipeline-base-branch',
+    tab: 'workflows',
+    label: 'Pipeline Base Branch',
+    keywords: ['base', 'branch', 'main', 'pipeline', 'workflow', 'merge', 'feature'],
+    elementId: 'new-wf-base-branch',
+  },
 ];
 
 /***

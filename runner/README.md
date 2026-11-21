@@ -268,6 +268,12 @@ cannot see them until that Runner self-updates.
 - Worktree cap ~5 per work root; over-cap runs refuse and name the orphans.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
+- Unpushed residue is parked on `kb-recovery/*` before a worktree is reset
+  or evicted; those snapshots bypass repo hooks (`--no-verify`) by design
+  and warn in the log, so a failing hook can never strand work or stall the
+  loop. Task-branch commits still run hooks unchanged.
+- One failing assignment never kills the dispatch loop: the task is
+  released (interrupt, re-queues) and the loop logs and keeps polling.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
 - `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
   runs the daemon suite (no ports, real temp git repos, mock harness).

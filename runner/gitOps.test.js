@@ -68,6 +68,27 @@ describe("commitAndPush", () => {
 		assert.match(out.sha, /^[0-9a-f]{40}$/);
 	});
 
+	it("still runs repo hooks on task-branch commits (no bypass outside recovery)", async () => {
+		// Scope pin: only kb-recovery/* snapshots bypass hooks. A failing
+		// repo hook must still reject task output — if the hook ever
+		// stopped firing, the rejects below (and the pinned HEAD) fail.
+		ctx = worktreeRepo(false);
+		const hooksDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-failhooks-"));
+		try {
+			fs.writeFileSync(path.join(hooksDir, "pre-commit"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+			git(ctx.dir, ["config", "core.hooksPath", hooksDir]);
+			const headBefore = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ctx.dir, encoding: "utf8" }).trim();
+			fs.writeFileSync(path.join(ctx.dir, "g.txt"), "y");
+			await assert.rejects(commitAndPush({ workdir: ctx.dir, branch: "kb/t1", message: "stage" }));
+			fs.writeFileSync(path.join(ctx.dir, "h.txt"), "y");
+			await assert.rejects(commitAndPush({ workdir: ctx.dir, branch: "kb/t1", message: "stage", author: "Agent" }));
+			const headAfter = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ctx.dir, encoding: "utf8" }).trim();
+			assert.equal(headAfter, headBefore, "hook rejection committed nothing");
+		} finally {
+			fs.rmSync(hooksDir, { recursive: true, force: true });
+		}
+	});
+
 	it("preserves a multi-line message body byte-for-byte in the commit", async () => {
 		// Characterization for stage attestation: the Runner carries its
 		// proof as trailers appended to the single -m message, so newlines

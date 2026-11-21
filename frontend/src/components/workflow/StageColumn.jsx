@@ -17,7 +17,11 @@ import { parseSearchQuery } from './searchQueryParser';
  *   strip and the settings drawer trigger. Per-column values are derived
  *   from raw board props so the canvas map stays a thin prop pass-through.
  *   `workflowKey` (the active pipeline id) scopes card remounts so a
- *   pipeline switch fully rewrites board state (task 8a056fc4).
+ *   pipeline switch fully rewrites board state (task 8a056fc4). The inline
+ *   add-task form previews the active pipeline's base branch (custom bases
+ *   only — the repo default shows nothing) with a link to the pipeline
+ *   editor, so a feature-pipeline user sees which branch the new task
+ *   will fork before filing it.
  * @example <StageColumn stage={stage} stageIndex={0} stages={stages} ... />
  ***/
 export function StageColumn({
@@ -77,6 +81,8 @@ export function StageColumn({
   getSkillByName,
   nowMs,
   onCardListScroll,
+  pipelineBaseBranch = null,
+  setView,
 }) {
   const isCurrent = stage.id === currentStageId;
   const isMobileActive = effectiveMobileStageId === stage.id;
@@ -100,6 +106,13 @@ export function StageColumn({
       ? [...stageTasks].sort((a, b) => compareStageAge(a, b, effectiveNowMs))
       : stageTasks;
   const isAddingTask = addingTaskStageId === stage.id;
+  // Base-branch preview for the inline form: validated at this boundary
+  // (blank/wrong-typed shows nothing) so the form renders identically to
+  // before on the repo default.
+  const effectivePipelineBase =
+    typeof pipelineBaseBranch === 'string' && pipelineBaseBranch.trim()
+      ? pipelineBaseBranch.trim()
+      : null;
   const isSettingsExpanded = expandedSettingsStageId === stage.id;
   const isDraggingThisStage = draggingStageId === stage.id;
   const stageStat = stageAnalytics?.byStage?.[stage.id] || {
@@ -418,6 +431,19 @@ export function StageColumn({
                 }}
                 className="w-full p-2.5 text-xs bg-surface-container border border-border-standard rounded-sm text-on-surface outline-none focus:border-primary transition-colors font-medium min-h-[44px]"
               />
+              {effectivePipelineBase ? (
+                <p className="text-[10px] text-text-muted font-mono">
+                  <span>New task will branch off {effectivePipelineBase}</span>{' '}
+                  <button
+                    type="button"
+                    onClick={() => setView?.('settings', { section: 'workflows' })}
+                    title="Change this pipeline's base branch in pipeline settings"
+                    className="underline underline-offset-2 hover:text-on-surface cursor-pointer"
+                  >
+                    Change in pipeline settings
+                  </button>
+                </p>
+              ) : null}
               <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
