@@ -46,6 +46,7 @@ import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSu
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { hashStageConfig, parseAttestationTrailers } from "../shared/stageAttestation.js";
+import { slugForRepo } from "./project.js";
 
 /***
  * MARK: waitFor
@@ -3294,5 +3295,450 @@ describe("factsFor build identity", () => {
 		} finally {
 			fs.rmSync(config.workRoot, { recursive: true, force: true });
 		}
+	});
+});
+
+const HOOK_REPLAY_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+
+function wireReplayBinaryGuard(dir) {
+	fs.mkdirSync(path.join(dir, "scripts", "githooks"), { recursive: true });
+	for (const name of ["githooks/pre-commit", "check-binary-guard.mjs", "check-proof-and-hygiene.mjs"]) {
+		fs.copyFileSync(path.join(HOOK_REPLAY_ROOT, "scripts", name), path.join(dir, "scripts", name));
+	}
+	git(dir, ["config", "core.hooksPath", "scripts/githooks"]);
+}
+
+function git(dir, args) {
+	execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+}
+
+function corruptReplayPng(dir, rel) {
+	const full = path.join(dir, rel);
+	fs.mkdirSync(path.dirname(full), { recursive: true });
+	fs.writeFileSync(full, Buffer.from([0xef, 0xbf, 0xbd, 0x50, 0x4e, 0x47, 0x0d, 0x0a]));
+	return rel;
+}
+
+function guardedReplayOrigin(dirs) {
+	// Bare origin with main + kb/t1, the production binary guard committed
+	// on main so every checkout carries it.
+	const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-replay-origin-"));
+	git(origin, ["init", "-q", "--bare"]);
+	const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-replay-seed-"));
+	execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+	git(seed, ["config", "user.email", "t@t.t"]);
+	git(seed, ["config", "user.name", "t"]);
+	wireReplayBinaryGuard(seed);
+	fs.writeFileSync(path.join(seed, "f.txt"), "x");
+	git(seed, ["add", "."]);
+	git(seed, ["commit", "-qm", "init with guard"]);
+	git(seed, ["branch", "-M", "main"]);
+	git(seed, ["push", "-q", "origin", "main"]);
+	git(seed, ["checkout", "-qb", "kb/t1"]);
+	git(seed, ["push", "-q", "origin", "kb/t1"]);
+	execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+	dirs.push(origin, seed);
+	return { origin, seed };
+}
+
+function replayClient({ origin, completed, interrupts, claimExtra = {} }) {
+	return stubClient({
+		heartbeat: async () => ({ status: "active" }),
+		getProject: async () => ({ id: "p1", gitUrl: origin }),
+		getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+		claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+		progress: async () => ({ recorded: true }),
+		logs: async () => ({ accepted: true }),
+		complete: async (args) => {
+			completed.push(args);
+			return { accepted: true };
+		},
+		interrupt: async (args) => {
+			interrupts.push(args || {});
+			return { interrupted: true };
+		},
+	});
+}
+
+describe("runSingleAssignment commit/hook failures (incident replay)", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("reports a hook-rejected recovery commit as a failed completion instead of crashing", async () => {
+		// The live incident: a reused worktree holds corrupt PNGs, the
+		// binary guard rejects the recovery commit, and the runner used to
+		// exit 1 into a systemd restart loop while the task kept a stale
+		// error. Now the failure reports with its structured payload and
+		// the process stays alive (returns instead of throwing).
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		// Reused worktree from a previous run, holding unpushed residue.
+		const reused = path.join(config.workRoot, "kb-t1");
+		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
+		git(reused, ["checkout", "-q", "kb/t1"]);
+		git(reused, ["config", "user.email", "t@t.t"]);
+		git(reused, ["config", "user.name", "t"]);
+		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
+		corruptReplayPng(reused, "a.png");
+		corruptReplayPng(reused, "b.png");
+		corruptReplayPng(reused, "c.png");
+		const completed = [];
+		const interrupts = [];
+		const errors = [];
+		const out = await runSingleAssignment({
+			config,
+			client: replayClient({ origin, completed, interrupts }),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (line) => errors.push(String(line)) },
+		});
+		assert.equal(out.gitFailureReported, true);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "commit-failed");
+		assert.equal(completed[0].committed, false);
+		const details = completed[0].gitFailure;
+		assert.equal(details.kind, "hook-rejected");
+		assert.equal(details.phase, "recovery");
+		assert.equal(details.exitCode, 1);
+		assert.equal(details.hookName, "pre-commit");
+		assert.deepEqual(details.files, ["a.png", "b.png", "c.png"]);
+		assert.ok(details.hookOutput.includes("binary-guard check FAILED"));
+		assert.ok(details.remedy.includes("capture-screenshot.mjs"));
+		assert.equal(completed[0].failureReason, details.summary);
+		assert.equal(interrupts.length, 0);
+		assert.ok(errors.some((line) => line.includes("commit failed (recovery)")));
+	});
+
+	it("reports a hook-rejected stage commit with the stage-commit phase", async () => {
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		// The agent stage produces a corrupt PNG; the stage-end commit trips
+		// the guard in a freshly prepared worktree.
+		const writingHarness = () => ({
+			async createSession() {
+				return {
+					isStreaming: false,
+					messages: [],
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => {
+						corruptReplayPng(path.join(config.workRoot, "kb-t1"), "stage-shot.png");
+						return "done";
+					},
+					abort: () => {},
+					dispose: async () => {},
+				};
+			},
+		});
+		const out = await runSingleAssignment({
+			config,
+			client: replayClient({ origin, completed, interrupts }),
+			loadHarness: writingHarness,
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.gitFailureReported, true);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "commit-failed");
+		assert.equal(completed[0].gitFailure.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure.phase, "stage-commit");
+		assert.deepEqual(completed[0].gitFailure.files, ["stage-shot.png"]);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("proves the loop is dead: N deterministic failures report N times with no crash and no reason-less interrupt", async () => {
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const reused = path.join(config.workRoot, "kb-t1");
+		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
+		git(reused, ["checkout", "-q", "kb/t1"]);
+		git(reused, ["config", "user.email", "t@t.t"]);
+		git(reused, ["config", "user.name", "t"]);
+		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
+		corruptReplayPng(reused, "a.png");
+		const completed = [];
+		const interrupts = [];
+		const quiet = { log: () => {}, warn: () => {}, error: () => {} };
+		for (let i = 0; i < 3; i += 1) {
+			// Each assignment returns normally: zero process exits across
+			// three consecutive deterministic failures.
+			const out = await runSingleAssignment({
+				config,
+				client: replayClient({ origin, completed, interrupts }),
+				loadHarness: async () => fakeHarness(),
+				logger: quiet,
+			});
+			assert.equal(out.gitFailureReported, true);
+		}
+		assert.equal(completed.length, 3);
+		assert.ok(completed.every((report) => report.outcome === "failed" && report.gitFailure?.kind === "hook-rejected"));
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("keeps transient git faults on interrupt+rethrow, now with the reason", async () => {
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const missing = path.join(os.tmpdir(), `kb-no-such-origin-${Date.now()}`);
+		await assert.rejects(
+			runSingleAssignment({
+				config,
+				client: replayClient({ origin: missing, completed, interrupts }),
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {}, error: () => {} },
+			}),
+		);
+		assert.equal(completed.length, 0);
+		assert.equal(interrupts.length, 1);
+		assert.ok(typeof interrupts[0].reason === "string" && interrupts[0].reason.length > 0);
+		assert.ok(interrupts[0].reason.includes("clone"));
+	});
+});
+
+describe("runDispatchLoop git-failure backoff", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("pauses one poll cycle after a deterministic git failure instead of re-claiming immediately", async () => {
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
+		dirs.push(config.workRoot);
+		const reused = path.join(config.workRoot, "kb-t1");
+		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
+		git(reused, ["checkout", "-q", "kb/t1"]);
+		git(reused, ["config", "user.email", "t@t.t"]);
+		git(reused, ["config", "user.name", "t"]);
+		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
+		corruptReplayPng(reused, "a.png");
+		const completed = [];
+		const interrupts = [];
+		let polls = 0;
+		const logs = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? { assigned: true, projectId: "p1", taskId: "t1", executionId: "e1", epoch: 1 }
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: (line) => logs.push(String(line)), warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].gitFailure?.kind, "hook-rejected");
+		assert.equal(interrupts.length, 0);
+		assert.ok(logs.some((line) => line.includes("backing off one poll cycle")));
+	});
+});
+
+describe("executeIntegrationAssignment git failures", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	function conflictingOrigin() {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-origin-"));
+		git(origin, ["init", "-q", "--bare"]);
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		git(seed, ["config", "user.email", "t@t.t"]);
+		git(seed, ["config", "user.name", "t"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "base\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "init"]);
+		git(seed, ["branch", "-M", "main"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		git(seed, ["checkout", "-qb", "kb/t1"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "task side\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "task work"]);
+		git(seed, ["push", "-q", "origin", "kb/t1"]);
+		git(seed, ["checkout", "-q", "main"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "main side\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "main work"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		dirs.push(origin, seed);
+		return origin;
+	}
+
+	function integrationClient({ origin, completed, interrupts, reports, integration }) {
+		return stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "merge-1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1, kind: "integrate", integration }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			integrationHeartbeat: async () => ({ executionId: "ie1", epoch: 1 }),
+			integrationReport: async (args) => {
+				reports.push(args);
+				return { accepted: true };
+			},
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+	}
+
+	function shasOf(origin, ...refs) {
+		const probe = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-probe-"));
+		dirs.push(probe);
+		execFileSync("git", ["clone", "-q", origin, probe], { stdio: "ignore" });
+		return refs.map((ref) => execFileSync("git", ["rev-parse", ref], { cwd: probe, encoding: "utf8" }).trim());
+	}
+
+	it("carries merge conflicts to the task as structured merge-conflict detail", async () => {
+		const origin = conflictingOrigin();
+		const [expectedTargetSha, expectedTaskSha] = shasOf(origin, "origin/main", "origin/kb/t1");
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const reports = [];
+		const out = await runSingleAssignment({
+			config,
+			client: integrationClient({
+				origin,
+				completed,
+				interrupts,
+				reports,
+				integration: {
+					taskBranch: "kb/t1",
+					expectedTaskSha,
+					targetBranch: "main",
+					expectedTargetSha,
+					mergeAttemptId: "merge-t1-1",
+					integrationExecutionId: "ie1",
+					integrationEpoch: 1,
+				},
+			}),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.ok(out);
+		assert.equal(reports.length, 1);
+		assert.equal(reports[0].outcome, "conflict");
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].gitFailure.kind, "merge-conflict");
+		assert.equal(completed[0].gitFailure.phase, "merge");
+		assert.deepEqual(completed[0].gitFailure.files, ["base.txt"]);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("settles a hook-rejected merge commit as failed with detail instead of crashing", async () => {
+		// The merge itself is clean, but a repo hook refuses the merge
+		// commit: the lease settles as failed and the task carries the
+		// structured payload — no interrupt, no throw.
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-inthook-origin-"));
+		git(origin, ["init", "-q", "--bare"]);
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-inthook-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		git(seed, ["config", "user.email", "t@t.t"]);
+		git(seed, ["config", "user.name", "t"]);
+		fs.mkdirSync(path.join(seed, "scripts", "githooks"), { recursive: true });
+		fs.writeFileSync(path.join(seed, "scripts", "githooks", "pre-commit"), "#!/bin/sh\necho 'merge hook says no' >&2\nexit 1\n");
+		fs.chmodSync(path.join(seed, "scripts", "githooks", "pre-commit"), 0o755);
+		fs.writeFileSync(path.join(seed, "base.txt"), "base");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "init with hook"]);
+		git(seed, ["branch", "-M", "main"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		git(seed, ["checkout", "-qb", "kb/t1"]);
+		fs.writeFileSync(path.join(seed, "task.txt"), "task work");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "task work"]);
+		git(seed, ["push", "-q", "origin", "kb/t1"]);
+		execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+		dirs.push(origin, seed);
+		const [expectedTargetSha, expectedTaskSha] = shasOf(origin, "origin/main", "origin/kb/t1");
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		// The mirror carries the hooks path (as ensureRepoHooksPath leaves
+		// it after a task checkout); the ephemeral merge worktree inherits it.
+		const mirror = path.join(config.workRoot, "mirrors", slugForRepo(origin));
+		fs.mkdirSync(path.dirname(mirror), { recursive: true });
+		execFileSync("git", ["clone", "-q", origin, mirror], { stdio: "ignore" });
+		git(mirror, ["config", "core.hooksPath", "scripts/githooks"]);
+		const completed = [];
+		const interrupts = [];
+		const reports = [];
+		const out = await runSingleAssignment({
+			config,
+			client: integrationClient({
+				origin,
+				completed,
+				interrupts,
+				reports,
+				integration: {
+					taskBranch: "kb/t1",
+					expectedTaskSha,
+					targetBranch: "main",
+					expectedTargetSha,
+					mergeAttemptId: "merge-t1-1",
+					integrationExecutionId: "ie1",
+					integrationEpoch: 1,
+				},
+			}),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.ok(out);
+		assert.equal(reports.length, 1);
+		assert.equal(reports[0].outcome, "failed");
+		assert.ok(reports[0].detail.includes("merge hook says no") || reports[0].detail.includes("blocked"));
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "commit-failed");
+		assert.equal(completed[0].gitFailure.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure.phase, "merge");
+		assert.equal(interrupts.length, 0);
+		// Nothing landed on the target.
+		const [tipAfter] = shasOf(origin, "origin/main");
+		assert.equal(tipAfter, expectedTargetSha);
 	});
 });

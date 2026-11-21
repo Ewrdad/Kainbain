@@ -14,6 +14,9 @@ import {
 // (productionSignals.js imports nothing) and recording never alters the
 // eviction decision below.
 import { recordWorktreeEviction } from "../api/watch/productionSignals.js";
+// Shared commit/hook-failure contract: hook-output parsing and the
+// transport envelope (same copy the backend executes).
+import { buildGitFailureDetails, parseHookFailure } from "../shared/gitFailure.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -34,14 +37,20 @@ export const WORKTREE_EVICT_STALE_MS = 30 * 60 * 1000;
  * MARK: RunnerGitError
  * @description Structured Runner-side git failure. `code` is one of
  *   `git-timeout` (command exceeded its budget), `git-lock` (index.lock
- *   held by a live process or a fresh lock we must not steal), or
- *   `git-failed` (anything git itself rejected, with git's message).
- *   Carries the argv and captured streams like the backend GitError, so
- *   the daemon can branch on `code` instead of parsing strings.
+ *   held by a live process or a fresh lock we must not steal),
+ *   `git-hook-rejected` (a repo hook such as the pre-commit binary guard
+ *   refused a commit/merge), or `git-failed` (anything git itself
+ *   rejected, with git's message). Carries the argv and captured streams
+ *   like the backend GitError, so the daemon can branch on `code`
+ *   instead of parsing strings. `exitCode` is git's numeric exit status
+ *   when known; `gitFailure` is the shared `GitFailureDetails` envelope
+ *   for commit/merge failures (phase filled in by the caller that knows
+ *   it — see `withGitFailurePhase`), so the daemon can report hook
+ *   rejections as structured failed completions instead of crashing.
  * @example new RunnerGitError('git-lock', 'git status', { cwd: '/w' })
  ***/
 export class RunnerGitError extends Error {
-	constructor(code, message, { args = [], stdout = "", stderr = "", cwd = "" } = {}) {
+	constructor(code, message, { args = [], stdout = "", stderr = "", cwd = "", exitCode = null, gitFailure = null } = {}) {
 		super(message);
 		this.name = "RunnerGitError";
 		this.code = code;
@@ -49,7 +58,29 @@ export class RunnerGitError extends Error {
 		this.stdout = stdout;
 		this.stderr = stderr;
 		this.cwd = cwd;
+		this.exitCode = Number.isInteger(exitCode) ? exitCode : null;
+		this.gitFailure = gitFailure && typeof gitFailure === "object" ? gitFailure : null;
 	}
+}
+
+/***
+ * MARK: withGitFailurePhase
+ * @description Tags a RunnerGitError's structured `gitFailure` with the
+ *   lifecycle phase that produced it (`worktree-setup`, `recovery`,
+ *   `stage-commit`, `merge`) when the throw site knows more than the git
+ *   layer did. A phase already set wins (the innermost site is the most
+ *   precise); errors without a `gitFailure` pass through untouched.
+ *   Returns the same error for `throw withGitFailurePhase(err, phase)`.
+ * @example throw withGitFailurePhase(err, 'recovery')
+ * @param {*} err - Error to tag (usually RunnerGitError).
+ * @param {string} phase - Lifecycle phase.
+ * @returns {*} The same error, tagged in place when applicable.
+ ***/
+export function withGitFailurePhase(err, phase) {
+	if (err instanceof RunnerGitError && err.gitFailure && !err.gitFailure.phase) {
+		err.gitFailure = buildGitFailureDetails({ ...err.gitFailure, phase });
+	}
+	return err;
 }
 
 // Per-workdir serialization: the Runner daemon is one process, and two
@@ -163,6 +194,21 @@ export async function maybeRecoverWorkdirLock(cwd) {
 	return { recovered: true, lockPath, reason: "stale-cleared", ageMs };
 }
 
+function gitSubcommandOf(args) {
+	if (!Array.isArray(args)) return "";
+	for (let i = 0; i < args.length; i += 1) {
+		const token = args[i];
+		// Global flags that consume the next argv slot (`git -c k=v …`).
+		if (token === "-c" || token === "-C" || token === "--config") {
+			i += 1;
+			continue;
+		}
+		if (typeof token !== "string" || token.startsWith("-")) continue;
+		return token;
+	}
+	return "";
+}
+
 function toRunnerGitError(args, cwd, err, stdout = "", stderr = "") {
 	const killed = err?.killed || err?.signal === "SIGTERM";
 	if (killed || /timed out|ETIMEDOUT/i.test(String(err?.message || "") + String(err?.code || ""))) {
@@ -171,7 +217,30 @@ function toRunnerGitError(args, cwd, err, stdout = "", stderr = "") {
 	if (/Unable to create '.*index\.lock'|index\.lock.*exists|Another git process/i.test(`${err?.message || ""}\n${stderr}\n${stdout}`)) {
 		return new RunnerGitError("git-lock", `git ${args.join(" ")} hit index.lock contention in '${cwd}': ${(stderr || err?.message || "").trim()}`, { args, stdout, stderr, cwd });
 	}
-	return new RunnerGitError("git-failed", `git ${args.join(" ")} failed in '${cwd}': ${(stderr || err?.message || "").trim() || "no output"}`, { args, stdout, stderr, cwd });
+	const exitCode = typeof err?.code === "number" ? err.code : null;
+	// Commit/merge failures carry structured hook detail: a hook rejection
+	// (the pre-commit binary guard, a foreign hook) becomes the distinct
+	// `git-hook-rejected` code, while hook-less commit failures keep
+	// `git-failed` and gain the exit code plus the envelope. `merge --abort`
+	// runs no hooks, so its failures stay plain. The envelope's phase is
+	// filled in by the caller that knows it (see `withGitFailurePhase`).
+	const subcommand = gitSubcommandOf(args);
+	const parsed =
+		(subcommand === "commit" || subcommand === "merge") && !args.includes("--abort")
+			? parseHookFailure({ command: `git ${args.join(" ")}`, exitCode, stdout, stderr })
+			: null;
+	const gitFailure = parsed
+		? buildGitFailureDetails({ command: `git ${args.join(" ")}`, exitCode, ...parsed })
+		: null;
+	if (parsed?.kind === "hook-rejected") {
+		const hook = gitFailure.hookName && gitFailure.hookName !== "unknown" ? `the ${gitFailure.hookName} hook` : "a git hook";
+		return new RunnerGitError(
+			"git-hook-rejected",
+			`git ${args.join(" ")} rejected by ${hook} in '${cwd}': ${(stderr || err?.message || "").trim() || "no output"}`,
+			{ args, stdout, stderr, cwd, exitCode, gitFailure },
+		);
+	}
+	return new RunnerGitError("git-failed", `git ${args.join(" ")} failed in '${cwd}': ${(stderr || err?.message || "").trim() || "no output"}`, { args, stdout, stderr, cwd, exitCode, gitFailure });
 }
 
 /***
@@ -460,11 +529,15 @@ export async function preserveEvictedWorkdir(workdir) {
 	}
 	const headBefore = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 	await runGit(workdir, ["add", "-A"]);
-	await runGit(workdir, [
-		"-c", "user.name=KainBain Runner",
-		"-c", "user.email=kainbain-runner@local",
-		"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
-	]);
+	try {
+		await runGit(workdir, [
+			"-c", "user.name=KainBain Runner",
+			"-c", "user.email=kainbain-runner@local",
+			"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
+		]);
+	} catch (err) {
+		throw withGitFailurePhase(err, "recovery");
+	}
 	// Recovery branch captures the residue commit; then put the task branch
 	// back where it was (soft reset keeps the index/worktree untouched).
 	await runGit(workdir, ["branch", recoveredTo]);
@@ -566,6 +639,21 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
 	}
 }
 
+function reportHookBlock(logger, what, err) {
+	// Eviction-time hook blocks are swallowed by design (the next candidate
+	// is tried instead) — but a hook rejecting every candidate used to be
+	// invisible. One loud line keeps the degrade-to-cap behaviour while
+	// naming the cause. Best-effort: logging must never break eviction.
+	if (!logger || !err?.gitFailure) return;
+	try {
+		const line = `${what}: ${err.gitFailure.summary} — residue left in place, trying the next candidate.`;
+		if (typeof logger.error === "function") logger.error(line);
+		else if (typeof logger.log === "function") logger.log(line);
+	} catch {
+		// Logging must never break eviction.
+	}
+}
+
 /***
  * MARK: evictOldestWorkdir
  * @description Frees one worktree slot past the cap by removing the
@@ -583,9 +671,12 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
  * @param {number} [opts.staleMs] - Staleness threshold (default WORKTREE_EVICT_STALE_MS).
  * @param {string} [opts.repoDir] - Mode repo dir for worktree removal.
  * @param {string} [opts.localPath] - Backend checkout for worktree removal.
+ * @param {Object} [opts.logger] - Logger for swallowed hook blocks (a hook
+ *   rejecting a candidate's preserve commit is logged loudly, then the next
+ *   candidate is tried — never thrown).
  * @returns {Promise<{evicted: string, parkedTo: string|null}|null>} Eviction record, or null.
  ***/
-export async function evictOldestWorkdir({ workRoot, currentTaskId = null, staleMs = WORKTREE_EVICT_STALE_MS, repoDir = null, localPath = null } = {}) {
+export async function evictOldestWorkdir({ workRoot, currentTaskId = null, staleMs = WORKTREE_EVICT_STALE_MS, repoDir = null, localPath = null, logger = null } = {}) {
 	const orphans = listOrphanWorkdirs(workRoot, currentTaskId);
 	if (!orphans.length) return null;
 	const now = Date.now();
@@ -602,7 +693,8 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
 				recordWorktreeEviction();
 				return { evicted: dir, parkedTo };
 			}
-		} catch {
+		} catch (err) {
+			reportHookBlock(logger, `Worktree eviction preserve failed for ${dir}`, err);
 			// Try the next-oldest candidate instead of failing the deploy.
 		}
 	}
@@ -624,9 +716,11 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
  * @param {string} opts.taskId - Task id.
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} [opts.localPath] - Backend checkout (adopt-mode owner).
+ * @param {Object} [opts.logger] - Logger for swallowed hook blocks (logged
+ *   loudly, never thrown).
  * @returns {Promise<string>} "reaped"|"kept"|"absent"|"skipped".
  ***/
-export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, workRoot, localPath = null } = {}) {
+export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, workRoot, localPath = null, logger = null } = {}) {
 	try {
 		const dir = path.join(workRoot, `kb-${taskId}`);
 		if (!fs.existsSync(dir)) return "absent";
@@ -650,7 +744,8 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
 		}
 		try {
 			await preserveEvictedWorkdir(dir);
-		} catch {
+		} catch (err) {
+			reportHookBlock(logger, `Workdir reap preserve failed for ${dir}`, err);
 			// Preservation is best-effort; removal still reclaims the slot.
 		}
 		const gone = await removeTaskWorkdir({ workRoot, localPath: ownerPath, dir });
@@ -675,9 +770,11 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
  * @param {Object} opts
  * @param {Object} opts.client - Runner backend client (`listProjects`, `getTask`).
  * @param {string} opts.workRoot - Runner work root.
+ * @param {Object} [opts.logger] - Logger for swallowed hook blocks (logged
+ *   loudly, never thrown).
  * @returns {Promise<string[]>} Reaped workdir paths.
  ***/
-export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
+export async function reapTerminalOrphanWorkdirs({ client, workRoot, logger = null } = {}) {
 	const reaped = [];
 	try {
 		const orphans = listOrphanWorkdirs(workRoot, null);
@@ -711,7 +808,8 @@ export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
 				if (!found || terminal) {
 					try {
 						await preserveEvictedWorkdir(dir);
-					} catch {
+					} catch (err) {
+						reportHookBlock(logger, `Workdir sweep preserve failed for ${dir}`, err);
 						// Preservation is best-effort; removal still reclaims the slot.
 					}
 					const gone = await removeTaskWorkdir({ workRoot, dir });
@@ -783,11 +881,18 @@ export async function refreshWorktreeToRemote(workdir, branch) {
 		if (dirty) {
 			await runGit(workdir, ["checkout", recoveredTo]);
 			await runGit(workdir, ["add", "-A"]);
-			await runGit(workdir, [
-				"-c", "user.name=KainBain Runner",
-				"-c", "user.email=kainbain-runner@local",
-				"commit", "-m", `recovery: unpushed work from reused worktree (${branch})`,
-			]);
+			try {
+				await runGit(workdir, [
+					"-c", "user.name=KainBain Runner",
+					"-c", "user.email=kainbain-runner@local",
+					"commit", "-m", `recovery: unpushed work from reused worktree (${branch})`,
+				]);
+			} catch (err) {
+				// The recovery commit is the incident's crash path (a hook
+				// rejecting here used to kill the runner): tag its phase so
+				// the daemon reports it as a structured failed completion.
+				throw withGitFailurePhase(err, "recovery");
+			}
 		}
 	}
 	await runGit(workdir, ["checkout", "-f", "-B", branch, `origin/${branch}`]);
@@ -1004,9 +1109,11 @@ export async function ensureRepoHooksPath(repoDir) {
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} opts.taskId - Task id.
  * @param {number} [opts.evictStaleMs] - Staleness threshold for LRU eviction (default WORKTREE_EVICT_STALE_MS).
+ * @param {Object} [opts.logger] - Logger for swallowed eviction-time hook
+ *   blocks (logged loudly, never thrown).
  * @returns {Promise<Object>} `{ workdir, branch, mode, reused }`.
  ***/
-export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS, docsRepoUrl = null, docsLocalPath = null }) {
+export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS, docsRepoUrl = null, docsLocalPath = null, logger = null }) {
 	if (!repoUrl && !localPath) {
 		throw new Error("prepareWorkdir needs repoUrl (clone) or localPath (adopt).");
 	}
@@ -1034,6 +1141,7 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 			currentTaskId: taskId,
 			staleMs: evictStaleMs,
 			localPath: localPath || null,
+			logger,
 		});
 		if (!outcome) {
 			const err = new Error(

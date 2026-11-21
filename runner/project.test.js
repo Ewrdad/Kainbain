@@ -4,9 +4,11 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	RunnerGitError,
 	ensureRepoHooksPath,
+	evictOldestWorkdir,
 	listOrphanWorkdirs,
 	maybeRecoverWorkdirLock,
 	prepareIntegrationWorkdir,
@@ -17,6 +19,7 @@ import {
 	resolveRunnerDocsDirName,
 	runGit,
 	syncTaskDocs,
+	withGitFailurePhase,
 	writeClaimTaskAssets,
 } from "./project.js";
 
@@ -860,5 +863,250 @@ describe("syncTaskDocs custom docsDirName", () => {
 			fs.rmSync(primary, { recursive: true, force: true });
 			fs.rmSync(workdir, { recursive: true, force: true });
 		}
+	});
+});
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function wireRealBinaryGuard(dir) {
+	// The production hook + checker (+ its magic-table module), copied into
+	// the fixture so the replay exercises the real parser input
+	// byte-for-byte. Explicit file list on purpose: if the guard's module
+	// graph grows, the fixture fails loudly instead of silently staling.
+	fs.mkdirSync(path.join(dir, "scripts", "githooks"), { recursive: true });
+	for (const name of ["githooks/pre-commit", "check-binary-guard.mjs", "check-proof-and-hygiene.mjs"]) {
+		fs.copyFileSync(path.join(REPO_ROOT, "scripts", name), path.join(dir, "scripts", name));
+	}
+	git(dir, ["config", "core.hooksPath", "scripts/githooks"]);
+}
+
+function corruptPng(dir, rel) {
+	// ef bf bd = the UTF-8 replacement char: the text-round-trip signature
+	// the guard fails on. Bytes are generated in-test in os.tmpdir(), so the
+	// repo's own binary guard never sees them.
+	const full = path.join(dir, rel);
+	fs.mkdirSync(path.dirname(full), { recursive: true });
+	fs.writeFileSync(full, Buffer.from([0xef, 0xbf, 0xbd, 0x50, 0x4e, 0x47, 0x0d, 0x0a]));
+	return rel;
+}
+
+describe("git hook-failure classification", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("classifies a binary-guard hook rejection with files and remedy", async () => {
+		const dir = localRepo();
+		dirs.push(dir);
+		wireRealBinaryGuard(dir);
+		git(dir, ["add", "."]);
+		git(dir, ["commit", "-qm", "wire binary guard"]);
+		const files = ["a.png", "docs/tasks/t1/assets/b.png", "shot.png"].map((rel) => corruptPng(dir, rel));
+		await runGit(dir, ["add", "-A"]);
+		await assert.rejects(runGit(dir, ["commit", "-m", "add shots"]), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "git-hook-rejected");
+			assert.equal(err.exitCode, 1);
+			assert.equal(err.gitFailure.kind, "hook-rejected");
+			assert.equal(err.gitFailure.hookName, "pre-commit");
+			assert.deepEqual(err.gitFailure.files, files);
+			assert.ok(err.gitFailure.hookOutput.includes("binary-guard check FAILED"));
+			assert.ok(err.gitFailure.remedy.includes("capture-screenshot.mjs"));
+			assert.ok(err.gitFailure.summary.includes("3 corrupt files"));
+			return true;
+		});
+	});
+
+	it("degrades gracefully on a foreign hook with arbitrary stderr", async () => {
+		const dir = localRepo();
+		dirs.push(dir);
+		fs.mkdirSync(path.join(dir, "myhooks"), { recursive: true });
+		fs.writeFileSync(path.join(dir, "myhooks", "pre-commit"), "#!/bin/sh\necho 'my custom hook says no' >&2\nexit 1\n");
+		fs.chmodSync(path.join(dir, "myhooks", "pre-commit"), 0o755);
+		git(dir, ["config", "core.hooksPath", "myhooks"]);
+		fs.writeFileSync(path.join(dir, "note.txt"), "hello");
+		await runGit(dir, ["add", "-A"]);
+		await assert.rejects(runGit(dir, ["commit", "-m", "note"]), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "git-hook-rejected");
+			assert.equal(err.gitFailure.kind, "hook-rejected");
+			assert.equal(err.gitFailure.hookName, "unknown");
+			assert.deepEqual(err.gitFailure.files, []);
+			assert.ok(err.gitFailure.hookOutput.includes("my custom hook says no"));
+			assert.ok(err.gitFailure.remedy.includes("Inspect the hook output"));
+			return true;
+		});
+	});
+
+	it("keeps hook-less commit failures as git-failed with the exit code", async () => {
+		const dir = localRepo();
+		dirs.push(dir);
+		fs.writeFileSync(path.join(dir, "note.txt"), "hello");
+		await runGit(dir, ["add", "-A"]);
+		// Empty identity fails deterministically whatever the ambient git
+		// config carries (no hook words in the output either way).
+		await assert.rejects(runGit(dir, ["-c", "user.name=", "-c", "user.email=", "commit", "-m", "note"]), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "git-failed");
+			assert.ok(Number.isInteger(err.exitCode));
+			assert.equal(err.gitFailure.kind, "commit-failed");
+			assert.ok(err.gitFailure.summary.startsWith("Commit failed"));
+			return true;
+		});
+	});
+
+	it("leaves non-commit failures unstructured", async () => {
+		const dir = localRepo();
+		dirs.push(dir);
+		await assert.rejects(runGit(dir, ["rev-parse", "--verify", "no-such-ref"]), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "git-failed");
+			assert.equal(err.gitFailure, null);
+			assert.ok(Number.isInteger(err.exitCode));
+			return true;
+		});
+	});
+
+	it("leaves merge --abort failures unstructured (no hooks run on abort)", async () => {
+		const dir = localRepo();
+		dirs.push(dir);
+		await assert.rejects(runGit(dir, ["merge", "--abort"]), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "git-failed");
+			assert.equal(err.gitFailure, null);
+			return true;
+		});
+	});
+});
+
+describe("withGitFailurePhase", () => {
+	it("tags an untagged envelope, keeps an existing phase, passes other errors through", () => {
+		const untagged = new RunnerGitError("git-hook-rejected", "x", {
+			gitFailure: { kind: "hook-rejected", phase: null, summary: "s" },
+		});
+		assert.equal(withGitFailurePhase(untagged, "recovery"), untagged);
+		assert.equal(untagged.gitFailure.phase, "recovery");
+		const tagged = new RunnerGitError("git-hook-rejected", "x", {
+			gitFailure: { kind: "hook-rejected", phase: "recovery", summary: "s" },
+		});
+		withGitFailurePhase(tagged, "stage-commit");
+		assert.equal(tagged.gitFailure.phase, "recovery");
+		const plain = new Error("boom");
+		assert.equal(withGitFailurePhase(plain, "merge"), plain);
+		const noEnvelope = new RunnerGitError("git-failed", "x", {});
+		assert.equal(withGitFailurePhase(noEnvelope, "merge"), noEnvelope);
+		assert.equal(noEnvelope.gitFailure, null);
+	});
+});
+
+describe("recovery commit hook tagging", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("tags a hook-rejected recovery commit with the recovery phase", async () => {
+		// Incident replay at the unit level: a reused worktree whose
+		// unpushed residue trips the binary guard on the recovery commit.
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-rec-origin-"));
+		git(origin, ["init", "-q", "--bare"]);
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-rec-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		git(seed, ["config", "user.email", "t@t.t"]);
+		git(seed, ["config", "user.name", "t"]);
+		wireRealBinaryGuard(seed);
+		fs.writeFileSync(path.join(seed, "f.txt"), "x");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "init with guard"]);
+		git(seed, ["branch", "-M", "main"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		git(seed, ["checkout", "-qb", "kb/t1"]);
+		git(seed, ["push", "-q", "origin", "kb/t1"]);
+		const work = fs.mkdtempSync(path.join(os.tmpdir(), "kb-rec-work-"));
+		execFileSync("git", ["clone", "-q", origin, work], { stdio: "ignore" });
+		git(work, ["checkout", "-q", "kb/t1"]);
+		git(work, ["config", "user.email", "t@t.t"]);
+		git(work, ["config", "user.name", "t"]);
+		git(work, ["config", "core.hooksPath", "scripts/githooks"]);
+		corruptPng(work, "a.png");
+		corruptPng(work, "b.png");
+		corruptPng(work, "c.png");
+		dirs.push(origin, seed, work);
+		await assert.rejects(refreshWorktreeToRemote(work, "kb/t1"), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "git-hook-rejected");
+			assert.equal(err.gitFailure.kind, "hook-rejected");
+			assert.equal(err.gitFailure.phase, "recovery");
+			assert.deepEqual(err.gitFailure.files, ["a.png", "b.png", "c.png"]);
+			return true;
+		});
+	});
+});
+
+describe("eviction hook-block logging", () => {
+	it("logs a swallowed hook block loudly, then evicts the next candidate", async () => {
+		const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-evict-"));
+		try {
+			// Oldest candidate: a dirty repo whose preserve commit the hook rejects.
+			const blocked = path.join(workRoot, "kb-old-a");
+			fs.mkdirSync(blocked, { recursive: true });
+			git(blocked, ["init", "-q"]);
+			git(blocked, ["config", "user.email", "t@t.t"]);
+			git(blocked, ["config", "user.name", "t"]);
+			fs.writeFileSync(path.join(blocked, "f.txt"), "x");
+			git(blocked, ["add", "."]);
+			git(blocked, ["commit", "-qm", "init"]);
+			wireRealBinaryGuard(blocked);
+			git(blocked, ["add", "."]);
+			git(blocked, ["commit", "-qm", "wire guard"]);
+			corruptPng(blocked, "bad.png");
+			// Next candidate: clean, so it evicts.
+			const clean = path.join(workRoot, "kb-old-b");
+			fs.mkdirSync(clean, { recursive: true });
+			git(clean, ["init", "-q"]);
+			git(clean, ["config", "user.email", "t@t.t"]);
+			git(clean, ["config", "user.name", "t"]);
+			fs.writeFileSync(path.join(clean, "f.txt"), "x");
+			git(clean, ["add", "."]);
+			git(clean, ["commit", "-qm", "init"]);
+			// The blocked candidate is strictly oldest so eviction tries it
+			// first (oldest-first); the clean one evicts after it fails.
+			fs.utimesSync(blocked, new Date(Date.now() - 2 * 60 * 60 * 1000), new Date(Date.now() - 2 * 60 * 60 * 1000));
+			fs.utimesSync(clean, new Date(Date.now() - 60 * 60 * 1000), new Date(Date.now() - 60 * 60 * 1000));
+			const errors = [];
+			const outcome = await evictOldestWorkdir({
+				workRoot,
+				currentTaskId: "t1",
+				logger: { log: () => {}, error: (line) => errors.push(String(line)) },
+			});
+			assert.ok(outcome && outcome.evicted === clean, "eviction degrades to the next candidate");
+			assert.equal(errors.length, 1);
+			assert.ok(errors[0].includes("kb-old-a"));
+			assert.ok(errors[0].includes("Commit blocked by pre-commit hook"));
+		} finally {
+			fs.rmSync(workRoot, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("runner never bypasses hooks", () => {
+	it("contains no --no-verify in runner production code (q6: bypass is a manual escape hatch only)", () => {
+		// The assertion string itself is why test files are excluded from
+		// the scan: production code must never carry the bypass flag.
+		const runnerDir = path.dirname(fileURLToPath(import.meta.url));
+		const offenders = [];
+		for (const name of fs.readdirSync(runnerDir)) {
+			if (!name.endsWith(".js") || name.includes(".test.")) continue;
+			const content = fs.readFileSync(path.join(runnerDir, name), "utf8");
+			if (content.includes("--no-verify")) offenders.push(name);
+		}
+		assert.deepEqual(offenders, []);
 	});
 });

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { RunnerGitError, runGit } from "./project.js";
+import { GIT_FAILURE_KINDS, buildGitFailureDetails } from "../shared/gitFailure.js";
 
 const PUSH_RETRY_BUDGET = 3;
 
@@ -63,7 +64,26 @@ export async function integrateUpstream({ workdir, branch, author = "" }) {
 			// Best effort: the tree may already be clean.
 		}
 		if (looksLikeConflict) {
-			throw new RunnerGitError("sync-conflict", `merging origin/${branch} into ${branch} conflicts (${conflicted.join(", ") || "unknown files"}) — refusing to resolve on the push path`, { cwd: workdir });
+			const hookOutput = [`${err?.message || ""}`, `${err?.stderr || ""}`, `${err?.stdout || ""}`]
+				.map((part) => part.trim())
+				.filter(Boolean)
+				.join("\n");
+			throw new RunnerGitError(
+				"sync-conflict",
+				`merging origin/${branch} into ${branch} conflicts (${conflicted.join(", ") || "unknown files"}) — refusing to resolve on the push path`,
+				{
+					cwd: workdir,
+					exitCode: Number.isInteger(err?.exitCode) ? err.exitCode : null,
+					gitFailure: buildGitFailureDetails({
+						command: `git merge --no-edit origin/${branch}`,
+						exitCode: Number.isInteger(err?.exitCode) ? err.exitCode : null,
+						kind: GIT_FAILURE_KINDS.MERGE_CONFLICT,
+						files: conflicted,
+						hookOutput,
+						remedy: `Resolve each listed file on '${branch}', commit the resolution, and retry the stage — conflicts are never resolved on this path.`,
+					}),
+				},
+			);
 		}
 		throw err;
 	}
@@ -108,10 +128,19 @@ export async function commitAndPush({ workdir, branch, message, author = "", tas
 			});
 		} catch (err) {
 			if (err instanceof RunnerGitError) {
+				// The docs label must not drop the structured failure: the
+				// daemon reports `gitFailure`, so forward it (re-wording the
+				// summary with the docs prefix) along with the exit code.
+				const gitFailure = err.gitFailure
+					? buildGitFailureDetails({
+						...err.gitFailure,
+						summary: `docs repo (${path.basename(docsWorkdir)}): ${err.gitFailure.summary}`,
+					})
+					: null;
 				throw new RunnerGitError(
 					err.code,
 					`docs repo (${path.basename(docsWorkdir)}): ${err.message}`,
-					{ cwd: docsWorkdir },
+					{ cwd: docsWorkdir, args: err.args, stdout: err.stdout, stderr: err.stderr, exitCode: err.exitCode, gitFailure },
 				);
 			}
 			throw err;

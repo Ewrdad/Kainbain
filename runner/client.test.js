@@ -54,6 +54,45 @@ describe("createRunnerClient", () => {
 		assert.ok(!("sha" in body));
 	});
 
+	it("complete passes a structured gitFailure through verbatim", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		const gitFailure = {
+			kind: "hook-rejected",
+			phase: "recovery",
+			command: "git commit -m recovery",
+			exitCode: 1,
+			hookName: "pre-commit",
+			files: ["a.png"],
+			hookOutput: "binary-guard check FAILED",
+			remedy: "re-capture a.png",
+			summary: "Commit blocked by pre-commit hook: 1 corrupt file: a.png",
+			truncatedFiles: false,
+			truncatedOutput: false,
+		};
+		await client.complete({
+			taskId: "t1",
+			projectId: "p1",
+			executionId: "e1",
+			epoch: 1,
+			outcome: "failed",
+			failureKind: "commit-failed",
+			failureReason: gitFailure.summary,
+			gitFailure,
+		});
+		const body = JSON.parse(calls[0].opts.body);
+		assert.deepEqual(body.gitFailure, gitFailure);
+		assert.equal(body.failureKind, "commit-failed");
+	});
+
+	it("complete omits gitFailure when none was reported", async () => {
+		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
+		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });
+		await client.complete({ taskId: "t1", projectId: "p1", executionId: "e1", epoch: 1, outcome: "passed" });
+		const body = JSON.parse(calls[0].opts.body);
+		assert.ok(!("gitFailure" in body));
+	});
+
 	it("complete sends the attestation hash and committed flag", async () => {
 		const { fetchImpl, calls } = stubFetch(() => ok({ accepted: true }));
 		const client = createRunnerClient({ backendUrl: "http://x:3100", fetchImpl });

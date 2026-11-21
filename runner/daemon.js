@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, resolveRunnerDocsRepoUrl, resolveRunnerKainbainHome, shouldSyncTaskDocs, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, resolveRunnerDocsRepoUrl, resolveRunnerKainbainHome, shouldSyncTaskDocs, touchWorkdir, withGitFailurePhase } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { runImpromptuJob } from "./impromptu.js";
@@ -20,6 +20,8 @@ import { clearDiscoveryCache, getDiscoveryStatus, provenanceForIds, recordRoundF
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
+import { buildGitFailureDetails, isDeterministicGitFailure } from "../shared/gitFailure.js";
+import { redactSecretsText } from "../shared/redactSecrets.js";
 import { appendAttestationTrailers, hashStageConfig, isWellFormedConfigHash } from "../shared/stageAttestation.js";
 import { resolveAttestationStage } from "../api/work/resolveAttestationStage.js";
 // WP2 signal: this daemon's process-local production counters (worktree
@@ -1917,6 +1919,13 @@ async function executeAssignment({
 		// Hoisted so the failure path below can flush the trailing
 		// structured batch before reporting the stage as failed.
 		let structuredSender = null;
+		// Hoisted so the commit-failure branch can name the phase, report
+		// the one-line summary through the same sequenced log sender, and
+		// ship task files from the prepared worktree. The branch stays
+		// null when worktree setup itself threw.
+		let sendLogs = null;
+		let gitPhase = "worktree-setup";
+		let assignmentBranch = null;
 		// Latched by the verdict watcher in the runHarnessStage onEvent
 		// callback below when the agent calls the fail_stage tool (mirrors
 		// the embedded path's stageFailureRequested in api/agentRunner.js).
@@ -1938,9 +1947,11 @@ async function executeAssignment({
 				taskId: taskId,
 				docsRepoUrl,
 				docsLocalPath: typeof project?.docsRepo?.localPath === "string" && project.docsRepo.localPath.trim() ? project.docsRepo.localPath.trim() : null,
+				logger,
 			});
 			state.workdir = workdir;
 			state.docsWorkdir = docsWorkdir;
+			assignmentBranch = branch;
 			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}` : ""})${docsWorkdir ? ` + docs worktree ${docsWorkdir}${docsRecoveredTo ? ` (residue parked on ${docsRecoveredTo})` : ""}` : ""}.`);
 			// Task prompt inputs (idea files, reference images) land in the
 			// live task folder outside the task branch — mirror them into
@@ -1967,7 +1978,7 @@ async function executeAssignment({
 			}
 
 			let seq = 0;
-			const sendLogs = async (bytes) => {
+			sendLogs = async (bytes) => {
 				for (const chunk of String(bytes).split("\n")) {
 					if (!chunk) continue;
 					await client.logs({
@@ -2168,6 +2179,7 @@ async function executeAssignment({
 			});
 
 			const stageMessage = `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`;
+			gitPhase = "stage-commit";
 			const { sha, pushed, pushSkipped, beforeSha, pushState, skipped } = await commitAndPush({
 				workdir,
 				branch,
@@ -2260,6 +2272,65 @@ async function executeAssignment({
 				}
 				return { interrupted: true, executionId, epoch, reason };
 			}
+			if (err?.gitFailure && isDeterministicGitFailure(err.gitFailure)) {
+				// Deterministic commit/hook/merge rejection (e.g. the
+				// pre-commit binary guard refusing corrupt PNGs during a
+				// recovery commit): re-running the same tree fails the same
+				// way, so report once as a FAILED completion carrying the
+				// structured payload and RETURN — like WORKTREE_CAP_REACHED
+				// above, never rethrow. Rethrowing crash-loops under
+				// Restart=always while the task keeps its stale error.
+				withGitFailurePhase(err, gitPhase);
+				const gitFailure = err.gitFailure;
+				const failureReason = redactSecretsText(gitFailure.summary).trim() || "Runner commit failed";
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flushing is best-effort: the failure report matters more.
+				}
+				if (sendLogs) {
+					try {
+						await sendLogs(`commit failed: ${failureReason}`);
+					} catch {
+						// Logging is best-effort: the completion matters more.
+					}
+				}
+				if (typeof logger.error === "function") logger.error(`commit failed (${gitFailure.phase || gitPhase}): ${failureReason}`);
+				else logger.log(`commit failed (${gitFailure.phase || gitPhase}): ${failureReason}`);
+				try {
+					const receipt = await client.complete({
+						taskId: taskId,
+						projectId: projectId,
+						executionId,
+						epoch,
+						...(assignmentBranch ? { branch: assignmentBranch } : {}),
+						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+						model: servedModel,
+						outcome: "failed",
+						failureKind: "commit-failed",
+						failureReason,
+						gitFailure,
+						...(configHash ? { configHash } : {}),
+						committed: false,
+						...(state.workdir
+							? { taskFiles: collectTaskFiles({ workdir: state.workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir: state.docsWorkdir }) }
+							: {}),
+						durationMs: Date.now() - runStartedAt,
+					});
+					return { ...receipt, gitFailureReported: true, gitFailureSummary: failureReason };
+				} catch (reportErr) {
+					// The report itself failed (lost lease, unreachable
+					// backend): best-effort interrupt WITH the reason so the
+					// history names the cause, then still return — a
+					// reporting failure must never crash the runner either.
+					try {
+						await client.interrupt({ taskId, projectId, executionId, reason: failureReason.slice(0, 500) });
+					} catch {
+						// Interrupting is best-effort: the lease TTL still bounds the damage.
+					}
+					return { gitFailureReported: true, reportFailed: true, reason: failureReason };
+				}
+			}
 			if (err?.failedOutcome) {
 				// The harness ran and failed: report through the engine's
 				// failure routing (verdict/failback) instead of parking.
@@ -2320,11 +2391,17 @@ async function executeAssignment({
 			} catch {
 				// Flushing is best-effort: the interrupt matters more.
 			}
+			// Transient faults (git lock/timeout, harness transport) keep
+			// the interrupt+rethrow path — but the reason now travels on
+			// the interrupt so the task history names the cause instead of
+			// a bare "lease dropped".
+			const interruptReason = redactSecretsText(String(err?.message || "Runner execution failed")).trim().slice(0, 500);
 			try {
 				await client.interrupt({
 					taskId: taskId,
 					projectId: projectId,
 					executionId,
+					...(interruptReason ? { reason: interruptReason } : {}),
 				});
 			} catch {
 				// Interrupting is best-effort: the lease TTL still bounds the damage.
@@ -2466,7 +2543,23 @@ async function executeIntegrationAssignment({
 				}).catch(() => {});
 				state.session = null; stopRenewal(); clearInterval(integrationTimer);
 				await finishProgress();
-				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }) });
+				const mergeText = [`${mergeErr?.message || ""}`, `${mergeErr?.stderr || ""}`, `${mergeErr?.stdout || ""}`]
+					.map((part) => part.trim())
+					.filter(Boolean)
+					.join("\n");
+				return await failTask(detail, {
+					taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
+					gitFailure: buildGitFailureDetails({
+						phase: "merge",
+						command: `git merge --no-ff origin/${taskBranch}`,
+						exitCode: Number.isInteger(mergeErr?.exitCode) ? mergeErr.exitCode : null,
+						kind: "merge-conflict",
+						files: conflicted,
+						hookOutput: mergeText,
+						remedy: `Resolve each listed file on '${taskBranch}', commit the resolution, and retry the merge stage — the integration runner never resolves code.`,
+						summary: detail,
+					}),
+				});
 			}
 			const mergeSha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 			try {
@@ -2528,8 +2621,32 @@ async function executeIntegrationAssignment({
 			await finishProgress();
 			return await failTask(`stale-head: ${err.message}`);
 		}
+		if (err?.gitFailure && isDeterministicGitFailure(err.gitFailure)) {
+			// Deterministic commit/hook rejection inside the merge (e.g. a
+			// hook refusing the merge commit): settle the integration lease
+			// as failed and report the task as failed with the structured
+			// payload — never rethrow into the restart loop.
+			withGitFailurePhase(err, "merge");
+			const gitFailure = err.gitFailure;
+			const failureReason = redactSecretsText(gitFailure.summary).trim() || "Integration commit failed";
+			try {
+				await sendLogs(`[integrate] commit failed: ${failureReason}`);
+			} catch {
+				// Logging is best-effort: the reports matter more.
+			}
+			await client.integrationReport({
+				projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
+				outcome: "failed", detail: failureReason,
+			}).catch(() => {});
+			await finishProgress();
+			return await failTask(failureReason, { failureKind: "commit-failed", gitFailure });
+		}
+		const interruptReason = redactSecretsText(String(err?.message || "Integration execution failed")).trim().slice(0, 500);
 		try {
-			await client.interrupt({ taskId, projectId, executionId });
+			await client.interrupt({
+				taskId, projectId, executionId,
+				...(interruptReason ? { reason: interruptReason } : {}),
+			});
 		} catch {
 			// Interrupting is best-effort: the lease TTL still bounds the damage.
 		}
@@ -2606,6 +2723,7 @@ export async function runSingleAssignment({
 			projectId: config.projectId,
 			taskId: config.taskId,
 			workRoot: config.workRoot,
+			logger,
 		});
 		// Idle-only update close-out: a requestUpdate that arrived
 		// mid-assignment parked state.pendingUpdate — this is the
@@ -2793,7 +2911,7 @@ export async function runDispatchLoop({
 	const sweepEveryPolls = 12;
 	const sweepTerminalWorkdirs = async (why) => {
 		try {
-			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: config.workRoot });
+			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: config.workRoot, logger });
 			if (reaped.length) {
 				logger.log(
 					`Workdir sweep (${why}): reaped ${reaped.length} terminal workdir(s): ${reaped.map((d) => path.basename(d)).join(", ")}`,
@@ -2925,7 +3043,7 @@ export async function runDispatchLoop({
 					`Requirements want harness '${wanted}' (not loaded); serving with primary '${servingId}'.`,
 				);
 			}
-			await executeAssignment({
+			const assignmentResult = await executeAssignment({
 				config,
 				client,
 				logger,
@@ -2969,7 +3087,17 @@ export async function runDispatchLoop({
 				projectId: answer.projectId,
 				taskId: answer.taskId,
 				workRoot: config.workRoot,
+				logger,
 			});
+			if (assignmentResult?.gitFailureReported) {
+				// A deterministic git failure was just reported for this
+				// task: pause one poll cycle so the same task+stage is not
+				// re-claimed immediately. The process stays alive and polls
+				// for other work afterwards; the backend parks the task
+				// after three consecutive strikes.
+				logger.log(`Dispatch: backing off one poll cycle (${pollMs}ms) after a deterministic git failure report.`);
+				await new Promise((r) => setTimeout(r, pollMs));
+			}
 			if (state.pendingUpdate) {
 				try {
 					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });
