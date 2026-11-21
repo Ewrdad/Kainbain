@@ -414,11 +414,40 @@ export function workdirMtimeMs(dir) {
 }
 
 /***
+ * MARK: commitRecoverySnapshot
+ * @description Commits the staged residue as one internal snapshot on a
+ *   `kb-recovery/*` branch. Single home for the recovery-commit argv (the
+ *   reuse path and the eviction path both call here): repo-local identity
+ *   plus `--no-verify`, so the two paths cannot drift apart. Recovery
+ *   snapshots are local forensic parking, never task output — a failing
+ *   repo hook (binary guard, linters) must never block preserving unpushed
+ *   work, so hooks are bypassed by design and the bypass is warn-logged
+ *   with the recovery branch for discoverability.
+ * @example await commitRecoverySnapshot('/w/kb-t1', 'recovery: …', { recoveryBranch: 'kb-recovery/t1/…' })
+ * @param {string} workdir - Workdir whose staged residue to commit.
+ * @param {string} message - Snapshot commit message.
+ * @param {Object} [opts] - `{ recoveryBranch, log }`.
+ * @param {string|null} [opts.recoveryBranch] - Recovery branch named in the warn log.
+ * @param {*} [opts.log] - Warn sink (`{ warn }`, defaults to console).
+ * @returns {Promise<void>}
+ ***/
+export async function commitRecoverySnapshot(workdir, message, { recoveryBranch = null, log = console } = {}) {
+	await runGit(workdir, [
+		"-c", "user.name=KainBain Runner",
+		"-c", "user.email=kainbain-runner@local",
+		"commit", "--no-verify", "-m", message,
+	]);
+	const warn = typeof log?.warn === "function" ? log.warn.bind(log) : console.warn.bind(console);
+	warn(`Recovery snapshot${recoveryBranch ? ` on ${recoveryBranch}` : ""} bypassed git hooks (--no-verify): ${message}`);
+}
+
+/***
  * MARK: preserveEvictedWorkdir
  * @description Parks a workdir's unpushed residue on a `kb-recovery/*`
- *   branch before the workdir is removed: dirty files are committed (with a
- *   repo-local identity, like the reuse path) and unpushed commits already
- *   live on the branch, so `git worktree remove` afterwards loses nothing.
+ *   branch before the workdir is removed: dirty files are committed (via
+ *   `commitRecoverySnapshot`, shared with the reuse path) and unpushed
+ *   commits already live on the branch, so `git worktree remove` afterwards
+ *   loses nothing.
  *   The residue is committed on the CURRENT checkout and the recovery branch
  *   is pointed at that commit — never `git checkout` the recovery branch
  *   first: a dirty index makes that fail with "you need to resolve your
@@ -460,11 +489,9 @@ export async function preserveEvictedWorkdir(workdir) {
 	}
 	const headBefore = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 	await runGit(workdir, ["add", "-A"]);
-	await runGit(workdir, [
-		"-c", "user.name=KainBain Runner",
-		"-c", "user.email=kainbain-runner@local",
-		"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
-	]);
+	await commitRecoverySnapshot(workdir, `recovery: unpushed work parked before eviction (${path.basename(workdir)})`, {
+		recoveryBranch: recoveredTo,
+	});
 	// Recovery branch captures the residue commit; then put the task branch
 	// back where it was (soft reset keeps the index/worktree untouched).
 	await runGit(workdir, ["branch", recoveredTo]);
@@ -734,8 +761,9 @@ export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
  *   a rerun never executes stale code left behind by a dead run. Nothing
  *   is ever discarded: a dirty tree or commits ahead of the remote are
  *   first parked on `kb-recovery/<task>/<timestamp>` (dirty files committed
- *   there with a repo-local identity), and the recovery branch name is
- *   returned so the daemon can report it. When the remote branch does not
+ *   there via `commitRecoverySnapshot`, shared with the eviction path),
+ *   and the recovery branch name is returned so the daemon can report it.
+ *   When the remote branch does not
  *   exist yet (nothing pushed), the local branch is simply checked out
  *   as-is.
  * @example await refreshWorktreeToRemote('/w/kb-t1', 'kb/t1') => { recoveredTo: null }
@@ -783,11 +811,9 @@ export async function refreshWorktreeToRemote(workdir, branch) {
 		if (dirty) {
 			await runGit(workdir, ["checkout", recoveredTo]);
 			await runGit(workdir, ["add", "-A"]);
-			await runGit(workdir, [
-				"-c", "user.name=KainBain Runner",
-				"-c", "user.email=kainbain-runner@local",
-				"commit", "-m", `recovery: unpushed work from reused worktree (${branch})`,
-			]);
+			await commitRecoverySnapshot(workdir, `recovery: unpushed work from reused worktree (${branch})`, {
+				recoveryBranch: recoveredTo,
+			});
 		}
 	}
 	await runGit(workdir, ["checkout", "-f", "-B", branch, `origin/${branch}`]);
