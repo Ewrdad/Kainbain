@@ -13,7 +13,12 @@ import { clearGitFailureStreak } from "../scheduler/clearGitFailureStreak.js";
  *   (hook-rejected/commit-failed/merge-conflict) with the same
  *   `buildGitFailureSignature` as the stored streak bumps its count, a changed
  *   signature restarts at 1, and anything else (a pass, a failure without
- *   deterministic git detail) clears the streak — the tree moved on. When
+ *   deterministic git detail) clears the streak — the tree moved on. The
+ *   streak is per task; its recorded `stageId` follows the latest failure,
+ *   and parking (`isGitFailureParked`) only bites while that stageId still
+ *   matches the task's current stage — so a failback walk accumulates toward
+ *   parking instead of resetting per stage, while an operator move (which
+ *   clears the streak outright) always unparks. When
  *   the count exactly hits `GIT_FAILURE_PARK_AFTER`, one history line
  *   records that auto-dispatch paused until an operator retries, resumes,
  *   or moves the task. Call before failure routing: failback clears

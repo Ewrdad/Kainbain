@@ -145,6 +145,10 @@ describe("buildGitFailureDetails", () => {
 		const details = buildGitFailureDetails({ phase: "stage-commit", command: "git commit", exitCode: 1, kind: "hook-rejected", hookName: "pre-commit", files, hookOutput: "x", remedy: "y" });
 		expect(details.files).toHaveLength(50);
 		expect(details.truncatedFiles).toBe(true);
+		// The summary still reports the TRUE count from the uncapped list,
+		// so a capped payload never undercounts the corrupt files.
+		expect(details.summary).toContain("60 corrupt files");
+		expect(details.summary).toContain("and 55 more");
 	});
 
 	it("de-duplicates the file list so counts and UI keys stay honest", () => {

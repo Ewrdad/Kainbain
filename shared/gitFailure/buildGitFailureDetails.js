@@ -73,8 +73,11 @@ export function buildGitFailureDetails(input = {}) {
 		truncatedOutput,
 	};
 	const override = typeof summary === "string" ? summary.trim() : "";
+	// The summary reads the UNCAPPED file list so a capped payload still
+	// reports the true count ("60 corrupt files", not "50"); the summary
+	// cap below keeps the line itself short.
 	details.summary = capText(
-		override || summarizeGitFailure({ kind: details.kind, hookName: details.hookName, files: details.files, exitCode: details.exitCode, hookOutput: details.hookOutput }),
+		override || summarizeGitFailure({ kind: details.kind, hookName: details.hookName, files: cleanFiles, exitCode: details.exitCode, hookOutput: details.hookOutput }),
 		GIT_FAILURE_LIMITS.summary,
 	).text;
 	return details;
