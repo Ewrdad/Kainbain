@@ -107,10 +107,14 @@ export function ProjectSettings() {
   // Deep-link follow: same-view navigations (header Settings while on the
   // workflows tab, a pasted `/settings/<tab>` URL, back/forward) change the
   // URL without remounting this page — the mount initializer above never
-  // re-runs, so without this detection the tab and the URL desync. Whenever
-  // the URL names a different tab than the visible one, the guarded switch
-  // runs (the mount already consumed the mount-time URL, and tab clicks set
-  // both together, so steady-state renders no-op here). The switch settles
+  // re-runs, so without this detection the tab and the URL desync. The
+  // effect therefore reacts to CHANGES of the URL-named section (tracked in
+  // a ref), not to a constant URL: the mount initializer already consumed
+  // the mount-time URL, and tab clicks set state and URL together, so in
+  // steady state nothing is pending. Reacting to a constant "no section"
+  // instead would treat every render as "go to project" and fight each tab
+  // click whenever this page renders outside a `/settings/:section` route
+  // (the param then never appears, e.g. in unit tests). The switch settles
   // async (react-hooks/set-state-in-effect): the guarded switch runs off
   // the synchronous effect body — the same pattern as the settings-section
   // loaders — one microtask after navigation. A superseding render cancels
@@ -120,7 +124,11 @@ export function ProjectSettings() {
   // to the visible tab instead of stranding a lie in the address bar.
   // Unknown ids are ignored (fail safe, keep tab, leave URL), matching the
   // mount behaviour.
+  const lastUrlSectionRef = useRef(requestedSection);
   useEffect(() => {
+    const previousUrlSection = lastUrlSectionRef.current;
+    lastUrlSectionRef.current = requestedSection;
+    if (requestedSection === previousUrlSection) return undefined;
     const target = requestedSection === undefined ? 'project' : requestedSection;
     if (!PROJECT_SETTINGS_SECTIONS.includes(target)) return undefined;
     if (target === settingsSection) return undefined;
