@@ -2794,7 +2794,10 @@ export async function maybeSelfUpdate({
  *   `CLAIM_CONFLICT` inside the fence and the loop simply polls again. A
  *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry;
  *   `RUNNER_PAUSED` (operator-parked) backs off and re-polls until resumed;
- *   anything else throws loud.
+ *   anything else throws loud. A failing assignment never kills the loop:
+ *   the task is released via interrupt inside the assignment and the loop
+ *   logs and keeps polling (`STALE_EPOCH` still propagates — a fenced-out
+ *   lease needs a fresh join).
  * @example await runDispatchLoop({ config, client }) => { assignments: 2, polls: 5 }
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config (dispatch mode).
@@ -2966,42 +2969,60 @@ export async function runDispatchLoop({
 					`Requirements want harness '${wanted}' (not loaded); serving with primary '${servingId}'.`,
 				);
 			}
-			await executeAssignment({
-				config,
-				client,
-				logger,
-				harness: harnesses[servingId] ?? harness,
-				harnessId: servingId,
-				state,
-				projectId: answer.projectId,
-				taskId: answer.taskId,
-				lease: {
-				executionId: answer.executionId,
-				epoch: answer.epoch,
-				// Stage attestation rides the lease: the hash the backend
-				// computed at dispatch, echoed into the wrap-up commit and
-				// the completion below. Old backends omit it (local compute).
-				...(typeof answer.configHash === "string" && answer.configHash.trim()
-					? { configHash: answer.configHash.trim() }
-					: {}),
-			},
-				backendPrompt: answer.prompt || "",
-				taskAssets: answer.taskAssets,
-				kind: answer.kind || "",
-				ciCommand: answer.command || "",
-				runOnBranch: answer.runOnBranch || "",
-				customBranch: answer.customBranch || "",
-				primaryBranch: answer.primaryBranch || "",
-				ciTimeoutMs: Number(answer.timeoutMs) || 0,
-				ciEnv: answer.env,
-				// The backend already matched this task against our
-				// advertised models: serve exactly its required model.
-				model: answer.requirements?.model || null,
-				// Leased integrations carry their target/task SHAs here;
-				// executeAssignment routes `integrate` to the merge
-				// procedure instead of a harness.
-				integration: answer.integration ?? null,
-			});
+			try {
+				await executeAssignment({
+					config,
+					client,
+					logger,
+					harness: harnesses[servingId] ?? harness,
+					harnessId: servingId,
+					state,
+					projectId: answer.projectId,
+					taskId: answer.taskId,
+					lease: {
+					executionId: answer.executionId,
+					epoch: answer.epoch,
+					// Stage attestation rides the lease: the hash the backend
+					// computed at dispatch, echoed into the wrap-up commit and
+					// the completion below. Old backends omit it (local compute).
+					...(typeof answer.configHash === "string" && answer.configHash.trim()
+						? { configHash: answer.configHash.trim() }
+						: {}),
+				},
+					backendPrompt: answer.prompt || "",
+					taskAssets: answer.taskAssets,
+					kind: answer.kind || "",
+					ciCommand: answer.command || "",
+					runOnBranch: answer.runOnBranch || "",
+					customBranch: answer.customBranch || "",
+					primaryBranch: answer.primaryBranch || "",
+					ciTimeoutMs: Number(answer.timeoutMs) || 0,
+					ciEnv: answer.env,
+					// The backend already matched this task against our
+					// advertised models: serve exactly its required model.
+					model: answer.requirements?.model || null,
+					// Leased integrations carry their target/task SHAs here;
+					// executeAssignment routes `integrate` to the merge
+					// procedure instead of a harness.
+					integration: answer.integration ?? null,
+				});
+			} catch (err) {
+				// STALE_EPOCH keeps propagating: our lease lost its fence
+				// and only a fresh join re-establishes it — containing it
+				// here would let the loop act on superseded state.
+				if (err?.code === "STALE_EPOCH") throw err;
+				// Per-task containment: a worktree-setup or harness failure
+				// (e.g. a recovery commit rejected by a repo hook) already
+				// released the task via interrupt inside executeAssignment —
+				// log it and keep polling instead of exiting 1 into a
+				// systemd restart storm that blocks every other task.
+				const reason = `Assignment ${answer.projectId}/${answer.taskId} failed (${err?.message || err}); task released, continuing dispatch.`;
+				// This catch is the restart-storm barrier: its own logging
+				// must never throw back out, so every sink is checked.
+				if (typeof logger?.error === "function") logger.error(reason);
+				else if (typeof logger?.warn === "function") logger.warn(reason);
+				else console.error(reason);
+			}
 			// Terminal tasks never run again: reclaim their workdir slot
 			// now instead of growing into the cap (best-effort, never
 			// throws).
