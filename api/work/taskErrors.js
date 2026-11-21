@@ -23,6 +23,14 @@
  *   6. `logical` — everything else (review rejections, test/command
  *      failures, unknown errors): failback as actionable feedback.
  *
+ *   Explicit runner tags beat text heuristics: a carrier tagged
+ *   `failureKind: "commit-failed"` (a deterministic commit/hook/merge
+ *   rejection the Runner classified with full structured context) is
+ *   `logical/commit-failed` right after the abort checks — a same-tree
+ *   retry fails the same way, so it fails back as feedback and never
+ *   consumes Tier-2 infrastructure retry, whatever words the hook output
+ *   carries.
+ *
  *   Fail safe: exotic carriers (throwing getters, revoked Proxies) and
  *   nullish inputs never throw — they classify as `logical/unknown`.
  *   Text is collected from message fields plus Node `code`, numeric
@@ -285,6 +293,24 @@ function classifyStageErrorInner(error) {
 			signal: "operator-abort",
 			retryable: false,
 			action: "settle-quietly",
+		};
+	}
+	const taggedKind = error && typeof error === "object" ? safeRead(error, "failureKind") : undefined;
+	if (taggedKind === "commit-failed") {
+		// The Runner classified a deterministic commit/hook/merge rejection
+		// with full structured context (hook name, files, exit code): trust
+		// the tag over every text heuristic below. A hook message reading
+		// "timed out" must not hijack this into the transient table (a
+		// same-tree retry fails the same way), and "401"/"quota" words must
+		// not park it as unrecoverable — the commit itself is the feedback
+		// an earlier stage (or the operator) has to act on. Operator aborts
+		// above still win. Contrast the "infrastructure" tag below, which
+		// yields to auth/quota text.
+		return {
+			kind: "logical",
+			signal: "commit-failed",
+			retryable: false,
+			action: "failback",
 		};
 	}
 	if (isGitLockError(error)) {

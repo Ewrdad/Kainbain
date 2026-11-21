@@ -153,6 +153,7 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 			harnessId,
 			failureKind,
 			failureReason,
+			gitFailure = null,
 			durationMs,
 			taskFiles,
 			configHash = null,
@@ -190,6 +191,9 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					...(harnessId ? { harnessId } : {}),
 					...(failureKind ? { failureKind } : {}),
 					...(failureReason ? { failureReason } : {}),
+					// Structured commit/hook failure (additive): passed
+					// through verbatim; old backends ignore the unknown key.
+					...(gitFailure && typeof gitFailure === "object" ? { gitFailure } : {}),
 					...(Number.isFinite(durationMs) ? { durationMs } : {}),
 				...(Array.isArray(taskFiles) && taskFiles.length ? { taskFiles } : {}),
 				},

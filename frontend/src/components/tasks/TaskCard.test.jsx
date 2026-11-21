@@ -385,6 +385,35 @@ test('shows REJECTED tag for a deliberate rejection on an agent-ready task', () 
   expect(screen.queryByLabelText('Failed execution')).not.toBeInTheDocument();
 });
 
+test('labels a commit/hook failure distinctly from a generic failure', () => {
+  const commitFailureTask = {
+    ...task,
+    status: 'failed',
+    failureReason: 'Commit blocked by pre-commit hook: 1 corrupt file: shot.png',
+    lastError: {
+      message: 'Commit blocked by pre-commit hook: 1 corrupt file: shot.png',
+      stageName: 'Build',
+      failureKind: 'commit-failed',
+      gitDiagnostics: {
+        kind: 'hook-rejected',
+        phase: 'stage-commit',
+        command: 'git commit -m stage output',
+        exitCode: 1,
+        hookName: 'pre-commit',
+        files: ['shot.png'],
+        hookOutput: 'binary-guard check FAILED (1 corrupt binary)',
+        remedy: 'Re-capture shot.png, then retry the stage.',
+        summary: 'Commit blocked by pre-commit hook: 1 corrupt file: shot.png',
+      },
+    },
+  };
+  render(<TaskCard task={commitFailureTask} stageName="Execution" role="agent" />);
+  expect(screen.getByLabelText('Failed commit')).toBeInTheDocument();
+  expect(screen.getByText('⚠️ Commit Failed')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Failed execution')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Rejected execution')).not.toBeInTheDocument();
+});
+
 test('keeps the REJECTED tag while an auto-retry is queued', () => {
   const retryingRejection = {
     ...task,

@@ -143,6 +143,36 @@ describe("WP2: overlap matrix — every error classifies exactly once", () => {
 		expect(isTransientInfrastructureError(carrier)).toBe(false);
 		expect(isUnrecoverableError(carrier)).toBe(true);
 	});
+
+	it("commit-failed tags route to logical failback, never Tier-2 retry", () => {
+		// The runner's explicit tag beats every text heuristic: hook wording
+		// like "timed out" must not hijack the failure into the transient
+		// table, and "401"/"quota" words must not park it — a same-tree
+		// retry fails the same way, so the commit is feedback for failback.
+		for (const failureReason of [
+			"Commit blocked by pre-commit hook: 3 corrupt files: a.png, b.png, c.png",
+			"Commit failed (exit 1): deploy hook timed out after 30s",
+			"Commit failed (exit 1): 401 Unauthorized from the license hook",
+			"Commit failed (exit 1): quota exhausted in the scan hook",
+		]) {
+			const decision = classifyStageError({ failureKind: "commit-failed", failureReason });
+			expect(decision).toMatchObject({
+				kind: "logical",
+				signal: "commit-failed",
+				retryable: false,
+				action: "failback",
+			});
+			expect(isTransientInfrastructureError({ failureKind: "commit-failed", failureReason })).toBe(false);
+			expect(isUnrecoverableError({ failureKind: "commit-failed", failureReason })).toBe(false);
+		}
+	});
+
+	it("operator aborts still win over a commit-failed tag", () => {
+		const err = new Error("This operation was aborted");
+		err.failureKind = "commit-failed";
+		expect(classifyStageError(err).kind).toBe("operator-abort");
+		expect(isOperatorAbortError(err)).toBe(true);
+	});
 });
 
 describe("WP2: operator abort consumes no budget and raises no alert", () => {

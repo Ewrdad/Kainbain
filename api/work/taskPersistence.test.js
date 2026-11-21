@@ -82,6 +82,72 @@ function liveTask(id = "t-live") {
 	};
 }
 
+describe("The Work: gitFailureStreak persistence", () => {
+	it("round-trips the streak through task.md frontmatter", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-streak-persist-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-streak-1",
+			projectId: "proj-1",
+			title: "Streak persistence task",
+			status: "in_stage",
+			createdAt: "2026-11-21T00:00:00.000Z",
+			updatedAt: "2026-11-21T00:00:00.000Z",
+			history: [],
+			reports: [],
+			gitFailureStreak: {
+				stageId: "build",
+				signature: "hook-rejected|pre-commit|stage-commit|a.png",
+				count: 3,
+				updatedAt: "2026-11-21T06:00:00.000Z",
+			},
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-streak-1", "task.md"),
+			"utf8",
+		);
+		expect(content).toContain("gitFailureStreak:");
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-streak-1", "proj-1");
+		expect(rehydrated.gitFailureStreak).toEqual({
+			stageId: "build",
+			signature: "hook-rejected|pre-commit|stage-commit|a.png",
+			count: 3,
+			updatedAt: "2026-11-21T06:00:00.000Z",
+		});
+	});
+
+	it("omits the streak line when absent and tolerates corrupt values", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-streak-absent-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-streak-2",
+			projectId: "proj-1",
+			title: "No streak task",
+			status: "in_stage",
+			createdAt: "2026-11-21T00:00:00.000Z",
+			updatedAt: "2026-11-21T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-streak-2", "task.md"),
+			"utf8",
+		);
+		expect(content).not.toContain("gitFailureStreak:");
+		expect(parseTaskMarkdown(store, content, "task-streak-2", "proj-1").gitFailureStreak).toBeUndefined();
+
+		const corrupt = content.replace("---", "---\ngitFailureStreak: \"{oops\"");
+		expect(
+			parseTaskMarkdown(store, corrupt, "task-streak-2", "proj-1").gitFailureStreak,
+		).toBeUndefined();
+	});
+});
+
 describe("The Work: reliability-sample persistence", () => {
 	it("round-trips reliabilitySamples through task.md frontmatter", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-reliability-persist-"));

@@ -33,7 +33,7 @@ import { usePendingAction } from '../../hooks/usePendingAction';
 import { isInteractiveTarget } from '../../hooks/useTapGuard';
 import { copyToClipboard } from '../../services/clipboard';
 import { getTaskBranchName, buildCheckoutCommand } from './taskBranch';
-import { isRejectedTask } from './failureReason';
+import { isCommitFailureTask, isRejectedTask } from './failureReason';
 
 /***
  * MARK: extractModelHarnessInfo
@@ -453,12 +453,14 @@ export function TaskCard({
   const isRejectedFailure = isRejectedTask(task);
   const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
+  const isCommitFailure = isFailed && !isRejected && isCommitFailureTask(task);
   const isInterrupted = task.wasInterrupted === true || task.status === 'interrupted' || isStale;
   const isPaused = task.status === 'paused';
 
   const statusLabel = () => {
     if (isRetrying) return 'RETRYING';
     if (isRejected) return 'REJECTED';
+    if (isCommitFailure) return 'COMMIT_FAILED';
     if (isFailed) return 'FAILED';
     if (isInterrupted) return 'INTERRUPTED';
     if (isPaused) return 'PAUSED';
@@ -634,20 +636,22 @@ export function TaskCard({
       <div className="flex items-center gap-1.5">
         {isFailed && (
           <InfoTooltip
-            title={isRejected ? 'Stage Rejected' : 'Stage Execution Failed'}
+            title={isRejected ? 'Stage Rejected' : isCommitFailure ? 'Commit Failed' : 'Stage Execution Failed'}
             description={task.failureReason || task.lastError?.message || 'Stage execution failed.'}
             behindTheScenes={
               isRejected
                 ? 'Deliberate rejection (human review or review-stage verdict). The reason rides into the next attempt. Use Retry or manual move to recover.'
-                : 'Exit code != 0 or runtime exception. Use Retry or manual move to recover.'
+                : isCommitFailure
+                  ? 'A git hook refused the commit (for example corrupt binaries). Open the task for the hook output, affected files, and the fix, then Retry.'
+                  : 'Exit code != 0 or runtime exception. Use Retry or manual move to recover.'
             }
             position="top"
           >
             <span
               className="text-[8px] font-mono px-1.5 py-0.5 rounded-sm font-bold bg-error/20 text-error border border-error/40 flex items-center gap-0.5 cursor-help"
-              aria-label={isRejected ? 'Rejected execution' : 'Failed execution'}
+              aria-label={isRejected ? 'Rejected execution' : isCommitFailure ? 'Failed commit' : 'Failed execution'}
             >
-              {isRejected ? '⚠️ Rejected' : '⚠️ Failed'}
+              {isRejected ? '⚠️ Rejected' : isCommitFailure ? '⚠️ Commit Failed' : '⚠️ Failed'}
             </span>
           </InfoTooltip>
         )}

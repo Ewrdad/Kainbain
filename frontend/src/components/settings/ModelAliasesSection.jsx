@@ -654,7 +654,10 @@ function AliasTargetRow({
               {typeof target?.model === 'string' && target.model.trim() !== '' && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <p
-                    className="text-[10px] font-mono text-amber-600 dark:text-amber-400"
+                    // break-all: a very long stored ref wraps here instead of
+                    // overflowing the card (same wrap-before-ellipsis order
+                    // as the collapsed chips — model text is never clipped).
+                    className="text-[10px] font-mono text-amber-600 dark:text-amber-400 break-all"
                     data-testid={`model-alias-kept-model-${aliasIndex}-${targetIndex}`}
                     title="Kept with a warning — ignored at dispatch until the harness offers a catalogue"
                   >
@@ -1080,8 +1083,11 @@ export function ModelAliasesSection({
     }
   }, [rows.length, rowKeys, isCollapsed, toggleCollapse]);
 
+  // Full width on purpose: the settings panel is much wider than any max-w
+  // cap on desktop, and provider-prefixed model refs in the summary chips
+  // need the room — capping the section is what cut names off.
   return (
-    <div data-testid="model-aliases-section" className="space-y-3 max-w-4xl">
+    <div data-testid="model-aliases-section" className="space-y-3 w-full min-w-0">
       <h3 className="text-sm font-bold uppercase tracking-wide text-text-high flex items-center gap-2">
         <span className="text-primary">🏷️</span> Model Aliases
       </h3>

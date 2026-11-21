@@ -44,6 +44,7 @@ const HARNESSES = [
     modelSelection: 'list',
     models: [{ id: 'm1', name: 'M1', provider: 'google', key: 'google::m1' }],
   },
+  { id: 'custom', label: 'Custom', modelSelection: 'none', models: [] },
 ];
 
 describe('settings card truncation', () => {
@@ -217,6 +218,27 @@ describe('settings card truncation', () => {
     expect(formatAliasSummary(targets, HARNESSES)).toContain(LONG_MODEL_REF);
   });
 
+  it('spans the full width of the settings panel (no max-width cap on the alias section)', () => {
+    render(
+      <ModelAliasesSection
+        aliases={[{ name: 'router', targets: [{ harness: 'pi', model: LONG_MODEL_REF, percent: 100 }] }]}
+        onChange={() => {}}
+        harnesses={HARNESSES}
+      />,
+    );
+
+    // Human-review feedback: the alias screen must use the whole page width
+    // on desktop, not a capped column — a max-w-* cap on the section root is
+    // exactly what squeezed model names into a mid-name ellipsis before.
+    const section = screen.getByTestId('model-aliases-section');
+    expect(section).toHaveClass('w-full');
+    expect(section.className).not.toMatch(/max-w-/);
+    // The collapsed row and its chips line inherit that full width too.
+    const row = screen.getAllByTestId('model-alias-row')[0];
+    expect(row.className).not.toMatch(/max-w-/);
+    expect(screen.getByTestId('model-alias-summary-0')).toHaveClass('w-full', 'flex-wrap');
+  });
+
   it('contains very long alias error messages in collapsed and expanded views', () => {
     render(
       <ModelAliasesSection
@@ -256,5 +278,25 @@ describe('settings card truncation', () => {
     const validity = screen.getByTestId('model-alias-target-validity-0-0');
     expect(validity.textContent).toContain(LONG_HARNESS_ID);
     expect(validity).toHaveClass('break-words');
+  });
+
+  it('wraps a very long stored model on a self-managed (none) harness instead of overflowing the card', () => {
+    render(
+      <ModelAliasesSection
+        aliases={[{ name: 'router', targets: [{ harness: 'custom', model: LONG_MODEL_REF, percent: 100 }] }]}
+        onChange={() => {}}
+        harnesses={HARNESSES}
+      />,
+    );
+
+    // Cards mount collapsed; expand to reach the target card's kept-model note.
+    const toggle = screen.getByTestId('model-alias-toggle-0');
+    if (toggle.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+    const kept = screen.getByTestId('model-alias-kept-model-0-0');
+    // The full stored ref is present verbatim and wraps (break-all) —
+    // never clipped or pushed out of the card horizontally.
+    expect(kept.textContent).toContain(LONG_MODEL_REF);
+    expect(kept).toHaveClass('break-all');
+    expect(kept).not.toHaveClass('truncate');
   });
 });
