@@ -94,6 +94,50 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "A brand-new task status, something like 'blocked by commit failure'"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Allow a few automatic retries first (for example 3), then park the task with the error shown"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "All git problems, including push, network and login errors"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Task detail page: a clear banner or callout near the top explaining the failure",
+        "Task timeline and logs (the history of what happened)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Full detail: the failing command, its exit code, the complete hook message, the affected files, and a suggested fix"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "Yes - retry the commit while skipping the hooks (git's --no-verify option)"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "Both: an AI agent tries first, and a human can step in"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
