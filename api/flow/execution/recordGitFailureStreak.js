@@ -1,6 +1,6 @@
 import {
 	GIT_FAILURE_PARK_AFTER,
-	gitFailureSignature,
+	buildGitFailureSignature,
 	isDeterministicGitFailure,
 } from "../../../shared/gitFailure.js";
 import { clearGitFailureStreak } from "../scheduler/clearGitFailureStreak.js";
@@ -11,7 +11,7 @@ import { clearGitFailureStreak } from "../scheduler/clearGitFailureStreak.js";
  *   streak from runner reports (the only producer: the backend never
  *   invents envelopes). A deterministic `gitFailure`
  *   (hook-rejected/commit-failed/merge-conflict) with the same
- *   `gitFailureSignature` as the stored streak bumps its count, a changed
+ *   `buildGitFailureSignature` as the stored streak bumps its count, a changed
  *   signature restarts at 1, and anything else (a pass, a failure without
  *   deterministic git detail) clears the streak — the tree moved on. When
  *   the count exactly hits `GIT_FAILURE_PARK_AFTER`, one history line
@@ -31,7 +31,7 @@ export function recordGitFailureStreak({ task, stageId, gitFailure } = {}) {
 		clearGitFailureStreak(task);
 		return { streak: null, parked: false };
 	}
-	const signature = gitFailureSignature(gitFailure);
+	const signature = buildGitFailureSignature(gitFailure);
 	if (!signature) {
 		clearGitFailureStreak(task);
 		return { streak: null, parked: false };

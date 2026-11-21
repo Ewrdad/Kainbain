@@ -19,4 +19,4 @@ export { parseHookFailure } from "./parseHookFailure.js";
 export { summarizeGitFailure } from "./summarizeGitFailure.js";
 export { buildGitFailureDetails } from "./buildGitFailureDetails.js";
 export { isDeterministicGitFailure } from "./isDeterministicGitFailure.js";
-export { gitFailureSignature } from "./gitFailureSignature.js";
+export { buildGitFailureSignature } from "./buildGitFailureSignature.js";

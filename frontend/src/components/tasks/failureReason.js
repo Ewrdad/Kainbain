@@ -116,21 +116,21 @@ export function isCommitFailureTask(task) {
 }
 
 /***
- * MARK: failureBannerTitle
+ * MARK: pickFailureBannerTitle
  * @description Picks the failure banner heading for a task: deliberate
  * rejections stay "Stage Rejected", runner-reported commit/hook failures
  * read "Commit Failed", and everything else keeps "Stage Execution
  * Failed". One helper so the full page and the overlay details tab can
  * never disagree.
- * @example failureBannerTitle({ isRejected: true, isCommitFailure: false }) => "⚠️ Stage Rejected"
- * @example failureBannerTitle({ isRejected: false, isCommitFailure: true }) => "⚠️ Commit Failed"
- * @example failureBannerTitle({ isRejected: false, isCommitFailure: false }) => "⚠️ Stage Execution Failed"
+ * @example pickFailureBannerTitle({ isRejected: true, isCommitFailure: false }) => "⚠️ Stage Rejected"
+ * @example pickFailureBannerTitle({ isRejected: false, isCommitFailure: true }) => "⚠️ Commit Failed"
+ * @example pickFailureBannerTitle({ isRejected: false, isCommitFailure: false }) => "⚠️ Stage Execution Failed"
  * @param {Object} [flags] - Banner flags.
  * @param {boolean} [flags.isRejected] - Deliberate rejection.
  * @param {boolean} [flags.isCommitFailure] - Structured commit/hook failure.
  * @returns {string} Banner heading text.
  ***/
-export function failureBannerTitle({ isRejected = false, isCommitFailure = false } = {}) {
+export function pickFailureBannerTitle({ isRejected = false, isCommitFailure = false } = {}) {
   if (isRejected) return '⚠️ Stage Rejected';
   if (isCommitFailure) return '⚠️ Commit Failed';
   return '⚠️ Stage Execution Failed';

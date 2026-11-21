@@ -988,18 +988,19 @@ describe("withGitFailurePhase", () => {
 		const untagged = new RunnerGitError("git-hook-rejected", "x", {
 			gitFailure: { kind: "hook-rejected", phase: null, summary: "s" },
 		});
-		assert.equal(withGitFailurePhase(untagged, "recovery"), untagged);
+		assert.equal(withGitFailurePhase({ error: untagged, phase: "recovery" }), untagged);
 		assert.equal(untagged.gitFailure.phase, "recovery");
 		const tagged = new RunnerGitError("git-hook-rejected", "x", {
 			gitFailure: { kind: "hook-rejected", phase: "recovery", summary: "s" },
 		});
-		withGitFailurePhase(tagged, "stage-commit");
+		withGitFailurePhase({ error: tagged, phase: "stage-commit" });
 		assert.equal(tagged.gitFailure.phase, "recovery");
 		const plain = new Error("boom");
-		assert.equal(withGitFailurePhase(plain, "merge"), plain);
+		assert.equal(withGitFailurePhase({ error: plain, phase: "merge" }), plain);
 		const noEnvelope = new RunnerGitError("git-failed", "x", {});
-		assert.equal(withGitFailurePhase(noEnvelope, "merge"), noEnvelope);
+		assert.equal(withGitFailurePhase({ error: noEnvelope, phase: "merge" }), noEnvelope);
 		assert.equal(noEnvelope.gitFailure, null);
+		assert.equal(withGitFailurePhase(), null);
 	});
 });
 

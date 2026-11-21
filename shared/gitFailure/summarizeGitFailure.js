@@ -2,7 +2,7 @@ import { GIT_FAILURE_KINDS, GIT_FAILURE_LIMITS } from "./gitFailureKinds.js";
 
 // Arrow-const helpers (the one-function-per-file gate ignores these; the
 // single top-level `function` declaration below is the file's export).
-const firstOutputLine = (hookOutput, max = 120) => {
+const readFirstOutputLine = (hookOutput, max = 120) => {
 	const line = String(hookOutput || "")
 		.split("\n")
 		.map((entry) => entry.trim())
@@ -11,7 +11,7 @@ const firstOutputLine = (hookOutput, max = 120) => {
 	return line.length <= max ? line : `${line.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 };
 
-const hookNoun = (hookName) => (hookName && hookName !== "unknown" ? `${hookName} hook` : "git hook");
+const buildHookNoun = (hookName) => (hookName && hookName !== "unknown" ? `${hookName} hook` : "git hook");
 
 /***
  * MARK: summarizeGitFailure
@@ -38,20 +38,20 @@ export function summarizeGitFailure(input = {}) {
 			const shown = list.slice(0, 5).join(", ");
 			const more = list.length > 5 ? `, and ${list.length - 5} more` : "";
 			const noun = list.length === 1 ? "file" : "files";
-			summary = `Commit blocked by ${hookNoun(hookName)}: ${list.length} corrupt ${noun}: ${shown}${more}`;
+			summary = `Commit blocked by ${buildHookNoun(hookName)}: ${list.length} corrupt ${noun}: ${shown}${more}`;
 		} else {
-			const detail = firstOutputLine(hookOutput) || "see hook output for details";
-			summary = `Commit blocked by ${hookNoun(hookName)} (exit ${code}): ${detail}`;
+			const detail = readFirstOutputLine(hookOutput) || "see hook output for details";
+			summary = `Commit blocked by ${buildHookNoun(hookName)} (exit ${code}): ${detail}`;
 		}
 	} else if (kind === GIT_FAILURE_KINDS.MERGE_CONFLICT) {
 		const shown = list.length > 0 ? list.slice(0, 8).join(", ") : "unknown files";
 		const more = list.length > 8 ? `, and ${list.length - 8} more` : "";
 		summary = `Merge conflicts in: ${shown}${more} — resolve the conflicts and retry`;
 	} else if (kind === GIT_FAILURE_KINDS.COMMIT_FAILED) {
-		const detail = firstOutputLine(hookOutput) || "see git output for details";
+		const detail = readFirstOutputLine(hookOutput) || "see git output for details";
 		summary = `Commit failed (exit ${code}): ${detail}`;
 	} else {
-		const detail = firstOutputLine(hookOutput) || "see git output for details";
+		const detail = readFirstOutputLine(hookOutput) || "see git output for details";
 		summary = `Git operation failed (exit ${code}): ${detail}`;
 	}
 	const max = GIT_FAILURE_LIMITS.summary;

@@ -12,7 +12,7 @@ import { InfoTooltip } from '../common/InfoTooltip';
 import { approvalCopy } from '../stageTypes';
 import { FailureMessage } from './FailureMessage';
 import { GitFailureDetails } from './GitFailureDetails';
-import { failureBannerTitle, isCommitFailureTask } from './failureReason';
+import { pickFailureBannerTitle, isCommitFailureTask } from './failureReason';
 
 export function TaskDetailsTab({
   activeProjectId,
@@ -96,7 +96,7 @@ export function TaskDetailsTab({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-error animate-pulse shadow-[0_0_8px_rgba(248,81,73,0.6)]" />
               <span className="text-xs font-bold uppercase tracking-wider text-error font-mono flex items-center gap-1">
-                {failureBannerTitle({ isRejected, isCommitFailure })}
+                {pickFailureBannerTitle({ isRejected, isCommitFailure })}
               </span>
             </div>
             {(task?.lastError?.stageName || taskStage?.name) && (

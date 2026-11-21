@@ -21,9 +21,11 @@ const capText = (value, max) => {
  *   one (the merge path passes its own branch-worded detail). Unknown
  *   phases degrade to null (rendered as absent, never guessed); unknown
  *   kinds are kept verbatim for forward compatibility
- *   (`isDeterministicGitFailure` treats them as non-deterministic). Never
- *   throws — malformed inputs degrade to a `commit-failed` envelope with
- *   whatever survived.
+ *   (`isDeterministicGitFailure` treats them as non-deterministic). The
+ *   file list is de-duplicated (first occurrence wins) so a noisy wire
+ *   payload can neither inflate the count nor duplicate UI list keys.
+ *   Never throws — malformed inputs degrade to a `commit-failed` envelope
+ *   with whatever survived.
  * @example buildGitFailureDetails({ phase: 'stage-commit', command: 'git commit -m x', exitCode: 1, kind: 'hook-rejected', hookName: 'pre-commit', files: ['a.png'], hookOutput: 'binary-guard check FAILED', remedy: 're-capture a.png' }).summary => 'Commit blocked by pre-commit hook: 1 corrupt file: a.png'
  * @param {Object} [input] - Parsed failure plus `phase`, `command`, `exitCode`, optional `summary` override.
  * @returns {Object} Capped `GitFailureDetails` envelope.
@@ -41,9 +43,13 @@ export function buildGitFailureDetails(input = {}) {
 		summary = null,
 	} = input && typeof input === "object" ? input : {};
 	const knownPhases = Object.values(GIT_FAILURE_PHASES);
-	const cleanFiles = (Array.isArray(files) ? files : [])
-		.filter((file) => typeof file === "string" && file.trim())
-		.map((file) => file.trim());
+	const cleanFiles = [
+		...new Set(
+			(Array.isArray(files) ? files : [])
+				.filter((file) => typeof file === "string" && file.trim())
+				.map((file) => file.trim()),
+		),
+	];
 	const truncatedFiles = cleanFiles.length > GIT_FAILURE_LIMITS.files;
 	const rawOutput = typeof hookOutput === "string" ? hookOutput : String(hookOutput ?? "");
 	let cappedOutput = rawOutput;

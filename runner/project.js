@@ -70,17 +70,18 @@ export class RunnerGitError extends Error {
  *   `stage-commit`, `merge`) when the throw site knows more than the git
  *   layer did. A phase already set wins (the innermost site is the most
  *   precise); errors without a `gitFailure` pass through untouched.
- *   Returns the same error for `throw withGitFailurePhase(err, phase)`.
- * @example throw withGitFailurePhase(err, 'recovery')
- * @param {*} err - Error to tag (usually RunnerGitError).
- * @param {string} phase - Lifecycle phase.
+ *   Returns the same error for `throw withGitFailurePhase({ error, phase })`.
+ * @example throw withGitFailurePhase({ error: err, phase: 'recovery' })
+ * @param {Object} [input] - Tagging context.
+ * @param {*} input.error - Error to tag (usually RunnerGitError).
+ * @param {string} input.phase - Lifecycle phase.
  * @returns {*} The same error, tagged in place when applicable.
  ***/
-export function withGitFailurePhase(err, phase) {
-	if (err instanceof RunnerGitError && err.gitFailure && !err.gitFailure.phase) {
-		err.gitFailure = buildGitFailureDetails({ ...err.gitFailure, phase });
+export function withGitFailurePhase({ error = null, phase = null } = {}) {
+	if (error instanceof RunnerGitError && error.gitFailure && !error.gitFailure.phase) {
+		error.gitFailure = buildGitFailureDetails({ ...error.gitFailure, phase });
 	}
-	return err;
+	return error;
 }
 
 // Per-workdir serialization: the Runner daemon is one process, and two
@@ -194,7 +195,7 @@ export async function maybeRecoverWorkdirLock(cwd) {
 	return { recovered: true, lockPath, reason: "stale-cleared", ageMs };
 }
 
-function gitSubcommandOf(args) {
+function readGitSubcommand(args) {
 	if (!Array.isArray(args)) return "";
 	for (let i = 0; i < args.length; i += 1) {
 		const token = args[i];
@@ -224,7 +225,7 @@ function toRunnerGitError(args, cwd, err, stdout = "", stderr = "") {
 	// `git-failed` and gain the exit code plus the envelope. `merge --abort`
 	// runs no hooks, so its failures stay plain. The envelope's phase is
 	// filled in by the caller that knows it (see `withGitFailurePhase`).
-	const subcommand = gitSubcommandOf(args);
+	const subcommand = readGitSubcommand(args);
 	const parsed =
 		(subcommand === "commit" || subcommand === "merge") && !args.includes("--abort")
 			? parseHookFailure({ command: `git ${args.join(" ")}`, exitCode, stdout, stderr })
@@ -536,7 +537,7 @@ export async function preserveEvictedWorkdir(workdir) {
 			"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
 		]);
 	} catch (err) {
-		throw withGitFailurePhase(err, "recovery");
+		throw withGitFailurePhase({ error: err, phase: "recovery" });
 	}
 	// Recovery branch captures the residue commit; then put the task branch
 	// back where it was (soft reset keeps the index/worktree untouched).
@@ -639,14 +640,14 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
 	}
 }
 
-function reportHookBlock(logger, what, err) {
+function reportHookBlock({ logger = null, context = "", failure = null } = {}) {
 	// Eviction-time hook blocks are swallowed by design (the next candidate
 	// is tried instead) — but a hook rejecting every candidate used to be
 	// invisible. One loud line keeps the degrade-to-cap behaviour while
 	// naming the cause. Best-effort: logging must never break eviction.
-	if (!logger || !err?.gitFailure) return;
+	if (!logger || !failure?.gitFailure) return;
 	try {
-		const line = `${what}: ${err.gitFailure.summary} — residue left in place, trying the next candidate.`;
+		const line = `${context}: ${failure.gitFailure.summary} — residue left in place, trying the next candidate.`;
 		if (typeof logger.error === "function") logger.error(line);
 		else if (typeof logger.log === "function") logger.log(line);
 	} catch {
@@ -694,7 +695,7 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
 				return { evicted: dir, parkedTo };
 			}
 		} catch (err) {
-			reportHookBlock(logger, `Worktree eviction preserve failed for ${dir}`, err);
+			reportHookBlock({ logger, context: `Worktree eviction preserve failed for ${dir}`, failure: err });
 			// Try the next-oldest candidate instead of failing the deploy.
 		}
 	}
@@ -745,7 +746,7 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
 		try {
 			await preserveEvictedWorkdir(dir);
 		} catch (err) {
-			reportHookBlock(logger, `Workdir reap preserve failed for ${dir}`, err);
+			reportHookBlock({ logger, context: `Workdir reap preserve failed for ${dir}`, failure: err });
 			// Preservation is best-effort; removal still reclaims the slot.
 		}
 		const gone = await removeTaskWorkdir({ workRoot, localPath: ownerPath, dir });
@@ -809,7 +810,7 @@ export async function reapTerminalOrphanWorkdirs({ client, workRoot, logger = nu
 					try {
 						await preserveEvictedWorkdir(dir);
 					} catch (err) {
-						reportHookBlock(logger, `Workdir sweep preserve failed for ${dir}`, err);
+						reportHookBlock({ logger, context: `Workdir sweep preserve failed for ${dir}`, failure: err });
 						// Preservation is best-effort; removal still reclaims the slot.
 					}
 					const gone = await removeTaskWorkdir({ workRoot, dir });
@@ -891,7 +892,7 @@ export async function refreshWorktreeToRemote(workdir, branch) {
 				// The recovery commit is the incident's crash path (a hook
 				// rejecting here used to kill the runner): tag its phase so
 				// the daemon reports it as a structured failed completion.
-				throw withGitFailurePhase(err, "recovery");
+				throw withGitFailurePhase({ error: err, phase: "recovery" });
 			}
 		}
 	}

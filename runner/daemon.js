@@ -2280,7 +2280,7 @@ async function executeAssignment({
 				// structured payload and RETURN — like WORKTREE_CAP_REACHED
 				// above, never rethrow. Rethrowing crash-loops under
 				// Restart=always while the task keeps its stale error.
-				withGitFailurePhase(err, gitPhase);
+				withGitFailurePhase({ error: err, phase: gitPhase });
 				const gitFailure = err.gitFailure;
 				const failureReason = redactSecretsText(gitFailure.summary).trim() || "Runner commit failed";
 				try {
@@ -2626,7 +2626,7 @@ async function executeIntegrationAssignment({
 			// hook refusing the merge commit): settle the integration lease
 			// as failed and report the task as failed with the structured
 			// payload — never rethrow into the restart loop.
-			withGitFailurePhase(err, "merge");
+			withGitFailurePhase({ error: err, phase: "merge" });
 			const gitFailure = err.gitFailure;
 			const failureReason = redactSecretsText(gitFailure.summary).trim() || "Integration commit failed";
 			try {

@@ -1,5 +1,3 @@
-// node env pin: pure-logic suite (no DOM needs); skips the DOM env cost per CI-wall budget.
-// @vitest-environment node
 // Run in the lighter node environment: this suite is pure logic with
 // no DOM needs (skips jsdom setup, keeps the CI suite fast).
 // @vitest-environment node
@@ -7,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FAILURE_MESSAGE_PREVIEW_MAX,
   FAILURE_REASON_PREVIEW_MAX,
-  failureBannerTitle,
+  pickFailureBannerTitle,
   firstLine,
   getFailureKind,
   getFailureReason,
@@ -160,15 +158,15 @@ describe('failureReason helpers', () => {
   });
 
   it('picks the banner heading: rejections, then commits, then generic failures', () => {
-    expect(failureBannerTitle({ isRejected: true, isCommitFailure: true })).toBe(
+    expect(pickFailureBannerTitle({ isRejected: true, isCommitFailure: true })).toBe(
       '⚠️ Stage Rejected',
     );
-    expect(failureBannerTitle({ isRejected: false, isCommitFailure: true })).toBe(
+    expect(pickFailureBannerTitle({ isRejected: false, isCommitFailure: true })).toBe(
       '⚠️ Commit Failed',
     );
-    expect(failureBannerTitle({ isRejected: false, isCommitFailure: false })).toBe(
+    expect(pickFailureBannerTitle({ isRejected: false, isCommitFailure: false })).toBe(
       '⚠️ Stage Execution Failed',
     );
-    expect(failureBannerTitle()).toBe('⚠️ Stage Execution Failed');
+    expect(pickFailureBannerTitle()).toBe('⚠️ Stage Execution Failed');
   });
 });

@@ -923,6 +923,7 @@ describe("Runner Routes Integration", () => {
 			count: 3,
 			updatedAt: new Date().toISOString(),
 		};
+		const excludedBefore = taskStore.productionSignals?.claimExcluded?.GIT_FAILURE_PARKED || 0;
 		const refused = await app.inject({
 			method: "POST",
 			url: `/tasks/${target}/claim`,
@@ -931,6 +932,11 @@ describe("Runner Routes Integration", () => {
 		});
 		expect(refused.statusCode).toBe(409);
 		expect(JSON.parse(refused.payload).code).toBe("GIT_FAILURE_PARKED");
+		// The refusal lands in the exclusion ledger as an intentional skip
+		// (an unregistered reason would silently drop instead of counting).
+		expect(taskStore.productionSignals?.claimExcluded?.GIT_FAILURE_PARKED || 0).toBe(
+			excludedBefore + 1,
+		);
 
 		// An operator retry lifts the parking: the next claim succeeds.
 		delete taskStore.getTask(project.id, target).gitFailureStreak;

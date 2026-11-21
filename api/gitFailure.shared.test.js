@@ -5,7 +5,7 @@ import {
 	GIT_FAILURE_PARK_AFTER,
 	GIT_FAILURE_PHASES,
 	buildGitFailureDetails,
-	gitFailureSignature,
+	buildGitFailureSignature,
 	isDeterministicGitFailure,
 	parseHookFailure,
 	summarizeGitFailure,
@@ -144,6 +144,21 @@ describe("buildGitFailureDetails", () => {
 		expect(details.truncatedFiles).toBe(true);
 	});
 
+	it("de-duplicates the file list so counts and UI keys stay honest", () => {
+		const details = buildGitFailureDetails({
+			phase: "stage-commit",
+			command: "git commit",
+			exitCode: 1,
+			kind: "hook-rejected",
+			hookName: "pre-commit",
+			files: ["b.png", "a.png", "b.png", "  a.png  ", 42, null],
+			hookOutput: "x",
+			remedy: "y",
+		});
+		expect(details.files).toEqual(["b.png", "a.png"]);
+		expect(details.truncatedFiles).toBe(false);
+	});
+
 	it("keeps a caller summary override (the merge path words its own)", () => {
 		const details = buildGitFailureDetails({
 			phase: "merge",
@@ -183,14 +198,14 @@ describe("isDeterministicGitFailure", () => {
 	});
 });
 
-describe("gitFailureSignature", () => {
+describe("buildGitFailureSignature", () => {
 	it("keys on kind, hook, phase, and files", () => {
 		expect(
-			gitFailureSignature({ kind: "hook-rejected", hookName: "pre-commit", phase: "recovery", files: ["a.png"] }),
+			buildGitFailureSignature({ kind: "hook-rejected", hookName: "pre-commit", phase: "recovery", files: ["a.png"] }),
 		).toBe("hook-rejected|pre-commit|recovery|a.png");
-		expect(gitFailureSignature({ kind: "commit-failed" })).toBe("commit-failed|||");
-		expect(gitFailureSignature()).toBe("|||");
-		expect(gitFailureSignature(null)).toBe("");
+		expect(buildGitFailureSignature({ kind: "commit-failed" })).toBe("commit-failed|||");
+		expect(buildGitFailureSignature()).toBe("|||");
+		expect(buildGitFailureSignature(null)).toBe("");
 	});
 });
 
