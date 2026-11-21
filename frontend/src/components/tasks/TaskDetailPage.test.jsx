@@ -782,6 +782,70 @@ describe('TaskDetailPage full-page route component', () => {
     ).toBeInTheDocument();
   });
 
+  test('shows the Commit Failed banner with the structured callout for hook failures', () => {
+    const hookFailureTask = {
+      ...sampleTask,
+      status: 'failed',
+      failureReason: 'Commit blocked by pre-commit hook: 2 corrupt files',
+      lastError: {
+        message: 'Commit blocked by pre-commit hook: 2 corrupt files',
+        stageId: 's1',
+        stageName: 'Planning',
+        failureKind: 'commit-failed',
+        gitDiagnostics: {
+          kind: 'hook-rejected',
+          phase: 'stage-commit',
+          command: 'git commit -m kb/task-101 stage output',
+          exitCode: 1,
+          hookName: 'pre-commit',
+          files: ['docs/tasks/task-101/assets/a.png', 'shot.png'],
+          hookOutput: 'binary-guard check FAILED (2 corrupt binaries)',
+          remedy: 'Re-capture each corrupt file, then retry the stage.',
+          summary: 'Commit blocked by pre-commit hook: 2 corrupt files',
+        },
+      },
+    };
+
+    renderWithKainBain(<TaskDetailPage task={hookFailureTask} />, {
+      stages: sampleStages,
+      projects: sampleProjects,
+    });
+
+    expect(screen.getByText('⚠️ Commit Failed')).toBeInTheDocument();
+    expect(screen.queryByText(/Stage Execution Failed/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Commit blocked by pre-commit hook: 2 corrupt files'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('git-failure-details')).toBeInTheDocument();
+    expect(screen.getByTestId('git-failure-files')).toHaveTextContent('shot.png');
+    expect(screen.getByTestId('git-failure-remedy')).toHaveTextContent('Re-capture');
+    expect(
+      screen.getByRole('button', { name: 'Retry failed stage on task #KB-TASK' }),
+    ).toBeInTheDocument();
+  });
+
+  test('keeps the generic banner with no callout for backend-shaped diagnostics', () => {
+    const backendDiagnosticsTask = {
+      ...sampleTask,
+      status: 'failed',
+      failureReason: 'Merge conflicts in: a.txt',
+      lastError: {
+        message: 'Merge conflicts in: a.txt',
+        stageId: 's1',
+        stageName: 'Planning',
+        gitDiagnostics: { kind: 'merge-conflict', conflictedFiles: ['a.txt'] },
+      },
+    };
+
+    renderWithKainBain(<TaskDetailPage task={backendDiagnosticsTask} />, {
+      stages: sampleStages,
+      projects: sampleProjects,
+    });
+
+    expect(screen.getByText(/Stage Execution Failed/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('git-failure-details')).not.toBeInTheDocument();
+  });
+
   test('keeps the rejection banner while an auto-retry is queued', () => {
     // In-place retry: the task still sits in the stage that failed (s2), so
     // RETRYING is the honest label.

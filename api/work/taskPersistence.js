@@ -108,6 +108,9 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			...(task.mergeAttemptId ? [`mergeAttemptId: ${_formatFrontmatterValue(task.mergeAttemptId)}`] : []),
 			...(task.deployAttemptId ? [`deployAttemptId: ${_formatFrontmatterValue(task.deployAttemptId)}`] : []),
 			...(task.stallCount ? [`stallCount: ${Number(task.stallCount) || 0}`] : []),
+			...(task.gitFailureStreak
+				? [`gitFailureStreak: ${_formatFrontmatterValue(JSON.stringify(task.gitFailureStreak))}`]
+				: []),
 			"---",
 		].join("\n");
 
@@ -941,6 +944,33 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 	const autoRetrying = activeExecutionStatus ? parsedAutoRetrying : false;
 	const autoIterating = activeExecutionStatus ? parsedAutoIterating : false;
 
+	let gitFailureStreak;
+	if (typeof data.gitFailureStreak === "string" && data.gitFailureStreak.trim()) {
+		try {
+			const parsed = JSON.parse(data.gitFailureStreak);
+			if (
+				parsed &&
+				typeof parsed === "object" &&
+				!Array.isArray(parsed) &&
+				typeof parsed.stageId === "string" &&
+				parsed.stageId.trim() &&
+				typeof parsed.signature === "string" &&
+				parsed.signature.trim() &&
+				Number.isInteger(parsed.count) &&
+				parsed.count >= 1
+			) {
+				gitFailureStreak = {
+					stageId: parsed.stageId,
+					signature: parsed.signature,
+					count: parsed.count,
+					...(typeof parsed.updatedAt === "string" ? { updatedAt: parsed.updatedAt } : {}),
+				};
+			}
+		} catch {
+			// Tolerate corrupt section: no streak, the task dispatches normally.
+		}
+	}
+
 	let reviewBaseline;
 	if (typeof data.reviewBaseline === "string" && data.reviewBaseline.trim()) {
 		try {
@@ -1010,6 +1040,7 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		mergeAttemptId: data.mergeAttemptId || undefined,
 		deployAttemptId: data.deployAttemptId || undefined,
 		stallCount: Number(data.stallCount) || 0,
+		gitFailureStreak,
 		history:
 			history.length > 0
 				? history

@@ -3563,6 +3563,64 @@ describe("runDispatchLoop git-failure backoff", () => {
 		assert.equal(interrupts.length, 0);
 		assert.ok(logs.some((line) => line.includes("backing off one poll cycle")));
 	});
+
+	it("reports N consecutive deterministic git failures with 0 exits and 0 reason-less interrupts", async () => {
+		// The loop-dead proof: the same poisoned task re-claimed three
+		// times reports three failed completions and the process stays
+		// alive throughout — no throw (no systemd restart), no
+		// reason-less interrupt. (The backend parks the task after the
+		// third strike; the dispatch stub below keeps assigning so this
+		// test proves the runner side alone never spins.)
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
+		dirs.push(config.workRoot);
+		const reused = path.join(config.workRoot, "kb-t1");
+		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
+		git(reused, ["checkout", "-q", "kb/t1"]);
+		git(reused, ["config", "user.email", "t@t.t"]);
+		git(reused, ["config", "user.name", "t"]);
+		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
+		corruptReplayPng(reused, "a.png");
+		const completed = [];
+		const interrupts = [];
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls <= 3
+					? { assigned: true, projectId: "p1", taskId: "t1", executionId: `e${polls}`, epoch: polls }
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.assignments, 3);
+		assert.equal(completed.length, 3);
+		for (const report of completed) {
+			assert.equal(report.outcome, "failed");
+			assert.equal(report.failureKind, "commit-failed");
+			assert.equal(report.gitFailure?.kind, "hook-rejected");
+			assert.ok(report.gitFailure?.files?.includes("a.png"));
+		}
+		assert.equal(interrupts.length, 0);
+	});
 });
 
 describe("executeIntegrationAssignment git failures", () => {
@@ -3681,8 +3739,11 @@ describe("executeIntegrationAssignment git failures", () => {
 		git(seed, ["config", "user.email", "t@t.t"]);
 		git(seed, ["config", "user.name", "t"]);
 		fs.mkdirSync(path.join(seed, "scripts", "githooks"), { recursive: true });
-		fs.writeFileSync(path.join(seed, "scripts", "githooks", "pre-commit"), "#!/bin/sh\necho 'merge hook says no' >&2\nexit 1\n");
-		fs.chmodSync(path.join(seed, "scripts", "githooks", "pre-commit"), 0o755);
+		// `git merge` never runs `pre-commit` — it runs
+		// `prepare-commit-msg`/`commit-msg` — so the rejecting hook must
+		// be one of those for the merge commit to be refused.
+		fs.writeFileSync(path.join(seed, "scripts", "githooks", "prepare-commit-msg"), "#!/bin/sh\necho 'merge hook says no' >&2\nexit 1\n");
+		fs.chmodSync(path.join(seed, "scripts", "githooks", "prepare-commit-msg"), 0o755);
 		fs.writeFileSync(path.join(seed, "base.txt"), "base");
 		git(seed, ["add", "."]);
 		git(seed, ["commit", "-qm", "init with hook"]);

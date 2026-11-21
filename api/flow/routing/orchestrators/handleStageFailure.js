@@ -60,7 +60,7 @@ import { handleTransientFailure } from './handleTransientFailure.js';
  *   prompt/history instead of retrying the identical overflowing context.
  * @param {Object} [opts.project] - Explicit project for budget resolution (else the store lookup).
  * @param {string} [opts.harnessId] - Harness that ran the failed stage (reliability attribution; recorded on the failure report when present).
- * @param {string} [opts.failureKind] - Runner outcome kind ("rejected" or "infrastructure"); recorded on the failure report and on task.lastError when known, so the task view can label deliberate rejections instead of generic failures.
+ * @param {string} [opts.failureKind] - Runner outcome kind ("rejected", "commit-failed", or "infrastructure"); recorded on the failure report and on task.lastError when known, so the task view can label deliberate rejections instead of generic failures.
  * @param {string} [opts.aliasName] - Model alias the failed run resolved through (per-alias reliability attribution).
  * @param {string} [opts.modelRef] - Concrete model the alias target dispatched.
  * @param {number} [opts.targetIndex] - Weighted-target index of the alias pick (informational).

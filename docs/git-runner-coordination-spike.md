@@ -126,6 +126,40 @@ Built in one pass over Steps 1–6, all suites green (`node --test runner/*.test
 - **Step 5** as planned, extended by two mechanisms the real-git tests forced: live snapshots (`docs/tasks/<id>/task.md`) are untracked (`git rm --cached`, worktree preserved) and never staged; the snapshot commit is built in a **scratch index** (`read-tree` + add/rm + `write-tree`/`commit-tree` + CAS `update-ref`) because porcelain `commit -- <path>` implies `--include` and would re-add the snapshot, and a full-index commit would sweep unrelated staged work. A just-untracked staged deletion rides along in the same snapshot commit (otherwise it blocks the pending switch), and the real index is re-pointed at the new HEAD for exactly those paths. `checkoutBranch` additionally moves aside untracked live snapshots that the *target* branch still tracks (the a5228675 shape) and restores them after the switch. Deliberately **retained**: the snapshot-conflict heal machinery (old branches still carry tracked snapshots; assets can still conflict) and `syncDefaultBranchToRemote`'s reset (still serves the local-only embedded path).
 - **Step 6**: `/runners/monitor` exposes `integration` lease counters; `GET /runners/integration` exposes per-scope depth/lease. Rollout is per-project and automatic: remote-backed projects dispatch merges to Runners, local-only projects keep the embedded merge path (unchanged behavior, single writer). No backend merge code was deleted.
 
+## Commit/hook failures in the task UI (2026-11-21)
+
+When a runner's commit is refused — usually the pre-commit binary guard
+rejecting corrupt PNGs during a recovery or stage-end commit — the failure no
+longer dies in the runner journal. The runner classifies it into the shared
+`GitFailureDetails` envelope and reports a failed completion; the backend
+records it in `lastError` (as `gitDiagnostics`), timeline, history, logs, and
+a `-failure-` stage report; and the task detail UI renders a "Commit Failed"
+callout with the hook, the failing command, the affected files, the remedy,
+and the full hook output behind "Show full output". See ADR 0017.
+
+What the callout means: the tree the runner tried to commit contains files a
+repo hook refuses (for the binary guard: binaries rewritten through a text
+path, magic bytes wrong). The listed files are exactly what the hook named.
+
+Remedy steps (also shown in the callout):
+
+1. Re-capture each corrupt file with `node scripts/capture-screenshot.mjs --out <path>`,
+   or restore it binary-safely with `git checkout <ref> -- <path>`.
+2. Re-verify with `xxd -l 8 <path>` (expect `8950 4e47…` for PNG) and `file <path>`.
+3. Retry the stage from the task UI.
+
+Loop behavior: the runner reports and stays alive (one poll-cycle backoff, no
+restart); after three consecutive same-signature failures the backend parks
+the task — auto-dispatch and direct claims skip it until an operator retries,
+resumes, or moves it. Parking is visible as a `gitFailureStreak` entry and a
+history line (`auto-dispatch paused`); the failure banner keeps showing the
+error with its Retry button throughout.
+
+Manual escape hatch (intentional baselines only, never for new damage):
+`git commit --no-verify` bypasses the guard. KainBain itself never bypasses
+hooks automatically. Safe binary handling is documented in
+`docs/tasks/_PROOF_RULE.md`.
+
 ## Risks / Open Questions
 
 - Assumptions (reversible, stated rather than asked): the remote is a reachable bare/hosted git remote for branch-mode projects; merge commits (not squash/rebase) remain the integration style, matching `MERGE_STRATEGY` today; post-merge gates run on the integration Runner before the CAS push, so a red gate means `needs-sync`/failback, never a landed-but-red target.

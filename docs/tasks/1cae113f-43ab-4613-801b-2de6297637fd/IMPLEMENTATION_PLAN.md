@@ -1,5 +1,29 @@
 # Implementation Plan — Surface runner commit/hook failures in the task UI
 
+## Phase-0 record (added during implementation)
+
+**Survey reconciliation.** SURVEY.md `answers` were empty when this plan was
+written but are now recorded: q1 new status, q2 "3 retries then park", q3 all
+git problems, q4 detail page + timeline/logs, q5 full detail, q6 auto-retry
+with `--no-verify`, q7 agent-first with human fallback. The approved plan
+below stands, reconciled as follows: q2 honored exactly (3 strikes then
+park); q4/q5 honored (plus a card label as a cheap third surface); q1 honored
+in intent via streak-based parking with no new status; q3/q7 partially (the
+envelope reserves push/auth kinds; `gitDiagnostics` already rides the Tier-3
+failback prompt to agents). **q6 is explicitly NOT honored**: automatically
+bypassing the guard that caught real corruption would destroy the safety
+property the hook exists for — `--no-verify` stays a documented manual escape
+hatch only (Decision 5, Non-goals, and the runner grep-guard test enforce
+this).
+
+**Lease-state finding (Decision 6).** `complete-execution` accepts reports
+before `progress: started`: `executionLedger.completeExecution` and
+`claimStore.complete` fence only on the claim hold (executionId/epoch), and
+the runner holds the lease from claim time (before `prepareWorkdir`). No
+interrupt+`gitFailure` fallback is needed — Step 18 is skipped deliberately,
+and worktree-setup failures report via `complete({ outcome: "failed",
+gitFailure })` like every other phase.
+
 ## Goal
 
 When a runner's `git commit` (or any git step around it) fails — in

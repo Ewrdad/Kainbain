@@ -103,8 +103,10 @@ export const CONNECTION_FAILURE_SIGNATURE =
  * @description The narrow infrastructure classifier seam the trip sensors
  *   consume today. Auth failures are excluded (they own a faster sensor) and
  *   deliberate rejections (`failureKind: "rejected"`) are never
- *   infrastructure. WP2 can replace this body with the unified classifier
- *   without changing a single caller.
+ *   infrastructure — nor are runner-classified deterministic commit/hook
+ *   failures (`failureKind: "commit-failed"`), whose hook text rides on the
+ *   error and must not read as engine connectivity trouble. WP2 can replace
+ *   this body with the unified classifier without changing a single caller.
  * @example isInfraLikeFailure("ECONNREFUSED") => true
  * @param {*} error
  * @param {Object} [opts]
@@ -114,6 +116,7 @@ export const CONNECTION_FAILURE_SIGNATURE =
 export function isInfraLikeFailure(error, { failureKind } = {}) {
 	if (!error) return false;
 	if (failureKind === "rejected") return false;
+	if (failureKind === "commit-failed") return false;
 	if (failureKind === "infrastructure") return true;
 	if (isOperatorAbortError(error)) return false;
 	if (isAuthFailure(error)) return false;
@@ -218,6 +221,10 @@ export function recordCircuitFailure(
 	// owned by the canary path.
 	if (isTripped(store)) return null;
 	if (!taskId) return null;
+	// Runner-classified deterministic commit/hook failures are repo content,
+	// never engine/provider health: their hook text (a "401" or "fetch
+	// failed" from a repo hook) must not feed the auth/infra sensors below.
+	if (failureKind === "commit-failed") return null;
 	const sensors = getCircuitSensors(store);
 	const entry = { taskId: String(taskId), at: now };
 

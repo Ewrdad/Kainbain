@@ -63,3 +63,7 @@ Canonical agent rule: `docs/agent-docs/GitGuidance.md`
 ("Binary-safe proof artifacts"). Guarded extensions are data in
 `scripts/check-binary-guard.mjs` (`BINARY_MAGIC`); `.gitattributes`
 marks them `binary` so git never normalizes them.
+
+Runner note: when the pre-commit guard refuses a runner commit, the
+rejection now surfaces as a "Commit Failed" callout on the task (hook,
+files, remedy, full output) instead of failing silently.

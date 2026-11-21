@@ -7,10 +7,13 @@ import { describe, expect, it } from 'vitest';
 import {
   FAILURE_MESSAGE_PREVIEW_MAX,
   FAILURE_REASON_PREVIEW_MAX,
+  failureBannerTitle,
   firstLine,
   getFailureKind,
   getFailureReason,
+  getGitDiagnostics,
   hasFailureDetails,
+  isCommitFailureTask,
   isRejectedTask,
   truncateFailureMessage,
 } from './failureReason';
@@ -122,5 +125,50 @@ describe('failureReason helpers', () => {
     expect(isRejectedTask({ lastError: { failureKind: 'infrastructure' } })).toBe(false);
     expect(isRejectedTask({ status: 'failed' })).toBe(false);
     expect(isRejectedTask(null)).toBe(false);
+  });
+
+  it('reads structured git diagnostics when present', () => {
+    const diagnostics = { kind: 'hook-rejected', hookName: 'pre-commit' };
+    expect(getGitDiagnostics({ lastError: { gitDiagnostics: diagnostics } })).toBe(diagnostics);
+    expect(getGitDiagnostics({ status: 'failed' })).toBeNull();
+    expect(getGitDiagnostics({ lastError: { gitDiagnostics: 'hook-rejected' } })).toBeNull();
+    expect(getGitDiagnostics({ lastError: { gitDiagnostics: [] } })).toBeNull();
+    expect(getGitDiagnostics(null)).toBeNull();
+  });
+
+  it('flags envelope-shaped commit failures, not backend diagnostics shapes', () => {
+    const envelope = {
+      kind: 'hook-rejected',
+      hookOutput: 'binary-guard check FAILED',
+      files: ['a.png'],
+      remedy: 'Re-capture a.png',
+    };
+    expect(isCommitFailureTask({ lastError: { gitDiagnostics: envelope } })).toBe(true);
+    // Backend merge-conflict diagnostics share the kind but not the shape.
+    expect(
+      isCommitFailureTask({
+        lastError: { gitDiagnostics: { kind: 'merge-conflict', conflictedFiles: ['a.txt'] } },
+      }),
+    ).toBe(false);
+    expect(
+      isCommitFailureTask({ lastError: { gitDiagnostics: { kind: 'sync-blocked' } } }),
+    ).toBe(false);
+    expect(isCommitFailureTask({ lastError: { gitDiagnostics: { kind: '' } } })).toBe(false);
+    expect(isCommitFailureTask({ lastError: {} })).toBe(false);
+    expect(isCommitFailureTask({ status: 'failed' })).toBe(false);
+    expect(isCommitFailureTask(null)).toBe(false);
+  });
+
+  it('picks the banner heading: rejections, then commits, then generic failures', () => {
+    expect(failureBannerTitle({ isRejected: true, isCommitFailure: true })).toBe(
+      '⚠️ Stage Rejected',
+    );
+    expect(failureBannerTitle({ isRejected: false, isCommitFailure: true })).toBe(
+      '⚠️ Commit Failed',
+    );
+    expect(failureBannerTitle({ isRejected: false, isCommitFailure: false })).toBe(
+      '⚠️ Stage Execution Failed',
+    );
+    expect(failureBannerTitle()).toBe('⚠️ Stage Execution Failed');
   });
 });
