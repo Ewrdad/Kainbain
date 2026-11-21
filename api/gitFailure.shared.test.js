@@ -105,6 +105,9 @@ describe("summarizeGitFailure", () => {
 
 describe("buildGitFailureDetails", () => {
 	it("builds the full envelope with a derived summary", () => {
+		// The "recovery" phase is retained for wire compatibility (old
+		// runners still send it); current runners never produce it since
+		// recovery snapshots bypass hooks.
 		const details = buildGitFailureDetails({
 			phase: "recovery",
 			command: "git commit -m recovery",
@@ -201,8 +204,8 @@ describe("isDeterministicGitFailure", () => {
 describe("buildGitFailureSignature", () => {
 	it("keys on kind, hook, phase, and files", () => {
 		expect(
-			buildGitFailureSignature({ kind: "hook-rejected", hookName: "pre-commit", phase: "recovery", files: ["a.png"] }),
-		).toBe("hook-rejected|pre-commit|recovery|a.png");
+			buildGitFailureSignature({ kind: "hook-rejected", hookName: "pre-commit", phase: "stage-commit", files: ["a.png"] }),
+		).toBe("hook-rejected|pre-commit|stage-commit|a.png");
 		expect(buildGitFailureSignature({ kind: "commit-failed" })).toBe("commit-failed|||");
 		expect(buildGitFailureSignature()).toBe("|||");
 		expect(buildGitFailureSignature(null)).toBe("");

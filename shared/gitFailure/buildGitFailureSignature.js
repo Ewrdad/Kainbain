@@ -5,7 +5,7 @@
  *   bloat the stored streak. The backend compares consecutive failures by
  *   this signature — the same signature on the same task+stage counts
  *   toward parking, a changed signature restarts the streak.
- * @example buildGitFailureSignature({ kind: 'hook-rejected', hookName: 'pre-commit', phase: 'recovery', files: ['a.png'] }) => 'hook-rejected|pre-commit|recovery|a.png'
+ * @example buildGitFailureSignature({ kind: 'hook-rejected', hookName: 'pre-commit', phase: 'stage-commit', files: ['a.png'] }) => 'hook-rejected|pre-commit|stage-commit|a.png'
  * @param {Object} [details] - `GitFailureDetails` (or any object with the same fields).
  * @returns {string} Signature string ("" when nothing usable was given).
  ***/

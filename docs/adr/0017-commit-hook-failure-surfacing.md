@@ -23,7 +23,9 @@ invisible and crash-looped the runner.
    merge conflict) flows through `complete({ outcome: "failed",
    failureKind: "commit-failed", gitFailure })` and the daemon returns, so
    the process stays alive and systemd never restarts. Transient git faults
-   (lock/timeout) keep the interrupt path, now carrying a reason.
+   (lock/timeout) keep the interrupt path, now carrying a reason. This
+   covers task-branch (stage/merge) commits; internal `kb-recovery/*`
+   snapshots bypass hooks instead (see 6).
 3. **Complete-not-interrupt is the reporting vehicle.** Only the complete path
    flows through failure routing into `lastError`, timeline, history, logs,
    and the `-failure-` stage report; `interrupt()` deliberately leaves
@@ -39,9 +41,23 @@ invisible and crash-looped the runner.
    expandable full output) inside both failure banners plus a distinct card
    label — driven by the envelope shape, so backend diagnostics shapes keep
    rendering as plain text.
-6. **Never bypass or auto-repair.** No `--no-verify` in runner code paths, no
-   file deletion, no hook disabling. `--no-verify` is documented only as the
-   manual escape hatch. Parking (stop retrying) is the only automation.
+6. **Scoped bypass for recovery snapshots only; never bypass or auto-repair
+   task output.** Internal `kb-recovery/*` snapshots bypass repo hooks via
+   `commitRecoverySnapshot` (a failing hook must never strand unpushed work;
+   the bypass is warn-logged with the recovery branch). Task-branch
+   (stage/merge) commits never bypass — no `--no-verify` there (pinned by a
+   scope test), no file deletion, no hook disabling. Parking (stop retrying)
+   is the only other automation.
+
+**Reconciliation note (2026-11-21).** This ADR originally forbade all bypass
+(q6 survey override). Merged task `db49d6c6` then fixed the same incident's
+recovery path with `--no-verify` recovery snapshots, and the recorded human
+survey answer for q6 selects `--no-verify` retry — so this branch reconciled
+onto that design during the merge with `main` (`64e428e6`): bypass is allowed
+exactly inside `commitRecoverySnapshot`, forbidden everywhere else. The
+`recovery` envelope phase is retained for wire compatibility but has no
+producer. Human confirmation of this q6 middle ground (scoped recovery
+bypass, no blanket auto-retry) is requested at merge review.
 
 ## Consequences
 

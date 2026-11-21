@@ -1,5 +1,39 @@
 # Implementation Plan — Surface runner commit/hook failures in the task UI
 
+## Reconciliation record (added during merge with main 2026-11-21)
+
+While this branch was in review, `main` merged task `db49d6c6` ("Fix runner
+recovery commits failing on pre-commit hooks and crash-looping", merge
+`64e428e6`), which fixed the same incident's recovery path with the opposite
+answer to this plan's load-bearing Decision 5: internal `kb-recovery/*`
+snapshots now bypass repo hooks via `commitRecoverySnapshot`
+(`runner/project.js`), and the dispatch loop contains throwing assignments
+instead of exiting 1. This branch merged `origin/main` and reconciled by
+composition rather than side-picking:
+
+- **Kept from main:** `commitRecoverySnapshot` (`--no-verify` recovery
+  snapshots, warn-logged) at both recovery sites, plus the dispatch-loop
+  restart-storm containment.
+- **Kept from this branch:** the shared `GitFailureDetails` contract, daemon
+  report-and-return with the one-poll backoff (composed with the
+  containment), backend persistence/parking, and the UI callout — applying
+  to the paths where hooks still run (stage-commit, merge).
+- **q6 reconciled (was: override; now: scoped honor):** the recorded human
+  survey answer selects `--no-verify` retry, and merged main already
+  implements its scoped form. Recovery snapshots bypass; task-branch
+  commits never bypass (pinned by the narrowed scope test). No blanket
+  auto-retry, no file deletion. Human confirmation of this middle ground is
+  requested at merge review (see ADR 0017).
+- **The `recovery` envelope phase is retained for wire compatibility but has
+  no producer** (old runners still send it; backend/UI still accept it).
+  Recovery-phase incident replays were retargeted: incident-shaped residue
+  now asserts bypass-and-park, and the loop-dead/backoff proofs drive
+  deterministic failures through the stage-commit path.
+
+Decision 5, the q6 survey row, Steps 12/15, Success Criterion 1, the
+validation grep-guard line, and Non-goals below are amended accordingly
+(marked "(reconciled)").
+
 ## Phase-0 record (added during implementation)
 
 **Survey reconciliation.** SURVEY.md `answers` were empty when this plan was
@@ -44,7 +78,9 @@ task UI showed only status `interrupted` with the previous human rejection
 1. A hook-rejected commit on the runner produces a structured
    `GitFailureDetails` record: failing git command, exit code, hook name,
    hook stderr/stdout, affected file paths, failure phase
-   (worktree-setup / recovery / stage-commit / merge), and a remediation hint.
+   (worktree-setup / stage-commit / merge — `recovery` retained for wire
+   compatibility but unproduced since recovery snapshots bypass hooks
+   (reconciled)), and a remediation hint.
 2. The backend records the new failure in `lastError` (replacing the stale
    one), timeline, history, log entries, and a `-failure-` stage report —
    for failures in worktree setup, stage execution end (`commitAndPush`),
@@ -194,7 +230,7 @@ All paths below were read in this checkout (branch
 | q3 | Which git problems surface? | Commit/hook failures **plus merge conflicts** in this change (the goal names "merge/commit paths"); push/network/auth stay generic errors but flow through the same new envelope so extending them later is one parser | Bounds scope while the shared contract keeps the door open. |
 | q4 | Where is it visible? | Task detail banner/callout **and** timeline + logs/history (both required by the goal); task-card indicator as a cheap third (it already reads `lastError`); team webhook as follow-up | Covers goal-mandated surfaces first; `api/observability/webhookNotifier.js` already touches `lastError`, so the follow-up is small. |
 | q5 | How much detail? | Capture **full** detail (command, exit code, complete hook output, files, remedy) in the payload; render **summary + expandable** full output in the UI | Full data for agents/debugging, progressive disclosure for humans. `FailureMessage.jsx` already implements the Show more/less pattern. |
-| q6 | May KainBain auto-fix (bypass hooks / delete files)? | **No — hard constraint.** Never `--no-verify`, never auto-delete. Show what failed and how to fix it; a human or a later agent stage decides | Bypassing the guard that caught real corruption (or deleting user files) destroys the safety property the hook exists for. `--no-verify` is documented only as the manual escape hatch. |
+| q6 | May KainBain auto-fix (bypass hooks / delete files)? | **Scoped bypass only (reconciled).** Internal `kb-recovery/*` snapshots bypass hooks via `commitRecoverySnapshot` (a failing hook must never strand unpushed work); task-branch commits never `--no-verify`, never auto-delete. Rejections surface with what failed and how to fix it; a human or a later agent stage decides | The recorded human answer selects `--no-verify` retry and merged main implements its scoped form; blanket auto-retry would still destroy the guard's safety property. `--no-verify` elsewhere stays a manual escape hatch only. |
 | q7 | Who fixes a blocked commit? | This change: surface + explain so a **human can act immediately**; design `gitDiagnostics` so a **follow-up agent-remediation/failback stage** can consume it (path to "both") | Keeps this change shippable; the Tier-3 failback prompt already consumes `gitDiagnostics`, proving the agent-handoff shape works. Auto-remediation itself is a separate task. |
 
 ## Key decisions
@@ -217,10 +253,12 @@ All paths below were read in this checkout (branch
    channel.** New `kind` values (`hook-rejected`, `commit-failed`)
    beside the existing `merge-conflict` / `sync-blocked`, following
    the `commandStages.js:1931` producer pattern.
-5. **Never bypass or auto-repair.** q6's "no" is a constraint on every
-   phase: no `--no-verify` in runner code paths, no file deletion, no
-   hook disabling. The one allowed automation is *parking* (stop
-   retrying), never *mutating*.
+5. **Scoped bypass for recovery snapshots only; never bypass or auto-repair
+   task output (reconciled).** `commitRecoverySnapshot` is the single
+   sanctioned `--no-verify` site (internal `kb-recovery/*` snapshots only);
+   task-branch commits carry no `--no-verify`, no file deletion, no hook
+   disabling. The other allowed automation is *parking* (stop retrying),
+   never *mutating*.
 6. **Worktree-setup failures must also complete-fail, not interrupt.**
    `refreshWorktreeToRemote` throws before the harness ever runs; Step 2
    verifies the lease/claim state at that point accepts
@@ -272,10 +310,11 @@ fails today and passes after the change. No production code touched.
    with `core.hooksPath` pointed at a copy of `scripts/githooks`, one
    valid + 2–3 corrupt PNGs (bad magic bytes, e.g. `ef bf bd` header),
    and asserts `git commit` exits 1 with the binary-guard stderr.
-   Cover: recovery commit (`refreshWorktreeToRemote` on a dirty reused
-   worktree), stage commit (`commitAndPush`), and a foreign-hook variant
-   (a hook script that exits 1 with arbitrary stderr) to prove the
-   parser degrades gracefully on unknown hooks.
+   Cover: the recovery path (`refreshWorktreeToRemote` on a dirty reused
+   worktree — reconciled: asserts bypass-and-park, since the recovery
+   commit can no longer be hook-rejected), stage commit (`commitAndPush`),
+   and a foreign-hook variant (a hook script that exits 1 with arbitrary
+   stderr) to prove the parser degrades gracefully on unknown hooks.
 5. Write characterization tests (expected to FAIL before the change,
    documenting today's behavior):
    - runner: hook rejection surfaces only as `RunnerGitError`
@@ -341,12 +380,14 @@ fails today and passes after the change. No production code touched.
     `git-timeout` keep today's interrupt+rethrow (bounded by the
     existing `MAX_RUNNER_INTERRUPTS` escalation), but now
     interrupt **with** the reason so history names the cause.
-12. Worktree-setup path (`prepareWorkdir` /
-    `refreshWorktreeToRemote` throw, per the Phase-0 finding): same
-    report-and-return via `complete-failed` when the lease allows it;
-    otherwise `interrupt({ reason })` carrying `gitFailure` (client
-    extension) for the Phase-4 backend fallback. Either way: no rethrow
-    for deterministic failures.
+12. Worktree-setup path (`prepareWorkdir` throw, per the Phase-0
+    finding): same report-and-return via `complete-failed` when the
+    lease allows it; otherwise `interrupt({ reason })` carrying
+    `gitFailure` (client extension) for the Phase-4 backend fallback.
+    Either way: no rethrow for deterministic failures. (Reconciled:
+    the recovery commit inside `refreshWorktreeToRemote` bypasses hooks
+    via `commitRecoverySnapshot`, so it can no longer be hook-rejected;
+    incident-shaped residue asserts bypass-and-park instead.)
 13. `preserveEvictedWorkdir` callers: log the structured detail at
     `logger.error` (today it is swallowed silently) so eviction-time
     hook blocks are diagnosable; still degrade to
@@ -357,9 +398,11 @@ fails today and passes after the change. No production code touched.
     interrupt+rethrow (with reason).
 15. Regression tests: incident replay green — fixture repo → daemon
     handler with stubbed client asserts `complete-failed` with
-    `gitFailure` (command, exit code, 3 PNG paths, remedy), `interrupt`
-    not called, no throw. Add a "no `--no-verify` in runner code"
-    grep-guard test (q6 enforcement). If new `runner/*.test.js` files
+    `gitFailure` (command, exit code, PNG paths, remedy), `interrupt`
+    not called, no throw. Add a "`--no-verify` only inside
+    `commitRecoverySnapshot`" scope-guard test (reconciled q6
+    enforcement: bypass pinned to recovery snapshots, forbidden on
+    task-branch commits). If new `runner/*.test.js` files
     are added (rather than extending existing ones), register each in
     the explicit list in `scripts/run-tests.mjs`
     (`tests/run-tests.test.mjs` fails the gate for unregistered
@@ -482,7 +525,8 @@ How the implementer proves the change worked (not just "tests pass"):
     markers present;
   - runner: hook rejection → `git-hook-rejected` with details;
     daemon → `complete-failed` called with `gitFailure`, `interrupt`
-    not called, no throw; grep-guard: no `--no-verify` in `runner/`;
+    not called, no throw; scope-guard: `--no-verify` only inside
+    `commitRecoverySnapshot` (reconciled);
   - backend: `lastError.gitDiagnostics` persisted, stale `lastError`
     replaced, timeline/history/report/log entries carry the detail,
     `process:exit` emitted; old/malformed payloads degrade without
@@ -558,9 +602,11 @@ How the implementer proves the change worked (not just "tests pass"):
 
 ## Non-goals
 
-- Automatic remediation of any kind: no `--no-verify` retries, no file
-  deletion/restore, no hook disabling, no agent auto-fix loop (q6/q7 —
-  the structured payload is the handoff point for a future task).
+- Automatic remediation of any kind: no blanket `--no-verify` retries
+  (the single exception is the scoped `kb-recovery/*` snapshot bypass in
+  `commitRecoverySnapshot` (reconciled)), no file deletion/restore, no
+  hook disabling, no agent auto-fix loop (q6/q7 — the structured payload
+  is the handoff point for a future task).
 - Surfacing push/network/auth failures beyond today's generic errors
   (q3 follow-up; the envelope reserves kinds for it).
 - Team notifications/webhooks on hook failure (q4 follow-up).

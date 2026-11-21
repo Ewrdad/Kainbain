@@ -1564,8 +1564,9 @@ describe("runDispatchLoop", () => {
 	});
 
 	it("contains a failed assignment: releases the task and keeps polling", async () => {
-		// A worktree-setup throw (here: no repo at the project path, the
-		// same generic-error shape as a hook-rejected recovery commit)
+		// A worktree-setup throw (here: no repo at the project path — a
+		// generic, non-gitFailure error, since recovery snapshots bypass
+		// hooks and structured git failures report-and-return instead)
 		// must fail one task, not the runner: the loop logs, the task is
 		// released via interrupt, and the next assignment still runs.
 		const repo = localRepo();
@@ -3419,6 +3420,28 @@ function replayClient({ origin, completed, interrupts, claimExtra = {} }) {
 	});
 }
 
+function stageCorruptingHarness(workRoot, rel = "stage-shot.png") {
+	// A harness whose stage output trips the binary guard at the
+	// stage-end commit — the deterministic-failure driver now that
+	// recovery commits bypass hooks.
+	return () => ({
+		async createSession() {
+			return {
+				isStreaming: false,
+				messages: [],
+				getLastAssistantText: () => "done",
+				subscribe: () => () => {},
+				prompt: async () => {
+					corruptReplayPng(path.join(workRoot, "kb-t1"), rel);
+					return "done";
+				},
+				abort: () => {},
+				dispose: async () => {},
+			};
+		},
+	});
+}
+
 describe("runSingleAssignment commit/hook failures (incident replay)", () => {
 	let dirs;
 	beforeEach(() => {
@@ -3428,12 +3451,14 @@ describe("runSingleAssignment commit/hook failures (incident replay)", () => {
 		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
 	});
 
-	it("reports a hook-rejected recovery commit as a failed completion instead of crashing", async () => {
-		// The live incident: a reused worktree holds corrupt PNGs, the
-		// binary guard rejects the recovery commit, and the runner used to
-		// exit 1 into a systemd restart loop while the task kept a stale
-		// error. Now the failure reports with its structured payload and
-		// the process stays alive (returns instead of throwing).
+	it("parks a reused worktree holding corrupt PNGs past the guard, then runs the stage", async () => {
+		// The live incident shape, retargeted to the reconciled behavior:
+		// a reused worktree holds 3 corrupt PNGs that trip the production
+		// binary guard. The recovery snapshot bypasses hooks, so the
+		// residue parks on kb-recovery/* and the stage runs to its normal
+		// completion — no failed completion, no interrupt, no crash.
+		// (Hook rejections still surface as structured failed completions
+		// on task-branch commits; see the stage-commit test below.)
 		const { origin } = guardedReplayOrigin(dirs);
 		const config = baseConfig();
 		dirs.push(config.workRoot);
@@ -3456,22 +3481,19 @@ describe("runSingleAssignment commit/hook failures (incident replay)", () => {
 			loadHarness: async () => fakeHarness(),
 			logger: { log: () => {}, warn: () => {}, error: (line) => errors.push(String(line)) },
 		});
-		assert.equal(out.gitFailureReported, true);
+		assert.equal(out.gitFailureReported, undefined);
 		assert.equal(completed.length, 1);
-		assert.equal(completed[0].outcome, "failed");
-		assert.equal(completed[0].failureKind, "commit-failed");
-		assert.equal(completed[0].committed, false);
-		const details = completed[0].gitFailure;
-		assert.equal(details.kind, "hook-rejected");
-		assert.equal(details.phase, "recovery");
-		assert.equal(details.exitCode, 1);
-		assert.equal(details.hookName, "pre-commit");
-		assert.deepEqual(details.files, ["a.png", "b.png", "c.png"]);
-		assert.ok(details.hookOutput.includes("binary-guard check FAILED"));
-		assert.ok(details.remedy.includes("capture-screenshot.mjs"));
-		assert.equal(completed[0].failureReason, details.summary);
+		assert.equal(completed[0].outcome, "passed");
+		assert.equal(completed[0].gitFailure, undefined);
 		assert.equal(interrupts.length, 0);
-		assert.ok(errors.some((line) => line.includes("commit failed (recovery)")));
+		assert.ok(!errors.some((line) => line.includes("commit failed")), "no commit-failure log line");
+		const branches = execFileSync("git", ["branch", "--list", "kb-recovery/t1/*"], { cwd: reused, encoding: "utf8" }).trim();
+		assert.ok(branches.length > 0, "residue parked on a kb-recovery/t1/* branch");
+		const parked = branches.split("\n")[0].trim().replace(/^\*\s*/, "");
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", parked], { cwd: reused, encoding: "utf8" });
+		for (const rel of ["a.png", "b.png", "c.png"]) {
+			assert.ok(kept.split("\n").includes(rel), `recovery branch preserves ${rel}`);
+		}
 	});
 
 	it("reports a hook-rejected stage commit with the stage-commit phase", async () => {
@@ -3515,16 +3537,12 @@ describe("runSingleAssignment commit/hook failures (incident replay)", () => {
 	});
 
 	it("proves the loop is dead: N deterministic failures report N times with no crash and no reason-less interrupt", async () => {
+		// Retargeted to the stage-commit path (recovery commits bypass
+		// hooks): each stage produces a corrupt PNG, each stage-end
+		// commit is hook-rejected, each assignment returns normally.
 		const { origin } = guardedReplayOrigin(dirs);
 		const config = baseConfig();
 		dirs.push(config.workRoot);
-		const reused = path.join(config.workRoot, "kb-t1");
-		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
-		git(reused, ["checkout", "-q", "kb/t1"]);
-		git(reused, ["config", "user.email", "t@t.t"]);
-		git(reused, ["config", "user.name", "t"]);
-		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
-		corruptReplayPng(reused, "a.png");
 		const completed = [];
 		const interrupts = [];
 		const quiet = { log: () => {}, warn: () => {}, error: () => {} };
@@ -3534,13 +3552,20 @@ describe("runSingleAssignment commit/hook failures (incident replay)", () => {
 			const out = await runSingleAssignment({
 				config,
 				client: replayClient({ origin, completed, interrupts }),
-				loadHarness: async () => fakeHarness(),
+				loadHarness: stageCorruptingHarness(config.workRoot),
 				logger: quiet,
 			});
 			assert.equal(out.gitFailureReported, true);
 		}
 		assert.equal(completed.length, 3);
-		assert.ok(completed.every((report) => report.outcome === "failed" && report.gitFailure?.kind === "hook-rejected"));
+		assert.ok(
+			completed.every(
+				(report) =>
+					report.outcome === "failed" &&
+					report.gitFailure?.kind === "hook-rejected" &&
+					report.gitFailure?.phase === "stage-commit",
+			),
+		);
 		assert.equal(interrupts.length, 0);
 	});
 
@@ -3575,16 +3600,12 @@ describe("runDispatchLoop git-failure backoff", () => {
 	});
 
 	it("pauses one poll cycle after a deterministic git failure instead of re-claiming immediately", async () => {
+		// Retargeted to the stage-commit path (recovery commits bypass
+		// hooks): the stage produces a corrupt PNG, the stage-end commit
+		// is hook-rejected, and the loop backs off one poll cycle.
 		const { origin } = guardedReplayOrigin(dirs);
 		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
 		dirs.push(config.workRoot);
-		const reused = path.join(config.workRoot, "kb-t1");
-		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
-		git(reused, ["checkout", "-q", "kb/t1"]);
-		git(reused, ["config", "user.email", "t@t.t"]);
-		git(reused, ["config", "user.name", "t"]);
-		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
-		corruptReplayPng(reused, "a.png");
 		const completed = [];
 		const interrupts = [];
 		let polls = 0;
@@ -3613,12 +3634,13 @@ describe("runDispatchLoop git-failure backoff", () => {
 		const out = await runDispatchLoop({
 			config,
 			client,
-			loadHarness: async () => fakeHarness(),
+			loadHarness: stageCorruptingHarness(config.workRoot),
 			logger: { log: (line) => logs.push(String(line)), warn: () => {}, error: () => {} },
 		});
 		assert.equal(out.assignments, 1);
 		assert.equal(completed.length, 1);
 		assert.equal(completed[0].gitFailure?.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure?.phase, "stage-commit");
 		assert.equal(interrupts.length, 0);
 		assert.ok(logs.some((line) => line.includes("backing off one poll cycle")));
 	});
@@ -3629,17 +3651,12 @@ describe("runDispatchLoop git-failure backoff", () => {
 		// alive throughout — no throw (no systemd restart), no
 		// reason-less interrupt. (The backend parks the task after the
 		// third strike; the dispatch stub below keeps assigning so this
-		// test proves the runner side alone never spins.)
+		// test proves the runner side alone never spins.) Retargeted to
+		// the stage-commit path: each stage produces a corrupt PNG that
+		// the guard rejects at the stage-end commit.
 		const { origin } = guardedReplayOrigin(dirs);
 		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
 		dirs.push(config.workRoot);
-		const reused = path.join(config.workRoot, "kb-t1");
-		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
-		git(reused, ["checkout", "-q", "kb/t1"]);
-		git(reused, ["config", "user.email", "t@t.t"]);
-		git(reused, ["config", "user.name", "t"]);
-		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
-		corruptReplayPng(reused, "a.png");
 		const completed = [];
 		const interrupts = [];
 		let polls = 0;
@@ -3667,7 +3684,7 @@ describe("runDispatchLoop git-failure backoff", () => {
 		const out = await runDispatchLoop({
 			config,
 			client,
-			loadHarness: async () => fakeHarness(),
+			loadHarness: stageCorruptingHarness(config.workRoot),
 			logger: { log: () => {}, warn: () => {}, error: () => {} },
 		});
 		assert.equal(out.assignments, 3);
@@ -3676,7 +3693,8 @@ describe("runDispatchLoop git-failure backoff", () => {
 			assert.equal(report.outcome, "failed");
 			assert.equal(report.failureKind, "commit-failed");
 			assert.equal(report.gitFailure?.kind, "hook-rejected");
-			assert.ok(report.gitFailure?.files?.includes("a.png"));
+			assert.equal(report.gitFailure?.phase, "stage-commit");
+			assert.ok(report.gitFailure?.files?.includes("stage-shot.png"));
 		}
 		assert.equal(interrupts.length, 0);
 	});

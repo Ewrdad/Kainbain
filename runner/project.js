@@ -66,12 +66,14 @@ export class RunnerGitError extends Error {
 /***
  * MARK: withGitFailurePhase
  * @description Tags a RunnerGitError's structured `gitFailure` with the
- *   lifecycle phase that produced it (`worktree-setup`, `recovery`,
- *   `stage-commit`, `merge`) when the throw site knows more than the git
- *   layer did. A phase already set wins (the innermost site is the most
- *   precise); errors without a `gitFailure` pass through untouched.
+ *   lifecycle phase that produced it (`worktree-setup`, `stage-commit`,
+ *   `merge` — `recovery` is accepted for wire compatibility but has no
+ *   producer since recovery snapshots bypass hooks) when the throw site
+ *   knows more than the git layer did. A phase already set wins (the
+ *   innermost site is the most precise); errors without a `gitFailure`
+ *   pass through untouched.
  *   Returns the same error for `throw withGitFailurePhase({ error, phase })`.
- * @example throw withGitFailurePhase({ error: err, phase: 'recovery' })
+ * @example throw withGitFailurePhase({ error: err, phase: 'stage-commit' })
  * @param {Object} [input] - Tagging context.
  * @param {*} input.error - Error to tag (usually RunnerGitError).
  * @param {string} input.phase - Lifecycle phase.
@@ -690,9 +692,12 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
 }
 
 function reportHookBlock({ logger = null, context = "", failure = null } = {}) {
-	// Eviction-time hook blocks are swallowed by design (the next candidate
-	// is tried instead) — but a hook rejecting every candidate used to be
-	// invisible. One loud line keeps the degrade-to-cap behaviour while
+	// Eviction-time preserve failures are swallowed by design (the next
+	// candidate is tried instead) — but a structured failure rejecting
+	// every candidate used to be invisible. Recovery snapshots bypass
+	// repo hooks, so a hook rejection can no longer be the cause here;
+	// this stays as the loud line for any other structured preserve
+	// failure. One loud line keeps the degrade-to-cap behaviour while
 	// naming the cause. Best-effort: logging must never break eviction.
 	if (!logger || !failure?.gitFailure) return;
 	try {
@@ -721,9 +726,9 @@ function reportHookBlock({ logger = null, context = "", failure = null } = {}) {
  * @param {number} [opts.staleMs] - Staleness threshold (default WORKTREE_EVICT_STALE_MS).
  * @param {string} [opts.repoDir] - Mode repo dir for worktree removal.
  * @param {string} [opts.localPath] - Backend checkout for worktree removal.
- * @param {Object} [opts.logger] - Logger for swallowed hook blocks (a hook
- *   rejecting a candidate's preserve commit is logged loudly, then the next
- *   candidate is tried — never thrown).
+ * @param {Object} [opts.logger] - Logger for swallowed structured
+ *   preserve failures (a candidate's failing preserve commit is logged
+ *   loudly, then the next candidate is tried — never thrown).
  * @returns {Promise<{evicted: string, parkedTo: string|null}|null>} Eviction record, or null.
  ***/
 export async function evictOldestWorkdir({ workRoot, currentTaskId = null, staleMs = WORKTREE_EVICT_STALE_MS, repoDir = null, localPath = null, logger = null } = {}) {
@@ -766,8 +771,8 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
  * @param {string} opts.taskId - Task id.
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} [opts.localPath] - Backend checkout (adopt-mode owner).
- * @param {Object} [opts.logger] - Logger for swallowed hook blocks (logged
- *   loudly, never thrown).
+ * @param {Object} [opts.logger] - Logger for swallowed structured
+ *   preserve failures (logged loudly, never thrown).
  * @returns {Promise<string>} "reaped"|"kept"|"absent"|"skipped".
  ***/
 export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, workRoot, localPath = null, logger = null } = {}) {
@@ -820,8 +825,8 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
  * @param {Object} opts
  * @param {Object} opts.client - Runner backend client (`listProjects`, `getTask`).
  * @param {string} opts.workRoot - Runner work root.
- * @param {Object} [opts.logger] - Logger for swallowed hook blocks (logged
- *   loudly, never thrown).
+ * @param {Object} [opts.logger] - Logger for swallowed structured
+ *   preserve failures (logged loudly, never thrown).
  * @returns {Promise<string[]>} Reaped workdir paths.
  ***/
 export async function reapTerminalOrphanWorkdirs({ client, workRoot, logger = null } = {}) {
@@ -1151,8 +1156,8 @@ export async function ensureRepoHooksPath(repoDir) {
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} opts.taskId - Task id.
  * @param {number} [opts.evictStaleMs] - Staleness threshold for LRU eviction (default WORKTREE_EVICT_STALE_MS).
- * @param {Object} [opts.logger] - Logger for swallowed eviction-time hook
- *   blocks (logged loudly, never thrown).
+ * @param {Object} [opts.logger] - Logger for swallowed eviction-time
+ *   structured preserve failures (logged loudly, never thrown).
  * @returns {Promise<Object>} `{ workdir, branch, mode, reused }`.
  ***/
 export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS, docsRepoUrl = null, docsLocalPath = null, logger = null }) {

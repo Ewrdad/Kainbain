@@ -11,7 +11,7 @@ import { GIT_FAILURE_PARK_AFTER } from "../../../shared/gitFailure.js";
  *   outright. Consumed by the single dispatch gate
  *   (`isSchedulerRunnable`) and the direct-claim route, so parked tasks
  *   take no embedded or Runner work until the operator acts. Never throws.
- * @example isGitFailureParked({ currentStageId: 'build', gitFailureStreak: { stageId: 'build', signature: 'hook-rejected|pre-commit|recovery|a.png', count: 3 } }) => true
+ * @example isGitFailureParked({ currentStageId: 'build', gitFailureStreak: { stageId: 'build', signature: 'hook-rejected|pre-commit|stage-commit|a.png', count: 3 } }) => true
  * @example isGitFailureParked({ currentStageId: 'build' }) => false
  * @param {Object} [task] - Task object, may carry `gitFailureStreak`.
  * @returns {boolean} True when auto-dispatch must skip this task.

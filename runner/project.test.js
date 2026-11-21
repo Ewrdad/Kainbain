@@ -1114,7 +1114,7 @@ describe("withGitFailurePhase", () => {
 	});
 });
 
-describe("recovery commit hook tagging", () => {
+describe("recovery commit hook bypass", () => {
 	let dirs;
 	beforeEach(() => {
 		dirs = [];
@@ -1123,9 +1123,13 @@ describe("recovery commit hook tagging", () => {
 		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
 	});
 
-	it("tags a hook-rejected recovery commit with the recovery phase", async () => {
-		// Incident replay at the unit level: a reused worktree whose
-		// unpushed residue trips the binary guard on the recovery commit.
+	it("parks incident-shaped residue past the real binary guard instead of rejecting", async () => {
+		// Incident replay at the unit level, retargeted to the reconciled
+		// behavior: a reused worktree whose unpushed residue (3 corrupt
+		// PNGs tripping the production binary guard) used to reject the
+		// recovery commit and crash-loop the runner. Recovery snapshots
+		// now bypass hooks, so the residue parks on kb-recovery/* and the
+		// refresh resolves — hooks still run on task-branch commits.
 		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-rec-origin-"));
 		git(origin, ["init", "-q", "--bare"]);
 		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-rec-seed-"));
@@ -1150,35 +1154,42 @@ describe("recovery commit hook tagging", () => {
 		corruptPng(work, "b.png");
 		corruptPng(work, "c.png");
 		dirs.push(origin, seed, work);
-		await assert.rejects(refreshWorktreeToRemote(work, "kb/t1"), (err) => {
-			assert.ok(err instanceof RunnerGitError);
-			assert.equal(err.code, "git-hook-rejected");
-			assert.equal(err.gitFailure.kind, "hook-rejected");
-			assert.equal(err.gitFailure.phase, "recovery");
-			assert.deepEqual(err.gitFailure.files, ["a.png", "b.png", "c.png"]);
-			return true;
-		});
+		const { recoveredTo } = await refreshWorktreeToRemote(work, "kb/t1");
+		assert.match(recoveredTo, /^kb-recovery\/t1\//);
+		assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd: work, encoding: "utf8" }).trim(), "");
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", recoveredTo], { cwd: work, encoding: "utf8" });
+		for (const rel of ["a.png", "b.png", "c.png"]) {
+			assert.ok(kept.split("\n").includes(rel), `recovery branch preserves ${rel}`);
+		}
+		const subject = execFileSync("git", ["log", "-1", "--format=%s", recoveredTo], { cwd: work, encoding: "utf8" }).trim();
+		assert.equal(subject, "recovery: unpushed work from reused worktree (kb/t1)");
 	});
 });
 
-describe("eviction hook-block logging", () => {
-	it("logs a swallowed hook block loudly, then evicts the next candidate", async () => {
+describe("eviction preserve bypass", () => {
+	it("evicts the oldest dirty candidate past the real binary guard, parking its residue", async () => {
+		// Retargeted to the reconciled behavior: the oldest candidate
+		// holds a corrupt PNG that would trip the binary guard, but the
+		// preserve commit bypasses hooks — so the candidate evicts
+		// directly (no degrade-to-next, no loud log) with its residue
+		// parked on kb-recovery/*.
 		const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-evict-"));
 		try {
-			// Oldest candidate: a dirty repo whose preserve commit the hook rejects.
-			const blocked = path.join(workRoot, "kb-old-a");
-			fs.mkdirSync(blocked, { recursive: true });
-			git(blocked, ["init", "-q"]);
-			git(blocked, ["config", "user.email", "t@t.t"]);
-			git(blocked, ["config", "user.name", "t"]);
-			fs.writeFileSync(path.join(blocked, "f.txt"), "x");
-			git(blocked, ["add", "."]);
-			git(blocked, ["commit", "-qm", "init"]);
-			wireRealBinaryGuard(blocked);
-			git(blocked, ["add", "."]);
-			git(blocked, ["commit", "-qm", "wire guard"]);
-			corruptPng(blocked, "bad.png");
-			// Next candidate: clean, so it evicts.
+			// Oldest candidate: a dirty repo whose preserve commit used to
+			// be hook-rejected.
+			const guarded = path.join(workRoot, "kb-old-a");
+			fs.mkdirSync(guarded, { recursive: true });
+			git(guarded, ["init", "-q"]);
+			git(guarded, ["config", "user.email", "t@t.t"]);
+			git(guarded, ["config", "user.name", "t"]);
+			fs.writeFileSync(path.join(guarded, "f.txt"), "x");
+			git(guarded, ["add", "."]);
+			git(guarded, ["commit", "-qm", "init"]);
+			wireRealBinaryGuard(guarded);
+			git(guarded, ["add", "."]);
+			git(guarded, ["commit", "-qm", "wire guard"]);
+			corruptPng(guarded, "bad.png");
+			// Next candidate: clean, so it must NOT be picked first.
 			const clean = path.join(workRoot, "kb-old-b");
 			fs.mkdirSync(clean, { recursive: true });
 			git(clean, ["init", "-q"]);
@@ -1187,9 +1198,9 @@ describe("eviction hook-block logging", () => {
 			fs.writeFileSync(path.join(clean, "f.txt"), "x");
 			git(clean, ["add", "."]);
 			git(clean, ["commit", "-qm", "init"]);
-			// The blocked candidate is strictly oldest so eviction tries it
-			// first (oldest-first); the clean one evicts after it fails.
-			fs.utimesSync(blocked, new Date(Date.now() - 2 * 60 * 60 * 1000), new Date(Date.now() - 2 * 60 * 60 * 1000));
+			// The guarded candidate is strictly oldest so eviction tries
+			// it first (oldest-first).
+			fs.utimesSync(guarded, new Date(Date.now() - 2 * 60 * 60 * 1000), new Date(Date.now() - 2 * 60 * 60 * 1000));
 			fs.utimesSync(clean, new Date(Date.now() - 60 * 60 * 1000), new Date(Date.now() - 60 * 60 * 1000));
 			const errors = [];
 			const outcome = await evictOldestWorkdir({
@@ -1197,26 +1208,48 @@ describe("eviction hook-block logging", () => {
 				currentTaskId: "t1",
 				logger: { log: () => {}, error: (line) => errors.push(String(line)) },
 			});
-			assert.ok(outcome && outcome.evicted === clean, "eviction degrades to the next candidate");
-			assert.equal(errors.length, 1);
-			assert.ok(errors[0].includes("kb-old-a"));
-			assert.ok(errors[0].includes("Commit blocked by pre-commit hook"));
+			assert.ok(outcome && outcome.evicted === guarded, "oldest candidate evicts past the guard");
+			assert.match(outcome.parkedTo, /^kb-recovery\/old-a\//);
+			assert.deepEqual(errors, []);
+			assert.ok(!fs.existsSync(guarded), "evicted workdir removed");
+			assert.ok(fs.existsSync(clean), "next candidate untouched");
 		} finally {
 			fs.rmSync(workRoot, { recursive: true, force: true });
 		}
 	});
 });
 
-describe("runner never bypasses hooks", () => {
-	it("contains no --no-verify in runner production code (q6: bypass is a manual escape hatch only)", () => {
-		// The assertion string itself is why test files are excluded from
-		// the scan: production code must never carry the bypass flag.
+describe("runner hook-bypass scope", () => {
+	it("allows --no-verify only inside commitRecoverySnapshot (kb-recovery/* snapshots bypass hooks; task-branch commits never do)", () => {
+		// Reconciled q6 policy: internal kb-recovery/* snapshots bypass
+		// repo hooks by design (a failing hook must never block parking
+		// unpushed work), and that bypass lives in exactly one place —
+		// commitRecoverySnapshot. Every other runner commit (stage-end,
+		// merge) must run hooks. The assertion string itself is why test
+		// files are excluded from the scan.
 		const runnerDir = path.dirname(fileURLToPath(import.meta.url));
 		const offenders = [];
 		for (const name of fs.readdirSync(runnerDir)) {
 			if (!name.endsWith(".js") || name.includes(".test.")) continue;
 			const content = fs.readFileSync(path.join(runnerDir, name), "utf8");
-			if (content.includes("--no-verify")) offenders.push(name);
+			if (name !== "project.js") {
+				if (content.includes("--no-verify")) offenders.push(`${name}: bypass outside project.js`);
+				continue;
+			}
+			// Pin the bypass to the single sanctioned span: the
+			// commitRecoverySnapshot MARK block through the end of its
+			// function (bounded by the next top-level export).
+			const spanStart = content.indexOf("MARK: commitRecoverySnapshot");
+			const spanEnd = content.indexOf("\nexport async function preserveEvictedWorkdir");
+			assert.ok(spanStart !== -1 && spanEnd !== -1 && spanEnd > spanStart, "bypass span anchors intact");
+			let found = 0;
+			let at = content.indexOf("--no-verify");
+			while (at !== -1) {
+				found += 1;
+				if (at < spanStart || at > spanEnd) offenders.push(`project.js: bypass outside commitRecoverySnapshot (offset ${at})`);
+				at = content.indexOf("--no-verify", at + 1);
+			}
+			assert.ok(found > 0, "the scoped recovery bypass still exists");
 		}
 		assert.deepEqual(offenders, []);
 	});

@@ -333,8 +333,8 @@ describe("The Flow: applyRunnerReport structured git failures", () => {
 
 	const gitFailure = () => ({
 		kind: "hook-rejected",
-		phase: "recovery",
-		command: "git commit -m recovery: unpushed work from reused worktree (kb/t1)",
+		phase: "stage-commit",
+		command: "git commit -m kb/t1 build: Runner runner-alpha stage output",
 		exitCode: 1,
 		hookName: "pre-commit",
 		files: ["docs/tasks/t1/assets/a.png", "docs/tasks/t1/assets/b.png", "shot.png"],
@@ -365,7 +365,7 @@ describe("The Flow: applyRunnerReport structured git failures", () => {
 	it("persists the envelope as gitDiagnostics and replaces the stale error", async () => {
 		const { store, projectStore } = makeStores();
 		const task = store.createTask("p1", {
-			goal: "hook-rejected recovery commit",
+			goal: "hook-rejected stage commit",
 			stageId: "build",
 			projectCwd: tempCwd,
 		});
@@ -397,7 +397,7 @@ describe("The Flow: applyRunnerReport structured git failures", () => {
 			failureKind: "commit-failed",
 			gitDiagnostics: {
 				kind: "hook-rejected",
-				phase: "recovery",
+				phase: "stage-commit",
 				hookName: "pre-commit",
 				exitCode: 1,
 				files: ["docs/tasks/t1/assets/a.png", "docs/tasks/t1/assets/b.png", "shot.png"],

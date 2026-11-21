@@ -22,10 +22,12 @@ export const GIT_FAILURE_KINDS = Object.freeze({
 /***
  * MARK: GIT_FAILURE_PHASES
  * @description Where in the runner lifecycle a git failure struck, carried
- *   on `GitFailureDetails.phase`: `worktree-setup` (prepareWorkdir outside
- *   the recovery commit), `recovery` (the recovery/residue commit itself),
+ *   on `GitFailureDetails.phase`: `worktree-setup` (prepareWorkdir), or
  *   `stage-commit` (the stage-end commit/merge/push), or `merge` (the
- *   leased integration merge).
+ *   leased integration merge). `recovery` is kept for wire compatibility
+ *   but has no producer: `kb-recovery/*` snapshots bypass repo hooks by
+ *   design (`commitRecoverySnapshot`), so a recovery commit can no
+ *   longer be hook-rejected.
  * @example GIT_FAILURE_PHASES.RECOVERY => 'recovery'
  ***/
 export const GIT_FAILURE_PHASES = Object.freeze({

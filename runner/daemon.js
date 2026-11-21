@@ -2315,12 +2315,14 @@ async function executeAssignment({
 			}
 			if (err?.gitFailure && isDeterministicGitFailure(err.gitFailure)) {
 				// Deterministic commit/hook/merge rejection (e.g. the
-				// pre-commit binary guard refusing corrupt PNGs during a
-				// recovery commit): re-running the same tree fails the same
-				// way, so report once as a FAILED completion carrying the
-				// structured payload and RETURN — like WORKTREE_CAP_REACHED
-				// above, never rethrow. Rethrowing crash-loops under
-				// Restart=always while the task keeps its stale error.
+				// pre-commit binary guard refusing corrupt PNGs in the
+				// stage-end commit): re-running the same tree fails the
+				// same way, so report once as a FAILED completion
+				// carrying the structured payload and RETURN — like
+				// WORKTREE_CAP_REACHED above, never rethrow. Rethrowing
+				// crash-loops under Restart=always while the task keeps
+				// its stale error. (Recovery snapshots bypass hooks, so
+				// this branch only fires for task-branch commits.)
 				withGitFailurePhase({ error: err, phase: gitPhase });
 				const gitFailure = err.gitFailure;
 				const failureReason = redactSecretsText(gitFailure.summary).trim() || "Runner commit failed";

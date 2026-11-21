@@ -4,8 +4,8 @@ import { sanitizeGitFailure } from "./sanitizeGitFailure.js";
 
 const VALID = {
 	kind: "hook-rejected",
-	phase: "recovery",
-	command: "git commit -m recovery",
+	phase: "stage-commit",
+	command: "git commit -m stage",
 	exitCode: 1,
 	hookName: "pre-commit",
 	files: ["docs/tasks/t1/assets/a.png", "shot.png"],
@@ -18,8 +18,8 @@ describe("The Flow: sanitizeGitFailure", () => {
 	it("keeps a valid envelope with every field intact", () => {
 		expect(sanitizeGitFailure({ ...VALID })).toMatchObject({
 			kind: "hook-rejected",
-			phase: "recovery",
-			command: "git commit -m recovery",
+			phase: "stage-commit",
+			command: "git commit -m stage",
 			exitCode: 1,
 			hookName: "pre-commit",
 			files: ["docs/tasks/t1/assets/a.png", "shot.png"],

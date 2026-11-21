@@ -128,14 +128,17 @@ Built in one pass over Steps 1–6, all suites green (`node --test runner/*.test
 
 ## Commit/hook failures in the task UI (2026-11-21)
 
-When a runner's commit is refused — usually the pre-commit binary guard
-rejecting corrupt PNGs during a recovery or stage-end commit — the failure no
-longer dies in the runner journal. The runner classifies it into the shared
-`GitFailureDetails` envelope and reports a failed completion; the backend
-records it in `lastError` (as `gitDiagnostics`), timeline, history, logs, and
-a `-failure-` stage report; and the task detail UI renders a "Commit Failed"
-callout with the hook, the failing command, the affected files, the remedy,
-and the full hook output behind "Show full output". See ADR 0017.
+When a runner's task-branch commit is refused — usually the pre-commit
+binary guard rejecting corrupt PNGs at the stage-end or merge commit — the
+failure no longer dies in the runner journal. The runner classifies it into
+the shared `GitFailureDetails` envelope and reports a failed completion; the
+backend records it in `lastError` (as `gitDiagnostics`), timeline, history,
+logs, and a `-failure-` stage report; and the task detail UI renders a
+"Commit Failed" callout with the hook, the failing command, the affected
+files, the remedy, and the full hook output behind "Show full output". See
+ADR 0017. (Internal `kb-recovery/*` snapshots are the one exception: they
+bypass repo hooks by design via `commitRecoverySnapshot`, so unpushed work
+is never stranded by a failing hook.)
 
 What the callout means: the tree the runner tried to commit contains files a
 repo hook refuses (for the binary guard: binaries rewritten through a text
@@ -156,9 +159,11 @@ history line (`auto-dispatch paused`); the failure banner keeps showing the
 error with its Retry button throughout.
 
 Manual escape hatch (intentional baselines only, never for new damage):
-`git commit --no-verify` bypasses the guard. KainBain itself never bypasses
-hooks automatically. Safe binary handling is documented in
-`docs/tasks/_PROOF_RULE.md`.
+`git commit --no-verify` bypasses the guard. KainBain itself bypasses hooks
+automatically in exactly one place — internal `kb-recovery/*` snapshots via
+`commitRecoverySnapshot` — and never on task-branch (stage/merge) commits,
+where a rejection always surfaces as the "Commit Failed" callout above. Safe
+binary handling is documented in `docs/tasks/_PROOF_RULE.md`.
 
 ## Risks / Open Questions
 

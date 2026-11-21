@@ -6,8 +6,8 @@ import '@testing-library/jest-dom';
 describe('GitFailureDetails', () => {
   const envelope = () => ({
     kind: 'hook-rejected',
-    phase: 'recovery',
-    command: 'git commit -m recovery: unpushed work from reused worktree (kb/t1)',
+    phase: 'stage-commit',
+    command: 'git commit -m kb/t1 build: Runner runner-alpha stage output',
     exitCode: 1,
     hookName: 'pre-commit',
     files: ['docs/tasks/t1/assets/a.png', 'shot.png'],
@@ -24,7 +24,7 @@ describe('GitFailureDetails', () => {
     expect(screen.getByTestId('git-failure-details')).toBeInTheDocument();
     expect(screen.getByTestId('git-failure-title')).toHaveTextContent('Commit blocked by pre-commit hook');
     expect(screen.getByTestId('git-failure-command')).toHaveTextContent(
-      'git commit -m recovery: unpushed work from reused worktree (kb/t1) (exit 1) · recovery',
+      'git commit -m kb/t1 build: Runner runner-alpha stage output (exit 1) · stage-commit',
     );
     expect(screen.getByTestId('git-failure-files')).toHaveTextContent('docs/tasks/t1/assets/a.png');
     expect(screen.getByTestId('git-failure-files')).toHaveTextContent('shot.png');
