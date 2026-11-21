@@ -423,6 +423,13 @@ export function workdirMtimeMs(dir) {
  *   repo hook (binary guard, linters) must never block preserving unpushed
  *   work, so hooks are bypassed by design and the bypass is warn-logged
  *   with the recovery branch for discoverability.
+ *   Fails safe, never loud, when there is nothing to park: a file can
+ *   vanish between the caller's dirty check and `git add`, leaving an
+ *   empty index — that resolves with a "nothing staged" warn instead of
+ *   throwing, so a benign race cannot fail the eviction or reuse. Any
+ *   other git rejection (not a repo, lock held, timeout) still throws
+ *   RunnerGitError, and a blank workdir or message throws immediately —
+ *   those are caller bugs, not missing work.
  * @example await commitRecoverySnapshot('/w/kb-t1', 'recovery: …', { recoveryBranch: 'kb-recovery/t1/…' })
  * @param {string} workdir - Workdir whose staged residue to commit.
  * @param {string} message - Snapshot commit message.
@@ -432,13 +439,32 @@ export function workdirMtimeMs(dir) {
  * @returns {Promise<void>}
  ***/
 export async function commitRecoverySnapshot(workdir, message, { recoveryBranch = null, log = console } = {}) {
-	await runGit(workdir, [
-		"-c", "user.name=KainBain Runner",
-		"-c", "user.email=kainbain-runner@local",
-		"commit", "--no-verify", "-m", message,
-	]);
+	if (typeof workdir !== "string" || !workdir.trim()) {
+		throw new Error("commitRecoverySnapshot needs a workdir path to commit in.");
+	}
+	if (typeof message !== "string" || !message.trim()) {
+		throw new Error("commitRecoverySnapshot needs a non-empty snapshot message.");
+	}
 	const warn = typeof log?.warn === "function" ? log.warn.bind(log) : console.warn.bind(console);
-	warn(`Recovery snapshot${recoveryBranch ? ` on ${recoveryBranch}` : ""} bypassed git hooks (--no-verify): ${message}`);
+	const where = recoveryBranch ? ` on ${recoveryBranch}` : "";
+	try {
+		await runGit(workdir, [
+			"-c", "user.name=KainBain Runner",
+			"-c", "user.email=kainbain-runner@local",
+			"commit", "--no-verify", "-m", message,
+		]);
+	} catch (err) {
+		// Benign race: the caller saw a dirty tree, but by commit time the
+		// index held nothing stageable. Skipping keeps a nothing-to-park
+		// moment from failing the eviction or reuse it was called from.
+		const output = `${err?.message || ""}\n${err?.stderr || ""}\n${err?.stdout || ""}`;
+		if (err?.code === "git-failed" && /nothing to commit/i.test(output)) {
+			warn(`Recovery snapshot${where} skipped: nothing staged to park (${message})`);
+			return;
+		}
+		throw err;
+	}
+	warn(`Recovery snapshot${where} bypassed git hooks (--no-verify): ${message}`);
 }
 
 /***

@@ -120,6 +120,8 @@ describe("syncTaskDocs", () => {
 				assert.equal(execFileSync("git", ["status", "--porcelain"], { cwd: workdir, encoding: "utf8" }).trim(), "");
 				const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", recoveredTo], { cwd: mirror, encoding: "utf8" });
 				assert.ok(kept.split("\n").includes("uncommitted.txt"));
+				const subject = execFileSync("git", ["log", "-1", "--format=%s", recoveredTo], { cwd: mirror, encoding: "utf8" }).trim();
+				assert.equal(subject, "recovery: unpushed work from reused worktree (kb/t1)");
 			} finally {
 				execFileSync("git", ["worktree", "remove", "--force", workdir], { cwd: mirror, stdio: "ignore" });
 				fs.rmSync(mirror, { recursive: true, force: true });
@@ -802,6 +804,8 @@ describe("runner project prep", () => {
 		assert.match(recoveredTo, /^kb-recovery\/hook-1\//);
 		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", recoveredTo], { cwd: repo, encoding: "utf8" });
 		assert.ok(kept.split("\n").includes("precious.txt"), "recovery branch preserves the staged file");
+		const subject = execFileSync("git", ["log", "-1", "--format=%s", recoveredTo], { cwd: repo, encoding: "utf8" }).trim();
+		assert.equal(subject, `recovery: unpushed work parked before eviction (${path.basename(workdir)})`);
 		const tipAfter = execFileSync("git", ["rev-parse", branch], { cwd: repo, encoding: "utf8" }).trim();
 		assert.equal(tipAfter, tipBefore, "task branch tip left unchanged");
 	});
@@ -921,6 +925,29 @@ describe("commitRecoverySnapshot", () => {
 			assert.ok(warnings[0].includes("--no-verify"), "warn states hooks were bypassed");
 			const subject = execFileSync("git", ["log", "-1", "--format=%s"], { cwd: dir, encoding: "utf8" }).trim();
 			assert.equal(subject, "recovery: test snapshot");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("skips cleanly when nothing is staged, and rejects blank inputs", async () => {
+		// Fail-safe: a benign dirty-check/add race must resolve (with a
+		// warn), not throw — while caller bugs still fail immediately.
+		const { commitRecoverySnapshot } = await import("./project.js");
+		const dir = localRepo();
+		try {
+			const warnings = [];
+			const headBefore = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+			await commitRecoverySnapshot(dir, "recovery: nothing to park", {
+				recoveryBranch: "kb-recovery/t1/stamp",
+				log: { warn: (m) => warnings.push(String(m)) },
+			});
+			assert.equal(warnings.length, 1);
+			assert.ok(warnings[0].includes("nothing staged"), "warn says the snapshot was skipped");
+			const headAfter = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+			assert.equal(headAfter, headBefore, "no empty commit created");
+			await assert.rejects(commitRecoverySnapshot("", "recovery: x"), /needs a workdir/);
+			await assert.rejects(commitRecoverySnapshot(dir, "  "), /non-empty snapshot message/);
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}

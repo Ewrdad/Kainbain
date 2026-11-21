@@ -3017,8 +3017,11 @@ export async function runDispatchLoop({
 				// log it and keep polling instead of exiting 1 into a
 				// systemd restart storm that blocks every other task.
 				const reason = `Assignment ${answer.projectId}/${answer.taskId} failed (${err?.message || err}); task released, continuing dispatch.`;
-				if (typeof logger.error === "function") logger.error(reason);
-				else logger.warn(reason);
+				// This catch is the restart-storm barrier: its own logging
+				// must never throw back out, so every sink is checked.
+				if (typeof logger?.error === "function") logger.error(reason);
+				else if (typeof logger?.warn === "function") logger.warn(reason);
+				else console.error(reason);
 			}
 			// Terminal tasks never run again: reclaim their workdir slot
 			// now instead of growing into the cap (best-effort, never
