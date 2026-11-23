@@ -69,6 +69,37 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes - capacity refusals must never park a task (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Yes - first retry instant, repeats slow down 30s doubling to 5min, fresh work goes first (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "All repeatedly resumed tasks (Recommended - also covers reason-less interrupts from older runners)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Yes - temporarily hide the task from the refusing runner (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Yes - true crash streaks still park after 5; capacity counter is visibility-only, never parks (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
