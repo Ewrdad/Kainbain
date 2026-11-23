@@ -68,12 +68,32 @@ record for this branch (newer BEFORE recount, fuller E5, fresh 12:22Z snapshot).
   Out-of-scope hook edit reverted (file matches `origin/main` byte-for-byte);
   the flaky test's `waitFor` now also waits for the asserted `summary`
   (1-line test-only de-flake; hook behavior unchanged).
+- **12:37–13:05** — CI fast-gate `…-123714`: all twelve fast branches PASS
+  (incl. the de-flaked `useOnboarding` suite); canary 138/140 — 2 failed in
+  `tests/task-lifecycle.spec.js` (`submit -> kanban placement -> advance ->
+  complete`, `clicking a card opens the slide-over task inspector`), both with
+  `page.goto: Target page, context or browser has been closed` in
+  `waitForAppReady` (helpers.js:65). Branch adds zero product code vs base
+  `7ac148ce` (only the 1-line unit-test de-flake, which does not ship to the
+  canary build), so these cannot be regressions from this task.
+- **13:06:07** — Fresh read-only snapshot (`runners-now/`, `…T130607Z.*`):
+  **still `0.1.0` everywhere, knob `0.1.0`, `availableVersions ["0.1.0"]`, no
+  nudges** — verdict NOT-CONVERGED for both named runners; backend still
+  build 637 (no restart). AFTER recount remains blocked on the human
+  PROD-ACTION (raise knob to `0.2.1`); no knob change, no restarts, no reaps
+  performed (observe-only, q9).
+- **13:08** — Flake confirmation: `tests/task-lifecycle.spec.js` re-run solo
+  on its scratch stack → **4 passed (1.1m)**, including both CI-failed tests.
+  BEFORE-table re-verified against `recount-before-table.json` (149/72/77,
+  125 ≤15s median 4s, 28 post-`finished`, 49 escalated, 0 server-restart,
+  0 `gitFailure`, per-runner 108/41, 24/24 vocab cap strings) — matches
+  `RECOUNT-BEFORE.md` + `BASELINE.md` exactly.
 
 ## Effective survey decisions (answers + live-data overrides)
 
 | Q | Answer / decision |
 |---|---|
-| q1 knob | Answered "already set" — **WRONG, superseded by live data** (knob is `0.1.0` at 09:04/10:36/11:07/11:46/12:22Z). Task stays observe-only; the raise to `0.2.1` is a human PROD-ACTION recorded as the blocking prerequisite. |
+| q1 knob | Answered "already set" — **WRONG, superseded by live data** (knob is `0.1.0` at 09:04/10:36/11:07/11:46/12:22/13:06Z). Task stays observe-only; the raise to `0.2.1` is a human PROD-ACTION recorded as the blocking prerequisite. |
 | q2 access | Full read-only approved and used (API + both journals + both work roots). |
 | q3 wait | Answered "wait-and-watch same-run" — **cannot complete in this run**: convergence is impossible until the knob is raised. Adopted the **q3-fallback**: BEFORE + E5 now, AFTER as a scheduled follow-up (see `BASELINE.md`). |
 | q4 scope | Same project `0fd41821-d8a5-4e49-bc2e-28ce8c739a0a` only (81 tasks). |
