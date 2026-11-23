@@ -3,6 +3,7 @@ import {
 	resolveStagesForTask,
 } from '../stageResolution.js';
 import { collectResumeEvidence } from './collectResumeEvidence.js';
+import { resolveResumeLabel } from './resolveResumeLabel.js';
 
 /***
  * MARK: autoResumeTask
@@ -17,7 +18,10 @@ import { collectResumeEvidence } from './collectResumeEvidence.js';
  *   `scheduleTick` then dispatches under the busy gate) or `scheduleTick`
  *   (which dispatches immediately after). Never calls `executeStage`
  *   directly, so the single-active invariant holds. Idempotent: a
- *   non-interrupted task is returned untouched.
+ *   non-interrupted task is returned untouched. The history label names the
+ *   recovery route (see `resolveResumeLabel`): server restart for genuine
+ *   reconcile recoveries, runner interrupt (with runner id + reason) for
+ *   runner-path resumes.
  * @param {Object} store
  * @param {string} projectId
  * @param {string} taskId
@@ -39,8 +43,10 @@ export function autoResumeTask(store, projectId, taskId, projectCwd, { reason } 
 	if (typeof store._resetAutoIteration === "function") {
 		store._resetAutoIteration(task);
 	}
-	const historyAction =
-		"Auto-resumed after server restart — prioritised in queue";
+	// S6: the label names the actual recovery route — server restart for
+	// genuine reconcile recoveries, runner interrupt (with id + reason) for
+	// runner-path resumes — instead of one string for both.
+	const historyAction = resolveResumeLabel(task);
 	if (typeof store._recordHistory === "function") {
 		try {
 			store._recordHistory(task, historyAction, task.updatedAt);

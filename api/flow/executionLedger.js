@@ -537,9 +537,12 @@ export class ExecutionLedger {
 		task?.history?.push(completionEntry);
 		// G7: a finished stage breaks the death loop — the next stage (or
 		// a later retry of this one after real progress) counts from zero.
+		// The S6 last-interrupt marker goes with it: real progress means a
+		// later crash resume must read as a restart, not as this old death.
 		if (task) {
 			delete task.runnerInterruptCount;
 			delete task.runnerInterruptStage;
+			delete task.interruptedBy;
 		}
 		this.lastStage.delete(executionId);
 		this.logNextSeq.delete(executionId);
@@ -652,6 +655,19 @@ export class ExecutionLedger {
 			task.status = "interrupted";
 			const cleanReason =
 				typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 500) : "";
+			// S6: structured last-interrupt marker. `autoResumeTask` reads it
+			// (via `resolveResumeLabel`) to name the runner route in history;
+			// the crash path stamps nothing, so its resumes keep the
+			// server-restart string. In-memory only, like the G7 counters
+			// above — a restart wipes it, which correctly re-labels a
+			// post-restart resume as a restart recovery. Read-only at resume
+			// time; the next interrupt overwrites it and a stage completion
+			// clears it.
+			task.interruptedBy = {
+				runnerId,
+				reason: cleanReason,
+				at: new Date().toISOString(),
+			};
 			task?.history?.push({
 				timestamp: new Date().toISOString(),
 				action: `Runner ${runnerId} interrupted execution ${executionId ?? hold?.executionId ?? "?"} — lease dropped, re-queues as interrupted.${cleanReason ? ` Reason: ${cleanReason}` : ""}`,

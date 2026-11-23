@@ -468,17 +468,21 @@ export const STAGE_RUN_TRY_COUNT_CAP = 99;
  *   grouped by their resolved stage label; each group keeps the position of
  *   its first occurrence in the input array and renders the chronologically
  *   LATEST entry of the group (latest status, reason, duration, and run
- *   attribution), with `tryCount` set to the number of grouped rows (capped at
- *   STAGE_RUN_TRY_COUNT_CAP). Try-count source decision: count the observed
- *   timeline rows per stage (no schema migration needed; `autoIterationCount`
- *   is global, not per stage). Rows with no stage label are never grouped.
- *   Display-only projection: never mutates its input or the stored timeline.
+ *   attribution), with `tryCount` set to the number of REAL tries — grouped
+ *   rows excluding infra-resume (`Resumed`) rows, which are re-parks, not
+ *   attempts — and `resumeCount` set to the number of `Resumed` rows (both
+ *   capped at STAGE_RUN_TRY_COUNT_CAP). Try-count source decision: count the
+ *   observed timeline rows per stage (no schema migration needed;
+ *   `autoIterationCount` is global, not per stage). Rows with no stage label
+ *   are never grouped. Display-only projection: never mutates its input or
+ *   the stored timeline.
  * @example summarizeStageRuns([{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x' }, { stage: 'Plan', status: 'Moved', timestamp: 't1' }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]) => [{ stage: 'Plan', status: 'Failed', timestamp: 't2', reason: 'x', tryCount: 2 }, { stage: 'Idea', status: 'Advanced', timestamp: 't0' }]
  * @example summarizeStageRuns([{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]) => [{ stage: 'Idea', timestamp: 't1' }, { stage: 'Plan', timestamp: 't2' }]
+ * @example summarizeStageRuns([{ stage: 'Plan', status: 'Resumed', timestamp: 't3' }, { stage: 'Plan', status: 'Failed', timestamp: 't2' }, { stage: 'Plan', status: 'Moved', timestamp: 't1' }]) => [{ stage: 'Plan', status: 'Resumed', timestamp: 't3', tryCount: 2, resumeCount: 1 }]
  * @param {Array<Object>} [entries=[]] - Display timeline entries, newest first
  *   (as returned by selectDisplayTimeline); groups keep first-occurrence order.
  * @param {Array<Object>} [stages=[]] - The current workflow stages, for legacy numeric label mapping.
- * @returns {Array<Object>} One display row per stage, each carrying `tryCount` when its group had more than one row.
+ * @returns {Array<Object>} One display row per stage, each carrying `tryCount` when its group had more than one real try, and `resumeCount` when its group had infra resumes.
  ***/
 export function summarizeStageRuns(entries = [], stages = []) {
   const list = Array.isArray(entries) ? entries : [];
@@ -527,8 +531,16 @@ export function summarizeStageRuns(entries = [], stages = []) {
       }
     }
     const row = { ...latest, stage: displayLabel };
-    if (group.length > 1) {
-      row.tryCount = Math.min(group.length, STAGE_RUN_TRY_COUNT_CAP);
+    // S6: infra-resume rows are re-parks, not attempts — they count into
+    // `resumeCount`, never into `tryCount`, so the badge shows real tries
+    // with resumes shown separately ("Tried 2 times, 4 infra resumes").
+    const realTries = group.filter((candidate) => !isInfraResumeRow(candidate));
+    const resumes = group.length - realTries.length;
+    if (realTries.length > 1) {
+      row.tryCount = Math.min(realTries.length, STAGE_RUN_TRY_COUNT_CAP);
+    }
+    if (resumes > 0) {
+      row.resumeCount = Math.min(resumes, STAGE_RUN_TRY_COUNT_CAP);
     }
     result.push(row);
   }
@@ -538,21 +550,57 @@ export function summarizeStageRuns(entries = [], stages = []) {
 /***
  * MARK: formatTryCount
  * @description Renders a collapsed history row's try count as
- *   `Tried {n} times`, or null when the row ran only once (no badge needed).
- *   Fails safe on unexpected input: fractional counts are floored and counts
- *   above STAGE_RUN_TRY_COUNT_CAP are clamped, so no caller can render an
- *   unbounded or fractional label even with a hand-built row.
+ *   `Tried {n} times`, with infra resumes shown separately
+ *   (`Tried {n} times, {m} infra resumes`), a resume-only row as
+ *   `{m} infra resume(s)`, or null when the row ran once and never resumed
+ *   (no badge needed). Fails safe on unexpected input: fractional counts are
+ *   floored and counts above STAGE_RUN_TRY_COUNT_CAP are clamped, so no
+ *   caller can render an unbounded or fractional label even with a
+ *   hand-built row.
  * @example formatTryCount({ tryCount: 3 }) => 'Tried 3 times'
  * @example formatTryCount({ tryCount: 1 }) => null
  * @example formatTryCount({ stage: 'Plan' }) => null
  * @example formatTryCount({ tryCount: 500 }) => 'Tried 99 times'
+ * @example formatTryCount({ tryCount: 2, resumeCount: 4 }) => 'Tried 2 times, 4 infra resumes'
+ * @example formatTryCount({ resumeCount: 3 }) => '3 infra resumes'
  * @param {Object} [entry] - A display timeline row (see summarizeStageRuns).
- * @returns {string|null} The label, or null when the stage ran once.
+ * @returns {string|null} The label, or null when the stage ran once and never resumed.
  ***/
 export function formatTryCount(entry) {
-  const count = Number(entry?.tryCount);
-  if (!Number.isFinite(count) || count <= 1) return null;
-  return `Tried ${Math.min(Math.floor(count), STAGE_RUN_TRY_COUNT_CAP)} times`;
+  const tries = Number(entry?.tryCount);
+  const resumes = Number(entry?.resumeCount);
+  const tryLabel =
+    Number.isFinite(tries) && tries > 1
+      ? `Tried ${Math.min(Math.floor(tries), STAGE_RUN_TRY_COUNT_CAP)} times`
+      : null;
+  const resumeTotal = Number.isFinite(resumes) ? Math.floor(resumes) : 0;
+  const resumeLabel =
+    resumeTotal > 0
+      ? `${Math.min(resumeTotal, STAGE_RUN_TRY_COUNT_CAP)} infra resume${Math.min(resumeTotal, STAGE_RUN_TRY_COUNT_CAP) === 1 ? '' : 's'}`
+      : null;
+  if (tryLabel && resumeLabel) return `${tryLabel}, ${resumeLabel}`;
+  return tryLabel || resumeLabel;
+}
+
+/***
+ * MARK: isInfraResumeRow
+ * @description True when a timeline entry is an infrastructure resume row
+ *   (`Resumed` status, case-insensitive): an automatic re-park of the task
+ *   into its stage after a runner interrupt or server restart. Such rows are
+ *   not real stage attempts, so `summarizeStageRuns` counts them into
+ *   `resumeCount` instead of `tryCount` — the "Tried N times" badge shows
+ *   real tries only, with infra resumes shown separately.
+ * @example isInfraResumeRow({ status: 'Resumed' }) => true
+ * @example isInfraResumeRow({ status: 'resumed' }) => true
+ * @example isInfraResumeRow({ status: 'Failed' }) => false
+ * @example isInfraResumeRow(null) => false
+ * @param {Object} [entry] - Timeline entry (or null/undefined for safety).
+ * @returns {boolean} True for infra-resume rows.
+ ***/
+export function isInfraResumeRow(entry) {
+  const normalized =
+    typeof entry?.status === 'string' ? entry.status.trim().toLowerCase() : '';
+  return normalized === 'resumed';
 }
 
 /***

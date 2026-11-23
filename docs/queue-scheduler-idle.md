@@ -85,7 +85,10 @@ After a stop, crash, SIGTERM/SIGINT, or self-deploy restart,
    can race a deploy decision.
 3. Auto-resume — eligible `interrupted` tasks flip back to `in_stage`
    (cleared `wasInterrupted`, fresh auto-iteration budget, history entry
-   "Auto-resumed after server restart — prioritised in queue"), exactly like
+   naming the recovery route: "Auto-resumed after server restart —
+   prioritised in queue" for genuine restart recoveries,
+   "Auto-resumed after runner interrupt — prioritised in queue
+   (runner {id}, reason: {reason})" for runner-path resumes), exactly like
    a manual resume but without dispatching.
 4. `startScheduler()` + one `kickScheduler()` so pickup takes ~150 ms.
 
