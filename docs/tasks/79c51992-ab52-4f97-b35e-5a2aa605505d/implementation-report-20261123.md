@@ -88,3 +88,26 @@ outside this task's plan). Decision: stamp it (plan's recommended option).
 - Backward compat: no parser branches on either prefix (grep: only the helper
   itself plus tests/docs reference the strings); old histories untouched
   (pinned by test).
+
+## 6. Re-verification after CI canary failure (this stage re-run)
+
+Survey `SURVEY.md` round 1 is now answered: q1 = Yes two labels, q2 =
+show-both — exactly the Recommended defaults implemented above, so no
+contract change was needed.
+
+The prior Automated-tests failure was 2 canary specs failing with the
+identical infra error `page.goto: Target page, context or browser has been
+closed` in `canary-e2e/tests/helpers.js` `waitForAppReady` (browser died
+under full-run load; 138 specs passed). Both pass in isolation on this
+branch with zero code changes, confirming a flake, not an S6 regression:
+
+- `tests/task-lifecycle.spec.js:42` submit → kanban → advance → complete:
+  1 passed (12.8s).
+- `tests/footer-overlay.spec.js:188` inspector-above-footer: 1 passed (43.4s).
+
+Full gates re-observed green in this session: `npm run test:api` (468
+files, 7650 passed, 3 skipped), `npm run test:frontend` (364 files, 4986
+passed), `npm run lint` (0 errors; touched-file warnings all pre-existing
+on untouched lines), `check:one-function` PASS (881 scanned),
+`check:jsdoc-example` PASS, `docs:check` PASS. No production files were
+changed in this re-run; only this §6 addendum was appended.
