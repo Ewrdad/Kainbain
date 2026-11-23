@@ -107,6 +107,43 @@ export function ProjectBasicsSection({
         />
       </div>
 
+      {/* Separate docs repo summary: the setting lives in Files & Repos —
+          this row keeps its state visible on the landing tab with a jump.
+          Placed directly under Project Name so it shows in the first
+          viewport of the landing tab — reviewers landing here look for a
+          place to enable the stealth-docs option and miss a row that sits
+          below the harness picker and accent controls. */}
+      <div className="flex items-center justify-between gap-3 p-3 bg-surface-container border border-border-standard rounded-sm">
+        <div className="min-w-0">
+          <span className="text-xs font-bold uppercase text-text-high block">
+            Separate Docs Repository:{' '}
+            <span data-testid="docs-repo-summary-state" className="text-primary">
+              {docsRepoEnabled ? 'On' : 'Off'}
+            </span>
+          </span>
+          <span className="text-[10px] text-text-muted block truncate">
+            {docsRepoEnabled ? (
+              <>
+                KainBain docs and state live in{' '}
+                <code className="font-mono text-primary">{docsRepoUrl.trim()}</code>
+              </>
+            ) : (
+              'KainBain docs and state live inside the main repo.'
+            )}
+          </span>
+        </div>
+        {typeof onJumpToFilesRepos === 'function' && (
+          <button
+            id="project-docs-repo-jump"
+            type="button"
+            onClick={onJumpToFilesRepos}
+            className="shrink-0 px-3 py-1.5 rounded-sm text-xs font-bold uppercase cursor-pointer transition-colors bg-surface-deep border border-border-standard text-text-muted hover:text-on-surface"
+          >
+            {docsRepoEnabled ? 'Manage in Files & Repos' : 'Configure in Files & Repos'}
+          </button>
+        )}
+      </div>
+
       {/* Agent harness + default model (one wired control: the harness
           scopes the model catalogue — dropdown, free-text, or hidden) */}
       <div className="flex flex-col gap-2">
@@ -342,39 +379,6 @@ export function ProjectBasicsSection({
         >
           {hiddenProjectIds?.includes?.(projectId) ? 'Hidden (Archived)' : 'Visible'}
         </button>
-      </div>
-
-      {/* Separate docs repo summary: the setting lives in Files & Repos —
-          this row keeps its state visible on the landing tab with a jump. */}
-      <div className="flex items-center justify-between gap-3 p-3 bg-surface-container border border-border-standard rounded-sm">
-        <div className="min-w-0">
-          <span className="text-xs font-bold uppercase text-text-high block">
-            Separate Docs Repository:{' '}
-            <span data-testid="docs-repo-summary-state" className="text-primary">
-              {docsRepoEnabled ? 'On' : 'Off'}
-            </span>
-          </span>
-          <span className="text-[10px] text-text-muted block truncate">
-            {docsRepoEnabled ? (
-              <>
-                KainBain docs and state live in{' '}
-                <code className="font-mono text-primary">{docsRepoUrl.trim()}</code>
-              </>
-            ) : (
-              'KainBain docs and state live inside the main repo.'
-            )}
-          </span>
-        </div>
-        {typeof onJumpToFilesRepos === 'function' && (
-          <button
-            id="project-docs-repo-jump"
-            type="button"
-            onClick={onJumpToFilesRepos}
-            className="shrink-0 px-3 py-1.5 rounded-sm text-xs font-bold uppercase cursor-pointer transition-colors bg-surface-deep border border-border-standard text-text-muted hover:text-on-surface"
-          >
-            {docsRepoEnabled ? 'Manage in Files & Repos' : 'Configure in Files & Repos'}
-          </button>
-        )}
       </div>
     </div>
   );
