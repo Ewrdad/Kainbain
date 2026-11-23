@@ -59,6 +59,31 @@ Background in plain terms: today, if the worker (runner) loses contact with the 
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Stay alive, report what happened, and keep checking for work (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Only survive short connection problems (network errors, server busy or restarting); still stop for login problems, outdated orders, and anything unknown (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Retry a few times with growing waits, then keep waiting without restarting (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "A clear one-line note naming the cause, then it keeps going (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
