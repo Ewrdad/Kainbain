@@ -3,6 +3,7 @@ import {
 	createDefaultWorkflow,
 	DEFAULT_WORKFLOW_ID,
 	DEFAULT_WORKFLOW_NAME,
+	normalizeBaseBranchUpdate,
 	normalizeWorkflow,
 	normalizeWorkflows,
 } from "./workflowDefaults.js";
@@ -42,6 +43,62 @@ describe("normalizeWorkflow", () => {
 
 	it("fills empty stage lists with the default stages", () => {
 		expect(normalizeWorkflow({ name: "A", stages: [] }).stages.length).toBeGreaterThan(0);
+	});
+
+	it("carries a configured base branch through normalization", () => {
+		const out = normalizeWorkflow({ name: "A", baseBranch: "feature/x" });
+		expect(out.baseBranch).toBe("feature/x");
+	});
+
+	it("trims the base branch and drops blank values", () => {
+		expect(normalizeWorkflow({ name: "A", baseBranch: "  feature/x  " }).baseBranch).toBe(
+			"feature/x",
+		);
+		expect(normalizeWorkflow({ name: "A", baseBranch: "   " })).not.toHaveProperty(
+			"baseBranch",
+		);
+	});
+
+	it("leaves workflows without a base branch byte-identical", () => {
+		const out = normalizeWorkflow({ name: "A" });
+		expect(out).not.toHaveProperty("baseBranch");
+		expect(Object.keys(out).sort()).toEqual(["id", "isDefault", "name", "stages"]);
+	});
+
+	it("drops an invalid stored base branch instead of surfacing it", () => {
+		const out = normalizeWorkflow({ name: "A", baseBranch: "--evil" });
+		expect(out).not.toHaveProperty("baseBranch");
+	});
+});
+
+describe("normalizeBaseBranchUpdate", () => {
+	it("leaves the field untouched when the key is absent", () => {
+		expect(normalizeBaseBranchUpdate(undefined)).toEqual({ changed: false });
+	});
+
+	it("sets a valid trimmed name", () => {
+		expect(normalizeBaseBranchUpdate("  feature/x  ")).toEqual({
+			changed: true,
+			baseBranch: "feature/x",
+		});
+	});
+
+	it("clears the field on blank or null input", () => {
+		expect(normalizeBaseBranchUpdate("")).toEqual({ changed: true, baseBranch: null });
+		expect(normalizeBaseBranchUpdate("   ")).toEqual({ changed: true, baseBranch: null });
+		expect(normalizeBaseBranchUpdate(null)).toEqual({ changed: true, baseBranch: null });
+	});
+
+	it("refuses invalid git branch names loudly", () => {
+		expect(() => normalizeBaseBranchUpdate("--evil")).toThrow(/valid git branch name/);
+		expect(() => normalizeBaseBranchUpdate("has space")).toThrow(/valid git branch name/);
+	});
+
+	it("refuses wrong-typed values instead of silently clearing the branch", () => {
+		expect(() => normalizeBaseBranchUpdate(42)).toThrow(/valid git branch name/);
+		expect(() => normalizeBaseBranchUpdate(true)).toThrow(/valid git branch name/);
+		expect(() => normalizeBaseBranchUpdate({})).toThrow(/valid git branch name/);
+		expect(() => normalizeBaseBranchUpdate(["feature/x"])).toThrow(/valid git branch name/);
 	});
 });
 

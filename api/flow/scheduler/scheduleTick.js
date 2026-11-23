@@ -27,6 +27,10 @@ import { describeQueueWedge } from './describeQueueWedge.js';
 import { resolveIdleWedge } from './resolveIdleWedge.js';
 import { resolveRunningWedge } from './resolveRunningWedge.js';
 import { autoResumeTask } from './autoResumeTask.js';
+import {
+	recordDispatchLatency,
+	recordProjectClaim,
+} from '../../watch/productionSignals.js';
 
 /***
  * MARK: scheduleTick
@@ -147,7 +151,11 @@ export async function scheduleTick(store, opts = {}) {
 		return null;
 	}
 
+	// WP2 signal: candidate-search latency (observation only — the
+	// recorded duration never alters the dispatch below).
+	const candidateSearchStartedAt = Date.now();
 	const candidate = findNextCandidateTask(store, { ignoreTrip: canaryAdmitted });
+	recordDispatchLatency(store, Date.now() - candidateSearchStartedAt);
 	if (!candidate) {
 		stats.idleNoCandidate += 1;
 		stats.lastOutcome = "no-candidate-idle";
@@ -215,6 +223,14 @@ export async function scheduleTick(store, opts = {}) {
 		stats.lastOutcome = "dispatched";
 		// A real dispatch closes any wedge episode: the next rescue pages again.
 		store._wedgedStallNotified = false;
+		// WP2 signal: one unit of per-project throughput plus the
+		// entered-stage → dispatch wait (fairness evidence).
+		const enteredAt = new Date(
+			candidate?.task?.enteredStageAt || candidate?.task?.updatedAt || 0,
+		).getTime();
+		recordProjectClaim(store, candidate?.projectId, {
+			waitMs: Number.isFinite(enteredAt) ? Date.now() - enteredAt : undefined,
+		});
 	}
 
 	// Circuit outcome: a passing stage proves the shared infrastructure works

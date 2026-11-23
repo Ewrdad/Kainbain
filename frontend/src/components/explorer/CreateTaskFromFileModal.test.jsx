@@ -160,4 +160,43 @@ describe('CreateTaskFromFileModal', () => {
     renderModal({ projectWorkflows: [], stages: [], activeWorkflowId: null });
     expect(screen.getByRole('button', { name: 'Create Task' })).toBeDisabled();
   });
+
+  it('names the pipeline base the new task will branch off', () => {
+    renderModal({
+      projectWorkflows: [
+        { id: 'wf-1', name: 'Feature', stages: featureStages, baseBranch: 'feature/x' },
+        { id: 'wf-2', name: 'Hotfix', stages: hotfixStages },
+      ],
+    });
+    expect(screen.getByText('New task will branch off feature/x')).toBeInTheDocument();
+  });
+
+  it('falls back to the repo default wording when the pipeline has no base', async () => {
+    renderModal();
+    expect(
+      screen.getByText('New task will branch off the repo default branch'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Target pipeline' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Hotfix' }));
+    await waitFor(() => {
+      expect(
+        screen.getByText('New task will branch off the repo default branch'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('links to pipeline settings to change the base the new task will use', () => {
+    const setView = vi.fn();
+    const { onClose } = renderModal({
+      setView,
+      projectWorkflows: [
+        { id: 'wf-1', name: 'Feature', stages: featureStages, baseBranch: 'feature/x' },
+        { id: 'wf-2', name: 'Hotfix', stages: hotfixStages },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Change in pipeline settings' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
+  });
 });

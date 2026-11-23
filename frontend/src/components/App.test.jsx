@@ -54,6 +54,12 @@ vi.mock('../services/api', async (importOriginal) => {
       updateProject: vi.fn().mockResolvedValue({}),
       docsIndex: vi.fn().mockResolvedValue({
         sections: ['getting-started', 'concepts', 'workflows', 'reference'],
+        sectionLabels: {
+          'getting-started': 'Getting started',
+          concepts: 'Concepts',
+          workflows: 'Everyday workflows',
+          reference: 'Reference & runbooks',
+        },
         docs: [
           {
             slug: 'architecture',

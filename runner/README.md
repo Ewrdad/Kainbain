@@ -268,8 +268,19 @@ cannot see them until that Runner self-updates.
 - Worktree cap ~5 per work root; over-cap runs refuse and name the orphans.
 - Boot surfaces orphaned workdirs (unpushed work) in the log; nothing is
   ever deleted by cleanup.
+- Unpushed residue is parked on `kb-recovery/*` before a worktree is reset
+  or evicted; those snapshots bypass repo hooks (`--no-verify`) by design
+  and warn in the log, so a failing hook can never strand work or stall the
+  loop. Task-branch commits still run hooks unchanged.
+- One failing assignment never kills the dispatch loop: the task is
+  released (interrupt, re-queues) and the loop logs and keeps polling.
+- Transient backend outages (HTTP 502/503/504, dropped socket) ride
+  through: the assignment is released via interrupt WITH the reason and
+  the loop keeps polling, and idle dispatch polls retry with backoff
+  without consuming idle budget. `STALE_EPOCH`, auth failures, and
+  unknown errors stay fatal.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
+- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/client.backendOutage.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
   runs the daemon suite (no ports, real temp git repos, mock harness).
   Name each file: a bare `node --test runner/` directory arg mis-resolves
   on current Node, and this same explicit list is what the `Unit Tests
@@ -367,3 +378,26 @@ Settings › Runners shows the short sha next to the version badge and warns
 build sha differs from the backend commit. Dev checkouts show their build
 info but never warn. Old Runners without build identity show "unknown"
 with no warning, and old backends ignore the new `versions` keys.
+
+## Upgrade note: the backend now requires projectId on every write (WP1 tenant fence)
+
+If you run the workers, this is the one upgrade note that affects you.
+
+**Symptom after upgrading the backend.** An old Runner (one that predates
+this change) starts failing its writes with either of these errors:
+
+- `400 MISSING_PROJECT_ID` — the Runner sent a progress / logs /
+  completion / heartbeat / ack report without naming its project. Before
+  this change the backend guessed the active project; it no longer does.
+- `409 PROJECT_FENCE_MISMATCH` — the Runner replayed a lease (execution
+  id + epoch) against a different project than the one that issued it.
+  The original lease is untouched; only the replayed write is rejected.
+
+**Action.** Upgrade the Runner to this version (or newer) and restart it.
+Current Runners already send `projectId` with every write, so once both
+sides are upgraded there is nothing to configure.
+
+**No data migration.** Leases live in backend memory only — there is
+nothing to convert, backfill, or re-issue. In-flight work leases simply
+re-queue as interrupted across the backend restart, exactly like any
+other restart, and pick up fresh leases on the next dispatch poll.

@@ -14,6 +14,7 @@ const getRunnerConfig = vi.hoisted(() => vi.fn());
 const updateRunnerConfig = vi.hoisted(() => vi.fn());
 const requestModelRediscovery = vi.hoisted(() => vi.fn());
 const requestRunnerUpdate = vi.hoisted(() => vi.fn());
+const requestRunnerRestart = vi.hoisted(() => vi.fn());
 const getFleetModelCatalog = vi.hoisted(() => vi.fn());
 const systemStatus = vi.hoisted(() => vi.fn());
 
@@ -33,6 +34,7 @@ vi.mock('../../services/api', () => ({
     updateRunnerConfig,
     requestModelRediscovery,
     requestRunnerUpdate,
+    requestRunnerRestart,
   },
 }));
 
@@ -89,6 +91,16 @@ const SUPPORTED_RUNNER = {
   },
 };
 
+const RESTARTABLE_RUNNER = {
+  ...SUPPORTED_RUNNER,
+  facts: { ...SUPPORTED_RUNNER.facts, commands: ['requestModelRediscovery', 'requestUpdate', 'requestRestart'] },
+  commands: {
+    pending: [],
+    results: {},
+    supported: ['requestModelRediscovery', 'requestUpdate', 'requestRestart'],
+  },
+};
+
 /***
  * MARK: RunnerConfigurationSection tests
  * @description Covers the Runner settings screen that replaces the legacy
@@ -111,6 +123,7 @@ describe('RunnerConfigurationSection', () => {
     }));
     requestModelRediscovery.mockResolvedValue({ command: 'requestModelRediscovery', status: 'queued' });
     requestRunnerUpdate.mockResolvedValue({ command: 'requestUpdate', status: 'queued' });
+    requestRunnerRestart.mockResolvedValue({ command: 'requestRestart', status: 'queued' });
   });
 
   function runnersFixture(rows = [ACTIVE_RUNNER, PENDING_RUNNER]) {
@@ -1108,5 +1121,326 @@ describe('RunnerConfigurationSection', () => {
     expect(screen.getByTestId('runner-build-detail-rold').textContent).toContain('Build unknown');
     expect(screen.queryByTestId('runner-stale-rold')).toBeNull();
     expect(screen.queryByTestId('runner-build-warning-rold')).toBeNull();
+  });
+
+  it('opens a destructive restart confirm and queues the restart on confirm', async () => {
+    runnersFixture([{ ...RESTARTABLE_RUNNER, updateAvailable: false }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const button = screen.getByTestId('runner-restart-r1');
+    expect(button).not.toBeDisabled();
+    fireEvent.click(button);
+    const modal = screen.getByTestId('runner-restart-modal-r1');
+    expect(modal).toHaveTextContent(/currently running on this runner will be stopped/);
+    expect(modal).toHaveTextContent(/does not update it/);
+    fireEvent.click(screen.getByTestId('runner-restart-confirm-r1'));
+    await waitFor(() => {
+      expect(requestRunnerRestart).toHaveBeenCalledWith('r1');
+    });
+    expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent('Restart queued');
+    expect(screen.queryByTestId('runner-restart-modal-r1')).toBeNull();
+  });
+
+  it('cancels the restart confirm without queueing anything', async () => {
+    runnersFixture([{ ...RESTARTABLE_RUNNER, updateAvailable: false }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.click(screen.getByTestId('runner-restart-r1'));
+    expect(screen.getByTestId('runner-restart-modal-r1')).toBeTruthy();
+    fireEvent.click(screen.getByText('Cancel'));
+    expect(screen.queryByTestId('runner-restart-modal-r1')).toBeNull();
+    expect(requestRunnerRestart).not.toHaveBeenCalled();
+  });
+
+  it('names the running work inside the restart confirm when the runner is busy', async () => {
+    getRunnerMonitor.mockResolvedValue({
+      liveAssignments: [
+        {
+          runnerId: 'r1',
+          projectId: 'p1',
+          taskId: 'abcdef12-3456',
+          executionId: 'exec-1',
+          epoch: 1,
+          startedAt: new Date(Date.now() - 65_000).toISOString(),
+          stageId: 'build',
+        },
+      ],
+    });
+    runnersFixture([{ ...RESTARTABLE_RUNNER, updateAvailable: false }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    fireEvent.click(screen.getByTestId('runner-restart-r1'));
+    expect(screen.getByTestId('runner-restart-busy-r1')).toHaveTextContent(/abcdef12/);
+    expect(screen.getByTestId('runner-restart-busy-r1')).toHaveTextContent(/will be stopped/);
+  });
+
+  it('disables Restart with guidance for runners too old to restart on request', async () => {
+    runnersFixture([{ ...ACTIVE_RUNNER, updateAvailable: true }]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const button = screen.getByTestId('runner-restart-r1');
+    expect(button).toBeDisabled();
+    expect(button.title).toMatch(/too old/);
+    expect(requestRunnerRestart).not.toHaveBeenCalled();
+  });
+
+  it('shows a red warning with Update when the runner trails the fleet', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: 'latest',
+        recommendedVersion: '0.4.0',
+        updateAvailable: true,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const banner = screen.getByTestId('runner-version-warning-r1');
+    expect(banner).toHaveTextContent(/0\.4\.0/);
+    expect(banner.className).toContain('text-error');
+    const button = screen.getByTestId('runner-update-now-r1');
+    expect(button).not.toBeDisabled();
+    expect(button.title).toContain('0.4.0');
+  });
+
+  it('shows a softer warning and blocks Update when the pin is older than running', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: '0.2.0',
+        recommendedVersion: '0.3.0',
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const banner = screen.getByTestId('runner-version-warning-r1');
+    expect(banner).toHaveTextContent(/never downgrades/);
+    expect(banner.className).toContain('text-warning');
+    // The warning alone reveals the Update button (no backend badge here),
+    // disabled with the pin reason instead of failing loudly on click.
+    const button = screen.getByTestId('runner-update-now-r1');
+    expect(button).toBeDisabled();
+    expect(button.title).toMatch(/never downgrades/);
+    expect(requestRunnerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('warns red and blocks Update when the pin cannot clear the fleet minimum', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        runnerVersion: '0.0.9',
+        desiredVersion: '0.0.9',
+        recommendedVersion: '0.2.0',
+        minimumVersion: '0.1.0',
+        belowMinimum: true,
+        updateAvailable: true,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const banner = screen.getByTestId('runner-version-warning-r1');
+    expect(banner.className).toContain('text-error');
+    expect(banner).toHaveTextContent(/cannot clear it/);
+    const button = screen.getByTestId('runner-update-now-r1');
+    expect(button).toBeDisabled();
+    expect(button.title).toMatch(/below the fleet minimum/);
+    expect(requestRunnerUpdate).not.toHaveBeenCalled();
+  });
+
+  it('keeps Update enabled when the pin clears the fleet minimum', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        runnerVersion: '0.0.9',
+        desiredVersion: '0.2.0',
+        recommendedVersion: '0.2.0',
+        minimumVersion: '0.1.0',
+        belowMinimum: true,
+        updateAvailable: true,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-version-warning-r1')).toHaveTextContent(/Update now to install 0\.2\.0/);
+    const button = screen.getByTestId('runner-update-now-r1');
+    expect(button).not.toBeDisabled();
+    expect(button.title).toContain('0.2.0');
+  });
+
+  it('stays quiet with no Update button when the pin matches the running version', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: '0.3.0',
+        recommendedVersion: '0.3.0',
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.queryByTestId('runner-version-warning-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-update-now-r1')).toBeNull();
+  });
+
+  it('pins the runner version from the dropdown and tracks Latest by default', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: 'latest',
+        recommendedVersion: '0.3.0',
+        availableVersions: ['0.3.0', '0.2.0'],
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const select = screen.getByTestId('runner-version-select-r1');
+    expect(select.value).toBe('latest');
+    expect(screen.getByTestId('runner-version-hint-r1')).toHaveTextContent(/automatically when idle/);
+    fireEvent.change(select, { target: { value: '0.2.0' } });
+    await waitFor(() => {
+      expect(updateRunnerConfig).toHaveBeenCalledWith('r1', { desiredVersion: '0.2.0' });
+    });
+    expect(await screen.findByTestId('runner-config-notice')).toHaveTextContent('pinned');
+  });
+
+  it('flags the newest release as (latest) in the version dropdown options', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: 'latest',
+        runnerVersion: '0.2.0',
+        recommendedVersion: '0.3.0',
+        availableVersions: ['0.3.0', '0.2.0', '0.1.0'],
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const select = screen.getByTestId('runner-version-select-r1');
+    const labels = Array.from(select.options).map((o) => `${o.value}=${o.textContent}`);
+    expect(labels).toEqual([
+      'latest=Latest (0.3.0)',
+      '0.3.0=0.3.0 (latest)',
+      '0.2.0=0.2.0 (running)',
+      '0.1.0=0.1.0',
+    ]);
+    expect(select.value).toBe('latest');
+  });
+
+  it('flags the newest release as (latest) even when the recommended value is a build tag', async () => {
+    // Prod-style: the fleet recommended knob can be a version-tagged image
+    // tag (`0.3.0-abc1234`). The dropdown must collapse it onto the
+    // canonical release row, flag that row (latest), and label the Latest
+    // option with the release — never show the raw tag as a phantom option.
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        desiredVersion: 'latest',
+        runnerVersion: '0.2.0',
+        recommendedVersion: '0.3.0-abc1234',
+        availableVersions: ['0.3.0', '0.2.0', '0.1.0'],
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const select = screen.getByTestId('runner-version-select-r1');
+    const labels = Array.from(select.options).map((o) => `${o.value}=${o.textContent}`);
+    expect(labels).toEqual([
+      'latest=Latest (0.3.0)',
+      '0.3.0=0.3.0 (latest)',
+      '0.2.0=0.2.0 (running)',
+      '0.1.0=0.1.0',
+    ]);
+    expect(labels.join(' ')).not.toContain('abc1234');
+    expect(select.value).toBe('latest');
+  });
+
+  it('shows no version badge when the runner reports a build hash as its version', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        runnerVersion: 'fbcf8442ee031e2edbc9f0b30195afa410296cf3',
+        desiredVersion: 'latest',
+        recommendedVersion: '0.3.0',
+        updateAvailable: false,
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    // A hash is not a version: no `v<hash>` badge and no version warning
+    // comparing the hash against a release.
+    expect(screen.queryByTestId('runner-version-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-version-warning-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-update-now-r1')).toBeNull();
+  });
+
+  it('compares the runner sha against the sha inside a version-tagged backend build', async () => {
+    // Prod stamps /status build.commit from the image tag (e.g. 1.0.0-28aac94):
+    // the banner must quote shas on both sides, never the raw tag.
+    systemStatus.mockResolvedValue({ build: { commit: '1.0.0-28aac94' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        facts: {
+          versions: {
+            runner: '0.1.0',
+            protocol: 'v1',
+            build: { sha: 'fbcf8442ee031e2edbc9f0b30195afa410296cf3', builtAt: null, dirty: false, source: 'package' },
+            codeChangedSinceBoot: false,
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    const banner = await screen.findByTestId('runner-build-warning-r1');
+    expect(banner).toHaveTextContent(/fbcf844/);
+    expect(banner).toHaveTextContent(/28aac94/);
+    expect(banner.textContent).not.toContain('1.0.0-28aac94');
+  });
+
+  it('stays silent when the backend build identity carries no sha', async () => {
+    systemStatus.mockResolvedValue({ build: { commit: 'unknown' } });
+    runnersFixture([
+      {
+        ...ACTIVE_RUNNER,
+        facts: {
+          versions: {
+            runner: '0.1.0',
+            protocol: 'v1',
+            build: { sha: 'fbcf8442ee031e2edbc9f0b30195afa410296cf3', builtAt: null, dirty: false, source: 'package' },
+            codeChangedSinceBoot: false,
+          },
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    await waitFor(() => {
+      expect(screen.getByTestId('runner-build-r1').textContent).toContain('fbcf844');
+    });
+    expect(screen.queryByTestId('runner-build-warning-r1')).toBeNull();
+    expect(screen.queryByTestId('runner-stale-r1')).toBeNull();
+  });
+
+  it('surfaces a queued restart without touching the update status', async () => {
+    runnersFixture([
+      {
+        ...RESTARTABLE_RUNNER,
+        updateAvailable: false,
+        commands: {
+          pending: [{ command: 'requestRestart', requestedAt: new Date().toISOString() }],
+          results: {},
+          supported: ['requestModelRediscovery', 'requestUpdate', 'requestRestart'],
+        },
+      },
+    ]);
+    render(<RunnerConfigurationSection />);
+    await screen.findByTestId('runner-detail-r1');
+    expect(screen.getByTestId('runner-restart-status-r1')).toHaveTextContent('Restart queued');
+    expect(screen.queryByTestId('runner-update-status-r1')).toBeNull();
   });
 });

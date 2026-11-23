@@ -12,6 +12,7 @@ import {
 	resolveSha,
 } from "../git.js";
 import { resolveTaskBranch, syncMainToRemoteBestEffort } from "./taskBranches.js";
+import { resolveTaskBaseBranch } from "./taskBaseBranch.js";
 import { resolveTaskCwd } from "./taskWorkspace.js";
 import { resolveAttestationStage } from "./resolveAttestationStage.js";
 import { _appendProcessLog } from "../watch/index.js";
@@ -101,8 +102,8 @@ export function buildStageCommitMessage(task, stageLabel) {
  * @description Completes the per-task branch lifecycle after a work stage
  *   (agent or CI/script completion — human approvals never finalise, see
  *   ensureTaskBranchRef): commits all changes on the task branch, pushes the
- *   task branch when a remote exists, then switches back to the default
- *   branch so no stage ends stranded on a task branch.
+ *   task branch when a remote exists, then switches back to the task's
+ *   pipeline base branch so no stage ends stranded on a task branch.
  *   Pure-local repositories skip the push silently; a failed push is a
  *   process-log warning and never fails the stage. Every step is attempted
  *   even when an earlier step failed, so a blocked return is reported loudly
@@ -361,14 +362,24 @@ export async function finalizeTaskBranch(
 		_appendProcessLog(task, `[WARN] ${detail}`);
 	}
 
-	// Step 3: return to the default branch (always attempted, even when
-	// commit or push failed, so the tree is never silently stranded). The
-	// guard stays strict here (recovery: 'off'): a tree that is dirty AFTER
-	// the commit step means the commit itself failed, and stashing it away
-	// would strand work the merge stage never restores — refuse loudly.
+	// Step 3: return to the pipeline base branch (always attempted, even
+	// when commit or push failed, so the tree is never silently stranded).
+	// The guard stays strict here (recovery: 'off'): a tree that is dirty
+	// AFTER the commit step means the commit itself failed, and stashing
+	// it away would strand work the merge stage never restores — refuse loudly.
+	const { branch: returnBranch, source: returnSource } = await resolveTaskBaseBranch({
+		task,
+		projectStore: taskStore?.projectStore,
+		projectId: task?.projectId,
+		cwd,
+	});
 	try {
 		const back = await returnToDefaultBranch(cwd, {
 			recovery: "off",
+			// The explicit target rides along only when a pipeline base is
+			// actually configured: unconfigured tasks keep the historical
+			// call shape (and the callee resolves the repo default itself).
+			...(returnSource !== "repo" && returnBranch ? { targetBranch: returnBranch } : {}),
 			// Same project hint the commit step above uses: a custom docs
 			// folder must count as engine-owned on the return switch too,
 			// or the strict guard refuses a tree holding only snapshots.
@@ -393,7 +404,7 @@ export async function finalizeTaskBranch(
 		_appendProcessLog(task, `[ERROR] ${detail}`);
 	}
 
-	// Source-of-truth sync once back on the default branch: the remote owns
+	// Source-of-truth sync once back on the base branch: the remote owns
 	// it, so fetch and hard-reset it now while the task branch work is
 	// safely committed and pushed above. Best-effort and warn-only — a
 	// failed sync keeps local state for the next pickup's own sync.
@@ -405,6 +416,7 @@ export async function finalizeTaskBranch(
 				cwd,
 				bridge,
 				`finalise after stage '${stageLabel}'`,
+				{ mainBranch: returnBranch },
 			);
 		} catch {
 			// Audit is best-effort; finalise already succeeded.

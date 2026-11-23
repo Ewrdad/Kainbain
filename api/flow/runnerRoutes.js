@@ -2,9 +2,24 @@ import { config } from "../config.js";
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
 import { applyIntegrationReport } from "./execution/applyIntegrationReport.js";
 import { normalizeStageType } from "../projectStore.js";
-import { git, defaultBranch } from "../git.js";
+import { git } from "../git.js";
+import { ensureBaseBranchExists, resolveTaskBaseBranch } from "../work/taskBaseBranch.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
+import {
+	recordClaimAttempt,
+	recordClaimConflict,
+	recordClaimError,
+	recordClaimExcluded,
+	recordClaimSuccess,
+	recordDispatchLatency,
+	recordDispatchMiss,
+	recordFencing,
+	recordFleetCapExhausted,
+	recordProjectClaim,
+	recordProjectCompletion,
+	recordRunnerSignalReport,
+} from "../watch/productionSignals.js";
 import { buildFleetModelCatalog } from "./dispatch/fleetModelCatalog.js";
 import { summarizeFleetHarnesses } from "./dispatch/fleetModelSnapshot.js";
 import { resolveAliasRequirement } from "./dispatch/resolveAliasRequirement.js";
@@ -14,7 +29,11 @@ import { stageRunnerPolicyVerdict } from "../../shared/stageRunnerPolicy.js";
 import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { collectTaskAssetPayload } from "../work/taskAssets.js";
+import { docsRepoUrlFor } from "../project/docsRepo.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
+import { sanitizeGitFailure } from "./execution/sanitizeGitFailure.js";
+import { isGitFailureParked } from "./scheduler/isGitFailureParked.js";
+import { GIT_FAILURE_PARK_AFTER } from "../../shared/gitFailure.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask, resolveCandidateStage } from "./stageResolution.js";
 import { buildRunnerAssignmentSummary } from "./runnerAssignmentSummary.js";
@@ -34,6 +53,7 @@ import {
 } from "./runAttribution.js";
 import { hashStageConfig, isWellFormedConfigHash } from "../../shared/stageAttestation.js";
 import { resolveAttestationStage } from "../work/resolveAttestationStage.js";
+import { createProjectResolvers } from "../projectResolution.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -180,11 +200,16 @@ export const prepareIntegrationAttempt = async ({ taskStore, projectStore, proje
 	const cwd = project?.cwd;
 	if (!cwd) unprepared("project has no checkout");
 	const taskBranch = taskStore.resolveTaskBranch(task);
-	let targetBranch;
-	try {
-		targetBranch = await defaultBranch(cwd);
-	} catch {
+	// The integration target is the task's pipeline base branch (the repo
+	// default when unconfigured), auto-created and pushed when missing so
+	// the remote refs below exist.
+	const resolvedBase = await resolveTaskBaseBranch({ task, projectStore, projectId, cwd });
+	const targetBranch = resolvedBase.branch;
+	if (!targetBranch) {
 		unprepared("cannot resolve the target branch");
+	}
+	if (resolvedBase.source !== "repo") {
+		await ensureBaseBranchExists(cwd, targetBranch);
 	}
 	try {
 		// Prune: a deleted remote task branch must vanish from the
@@ -245,6 +270,19 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		resolveAndGuardProject,
 		eventBridge,
 	} = deps;
+	// Strict project guard for runner mutations (WP1 tenant fence): the
+	// production app injects it (api/index.js); hand-built test deps that
+	// predate it derive the same guard from the injected projectStore so
+	// the routes fail closed even under partial wiring. Single source of
+	// truth stays projectResolution.js — never reimplement it here.
+	const resolveAndGuardRequiredProject =
+		deps.resolveAndGuardRequiredProject ||
+		createProjectResolvers(projectStore).resolveAndGuardRequiredProject;
+	// Presence-only guard for the scope-keyed integration routes (same
+	// derivation fallback as above; it never touches the projectStore).
+	const resolveAndGuardPresentProject =
+		deps.resolveAndGuardPresentProject ||
+		createProjectResolvers(projectStore).resolveAndGuardPresentProject;
 
 	const sendStoreError = (reply, err) => {
 		const status = err.statusCode || 500;
@@ -275,8 +313,30 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// the task worktree (which is exactly how publish stages used to fail:
 		// deploy.sh refuses to run from a kb/* worktree).
 		const runOnBranch = typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task";
+		// A primary-mode stage on a pipeline with its own base branch names
+		// that base explicitly so the Runner checks out the right branch.
+		// Sent ONLY when a pipeline base is configured: unconfigured
+		// pipelines (and old Runners, which ignore the unknown field) keep
+		// today's behaviour byte-identically.
+		let primaryBranch = null;
+		if (runOnBranch === "primary") {
+			try {
+				const resolvedBase = await resolveTaskBaseBranch({
+					task,
+					projectStore,
+					projectId,
+					cwd: project?.cwd || null,
+				});
+				if (resolvedBase.source !== "repo") {
+					primaryBranch = resolvedBase.branch;
+				}
+			} catch {
+				primaryBranch = null;
+			}
+		}
 		const branchPayload = {
 			runOnBranch,
+			...(primaryBranch ? { primaryBranch } : {}),
 			...(runOnBranch === "custom" && typeof resolved.customBranch === "string" && resolved.customBranch.trim()
 				? { customBranch: resolved.customBranch.trim() }
 				: {}),
@@ -348,6 +408,17 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				// G11 audit alert: one identity from multiple origins.
 				origin: request.ip || null,
 			});
+			// WP2 signal: Runner-reported process totals (worktree
+			// evictions) ride `facts.signals`. The Runner is a separate
+			// process, so the monotonic merge below is what makes its
+			// evictions visible on the observability exposition — and it
+			// stays correct across Runner restarts (counter resets).
+			// Observation only: the heartbeat response is untouched.
+			recordRunnerSignalReport(
+				taskStore,
+				request.body?.runnerId || runner.runnerId,
+				request.body?.facts?.signals,
+			);
 			// D5 pull channel (ADR 0011): pending steers for this
 			// Runner's live executions ride the heartbeat response, so
 			// steering needs no second channel. Stale Runner, live
@@ -527,7 +598,33 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
+	// WP1 tenant fence — route split (survey q2): runner MUTATIONS must
+	// name their project explicitly (missing/blank projectId → 400
+	// MISSING_PROJECT_ID, never the active project), while read-only VIEWS
+	// may keep the active-project fallback.
+	// Strict (guardedTask): POST progress, logs, log-events, verify-sha,
+	//   complete-execution, interrupt, claim-heartbeat, steer-ack, plus the
+	//   claim route (which guards inline below) and the integration
+	//   acquire/heartbeat/report routes (which guard inline below).
+	// Fallback (guardedTaskView): GET steers. The monitor, catalogue,
+	//   dispatch, and runner-identity routes never resolve a task project:
+	//   dispatch is exempt by construction (its claims are stamped
+	//   server-side with the candidate's own projectId, so there is no
+	//   request-named project to fence).
 	const guardedTask = (request, reply) => {
+		const projectId = resolveAndGuardRequiredProject(
+			request.body?.projectId || request.query?.projectId,
+			reply,
+		);
+		if (!projectId) return null;
+		const task = taskStore.getTask(projectId, request.params.id);
+		if (!task) {
+			reply.status(404).send({ error: "Task not found" });
+			return null;
+		}
+		return { projectId, task };
+	};
+	const guardedTaskView = (request, reply) => {
 		const projectId = resolveAndGuardProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
@@ -677,6 +774,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				model: request.body?.model ?? null,
 			});
 		} catch (err) {
+			// WP2 signal: a stale-epoch progress report is fencing evidence.
+			if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
 			return sendStoreError(reply, err);
 		}
 	});
@@ -920,6 +1019,18 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				kind: normalizeStageType(currentStage.type),
 				model: request.body?.model ?? null,
 			});
+			// Structured commit/hook failure (additive): sanitized (redacted +
+			// capped) at the boundary; a malformed payload is dropped with a
+			// warning, never a 400 — a reporting failure must not mask the
+			// stage failure it describes. Old runners omit the field entirely.
+			const rawGitFailure = request.body?.gitFailure;
+			const gitFailure = sanitizeGitFailure(rawGitFailure);
+			if (rawGitFailure !== undefined && rawGitFailure !== null && !gitFailure) {
+				request.log?.warn?.(
+					{ taskId: request.params.id },
+					"Dropping malformed runner gitFailure payload (stage failure still records)",
+				);
+			}
 			const finish = await applyRunnerReport({
 				store: taskStore,
 				projectStore,
@@ -934,14 +1045,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					modelRef: reportedModelRef,
 					failureKind: request.body?.failureKind ?? null,
 					failureReason: request.body?.failureReason ?? null,
+					gitFailure,
 					duration: request.body?.durationMs
 						? String(Number(request.body.durationMs) / 1000)
 						: "0.0",
 					runnerId: runner.runnerId,
 				},
 			});
+			if (receipt && !receipt.duplicate) {
+				// WP2 signal: one completed execution for this project.
+				recordProjectCompletion(taskStore, ctx.projectId);
+			}
 			return { ...receipt, ...finish };
 		} catch (err) {
+			// WP2 signal: a stale-epoch finish is fencing evidence.
+			if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
 			return sendStoreError(reply, err);
 		}
 	});
@@ -988,6 +1106,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			});
 		}
 		if (runner.paused === true) {
+			// WP2 signal: an intentional skip, never a success-rate debit.
+			recordClaimExcluded(taskStore, "RUNNER_PAUSED");
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
 				code: "RUNNER_PAUSED",
@@ -997,8 +1117,12 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// version below KAINBAIN_RUNNER_MIN_VERSION is refused so it cannot
 		// mis-execute — the daemon self-updates on this code and retries.
 		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
-		if (belowMinimum) return reply.status(409).send(belowMinimum);
-		const projectId = resolveAndGuardProject(
+		if (belowMinimum) {
+			// WP2 signal: a version refusal is an intentional skip.
+			recordClaimExcluded(taskStore, "BELOW_MINIMUM_VERSION");
+			return reply.status(409).send(belowMinimum);
+		}
+		const projectId = resolveAndGuardRequiredProject(
 			request.body?.projectId || request.query?.projectId,
 			reply,
 		);
@@ -1017,6 +1141,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		const req = taskRequirements(claimProject, task, resolveStagesForTask(claimProject, task));
 		const claimVerdict = operatorConfigVerdict(runner, req, { projectId });
 		if (!claimVerdict.ok) {
+			// WP2 signal: a scope refusal is fencing evidence.
+			recordDispatchMiss(taskStore, claimVerdict.reason, { projectId });
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} settings refuse this task (${claimVerdict.reason}).`,
 				code: claimVerdict.reason,
@@ -1027,17 +1153,40 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// must not bypass a stage the Runner is not allowed on.
 		const claimPolicyVerdict = stageRunnerPolicyVerdict(req.runnerPolicy, runner.runnerId);
 		if (!claimPolicyVerdict.ok) {
+			// WP2 signal: a policy refusal is dispatch-miss evidence.
+			recordDispatchMiss(taskStore, claimPolicyVerdict.reason, { projectId });
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} is refused by this stage's Runner list (${claimPolicyVerdict.reason}).`,
 				code: claimPolicyVerdict.reason,
 			});
 		}
+		// Git-failure parking binds this direct claim like the dispatch
+		// scan: a task parked after consecutive deterministic commit/hook
+		// failures must not be claimable by asking for it directly. Fail
+		// loud (the Runner moves on to other work) until an operator
+		// retries, resumes, or moves the task.
+		if (isGitFailureParked(task)) {
+			// WP2 signal: a parking refusal is an intentional skip.
+			recordClaimExcluded(taskStore, "GIT_FAILURE_PARKED");
+			const strikes = task.gitFailureStreak?.count ?? GIT_FAILURE_PARK_AFTER;
+			return reply.status(409).send({
+				error: `Task ${request.params.id} is parked after ${strikes} consecutive git failures — an operator retry, resume, or move unparks it.`,
+				code: "GIT_FAILURE_PARKED",
+			});
+		}
+		// WP2 signal: this claim() try enters the success-rate denominator.
+		recordClaimAttempt(taskStore);
 		try {
 			const { executionId, epoch } = claimStore.claim(
 				request.params.id,
 				runner.runnerId,
 				projectId,
 			);
+			// WP2 signals: a non-conflict claim and one unit of throughput.
+			recordClaimSuccess(taskStore);
+			recordProjectClaim(taskStore, projectId, {
+				waitMs: Date.now() - new Date(task.enteredStageAt || task.updatedAt || 0).getTime(),
+			});
 			// Same run attribution as the dispatch path: the requirement's
 			// resolved harness/model names this run on the timeline/reports.
 			const project = projectStore.getProject(projectId);
@@ -1045,8 +1194,13 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const stage = resolveCandidateStage(stages, task.currentStageId);
 			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
 			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(docsRepoUrlFor(project) ? { docsRepoUrl: docsRepoUrlFor(project) } : {}), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
 		} catch (err) {
+			// WP2 signals: conflicts feed the fencing breakdown; other
+			// claim failures debit the success rate.
+			if (err?.code === "CLAIM_CONFLICT") recordClaimConflict(taskStore);
+			else if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
+			else recordClaimError(taskStore);
 			return sendStoreError(reply, err);
 		}
 	});
@@ -1074,6 +1228,15 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				err.code = "STALE_EPOCH";
 				throw err;
 			}
+			// WP1 tenant fence: a heartbeat naming another project must not
+			// renew (or time out and invalidate) this lease — reject before
+			// the timeout logic below can touch the hold.
+			executionLedger.checkProjectFence({
+				claimStore,
+				taskStore,
+				taskId: request.params.id,
+				projectId: ctx.projectId,
+			});
 			// Wall-clock stage timeout (no infinite renewal): a live Runner
 			// renewing its lease forever must not outrun the stage budget —
 			// otherwise a stuck harness sits claimed indefinitely and the
@@ -1134,6 +1297,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			);
 			return { taskId: request.params.id, runnerId: runner.runnerId, epoch };
 		} catch (err) {
+			// WP2 signal: a stale-epoch heartbeat is fencing evidence.
+			if (err?.code === "STALE_EPOCH") recordFencing(taskStore, "STALE_EPOCH");
 			return sendStoreError(reply, err);
 		}
 	});
@@ -1156,6 +1321,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// the per-candidate match, so a paused fleet reads as paused and
 		// not "no capable match".
 		if (runner.paused === true) {
+			// WP2 signal: an intentional skip, never a success-rate debit.
+			recordClaimExcluded(taskStore, "RUNNER_PAUSED");
 			return reply.status(409).send({
 				error: `Runner ${runner.runnerId} is paused — resume it to take new tasks`,
 				code: "RUNNER_PAUSED",
@@ -1164,8 +1331,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// Runner self-update floor (Option A, ADR 0012): same refusal as
 		// direct claim — shared helper so the two gates cannot drift.
 		const belowMinimum = buildBelowMinimumRefusal({ runner, minVersion: config.runnerMinVersion });
-		if (belowMinimum) return reply.status(409).send(belowMinimum);
+		if (belowMinimum) {
+			// WP2 signal: a version refusal is an intentional skip.
+			recordClaimExcluded(taskStore, "BELOW_MINIMUM_VERSION");
+			return reply.status(409).send(belowMinimum);
+		}
 		if (isTripped(taskStore)) {
+			// WP2 signal: a tripped engine defers work on purpose.
+			recordClaimExcluded(taskStore, "CIRCUIT_TRIPPED");
 			const circuit = circuitSnapshot(taskStore);
 			return reply.status(409).send({
 				error: "Engine is tripped — dispatch is stopped",
@@ -1175,6 +1348,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				trippedAt: circuit.trippedAt,
 			});
 		}
+		// WP1 tenant fence: dispatch is exempt by construction — the
+		// optional projectIds scope only narrows the candidate scan, and
+		// every claim below is stamped server-side with the candidate's own
+		// projectId, so there is no request-named project to fence.
 		const projectIds = Array.isArray(request.body?.projectIds)
 			? request.body.projectIds
 			: undefined;
@@ -1184,17 +1361,23 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// below. 0 disables that cap (default: single-Runner behaviour).
 		const fleetCap = config.runnerMaxConcurrentFleet || 0;
 		if (fleetCap > 0 && claimStore.countLiveHolds() >= fleetCap) {
+			// WP2 signal: fleet-cap backoff is an intentional skip.
+			recordFleetCapExhausted(taskStore);
 			return reply.status(429).send({
 				error: `Fleet at Runner concurrency cap (${fleetCap}); backing off.`,
 				code: "FLEET_CONCURRENCY_EXHAUSTED",
 			});
 		}
 		const projectCap = config.runnerMaxConcurrentPerProject || 0;
+		// WP2 signal: scan-to-decision dispatch latency (observation only —
+		// the recorded duration never alters the decision below).
+		const dispatchScanStartedAt = Date.now();
 		const candidates = scanClaimableTasks(
 			{ projectStore, taskStore, claimStore },
 			{ projectIds, maxWaitMs: config.dispatchMaxWaitMs || 0 },
 		);
 		if (candidates.length === 0) {
+			recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 			return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
 		}
 		// A harness is dispatch-servable when some active, fresh Runner
@@ -1239,6 +1422,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			});
 			if (!verdict.ok) {
 				misses[verdict.reason] = (misses[verdict.reason] || 0) + 1;
+				// WP2 signal: scope/fencing refusals feed the breakdown.
+				recordDispatchMiss(taskStore, verdict.reason, { projectId: cand.projectId });
 				continue;
 			}
 			if (
@@ -1246,6 +1431,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				claimStore.countLiveHolds({ projectId: cand.projectId }) >= projectCap
 			) {
 				misses.PROJECT_BUSY = (misses.PROJECT_BUSY || 0) + 1;
+				// WP2 signal: per-project busy skip (fairness evidence).
+				recordDispatchMiss(taskStore, "PROJECT_BUSY", { projectId: cand.projectId });
 				continue;
 			}
 			// Merge stages dispatch as leased `integrate` jobs (Step 4): the
@@ -1271,12 +1458,24 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				}
 				let executionId;
 				let epoch;
+				// WP2 signal: this claim() try enters the success-rate denominator.
+				recordClaimAttempt(taskStore);
 				try {
 					({ executionId, epoch } = claimStore.claim(cand.taskId, runner.runnerId, cand.projectId));
 				} catch (err) {
-					if (err?.code === "CLAIM_CONFLICT") continue;
+					// WP2 signal: a lost race feeds the fencing breakdown.
+					if (err?.code === "CLAIM_CONFLICT") {
+						recordClaimConflict(taskStore);
+						continue;
+					}
+					recordClaimError(taskStore);
 					return sendStoreError(reply, err);
 				}
+				// WP2 signals: a non-conflict claim and one unit of throughput.
+				recordClaimSuccess(taskStore);
+				recordProjectClaim(taskStore, cand.projectId, {
+					waitMs: Date.now() - (Number.isFinite(cand.enteredStageAt) ? cand.enteredStageAt : Date.now()),
+				});
 				if (!integrationQueue) {
 					claimStore.invalidate(cand.taskId);
 					misses.NO_INTEGRATION_QUEUE = (misses.NO_INTEGRATION_QUEUE || 0) + 1;
@@ -1330,6 +1529,8 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					req,
 					runnerId: runner.runnerId,
 				});
+				// WP2 signal: scan-to-decision latency for this poll.
+				recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 				return {
 					assigned: true,
 					projectId: cand.projectId,
@@ -1351,12 +1552,21 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					requirements: req,
 				};
 			}
+			// WP2 signal: this claim() try enters the success-rate denominator.
+			recordClaimAttempt(taskStore);
 			try {
 				const { executionId, epoch } = claimStore.claim(
 					cand.taskId,
 					runner.runnerId,
 					cand.projectId,
 				);
+				// WP2 signals: a non-conflict claim, one unit of throughput,
+				// and the scan-to-decision latency for this poll.
+				recordClaimSuccess(taskStore);
+				recordProjectClaim(taskStore, cand.projectId, {
+					waitMs: Date.now() - (Number.isFinite(cand.enteredStageAt) ? cand.enteredStageAt : Date.now()),
+				});
+				recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 				// Stamp the matched harness/model/alias onto the task so the
 				// timeline and reports attribute THIS run (mirrors the
 				// embedded dispatch stamp); CI/merge stamp nothing.
@@ -1381,12 +1591,18 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					stageId: cand.stage?.id ?? null,
 					prompt: curateRunnerPrompt({ project: candProject, task: cand.task, stageId: cand.stage?.id }),
 					taskAssets: taskAssetsFor(candProject, cand.taskId),
+					...(docsRepoUrlFor(candProject) ? { docsRepoUrl: docsRepoUrlFor(candProject) } : {}),
 					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
 					...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}),
 				};
 			} catch (err) {
-				if (err?.code === "CLAIM_CONFLICT") continue;
+				// WP2 signal: a lost race feeds the fencing breakdown.
+				if (err?.code === "CLAIM_CONFLICT") {
+					recordClaimConflict(taskStore);
+					continue;
+				}
+				recordClaimError(taskStore);
 				return sendStoreError(reply, err);
 			}
 		}
@@ -1394,8 +1610,10 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// backoff signal (no idle budget burned) instead of degrading to
 		// a capability miss.
 		if (misses.INTEGRATION_BUSY && Object.keys(misses).length === 1) {
+			recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 			return { assigned: false, code: "INTEGRATION_BUSY" };
 		}
+		recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);
 		return { assigned: false, code: "NO_CAPABLE_MATCH", misses };
 	});
 
@@ -1425,10 +1643,18 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: "RUNNER_PAUSED",
 			});
 		}
+		// WP1 tenant fence: a merge lease is a project write — the request
+		// must name its project explicitly, never fall back. Guarded before
+		// the verdict below so the scope check always sees a real id.
+		// Presence-only (no existence check): the queue owns unknown
+		// scopes with leased:false semantics, and its exact-match scope
+		// key is already the tenant boundary.
+		const leaseProjectId = resolveAndGuardPresentProject(request.body?.projectId, reply);
+		if (!leaseProjectId) return;
 		const mergeVerdict = operatorConfigVerdict(
 			runner,
 			{ kind: "merge" },
-			{ projectId: request.body?.projectId },
+			{ projectId: leaseProjectId },
 		);
 		if (!mergeVerdict.ok) {
 			return reply.status(409).send({
@@ -1441,7 +1667,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// be granted), resolve its task's stage, and refuse Runners the
 		// stage does not allow. Anything unresolvable fails open to the
 		// legacy lease — an empty queue still reports leased:false below.
-		const acquireProjectId = request.body?.projectId;
+		const acquireProjectId = leaseProjectId;
 		const acquireBranch = request.body?.targetBranch;
 		if (acquireProjectId && acquireBranch) {
 			const headEntry = integrationQueue.peekHead({ projectId: acquireProjectId, targetBranch: acquireBranch });
@@ -1467,7 +1693,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 		try {
 			return integrationQueue.acquire({
-				projectId: request.body?.projectId,
+				projectId: leaseProjectId,
 				targetBranch: request.body?.targetBranch,
 				runnerId: runner.runnerId,
 			});
@@ -1486,9 +1712,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!integrationQueue) {
 			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
 		}
+		// WP1 tenant fence: renewing a merge lease is a project write —
+		// the request must name its project explicitly (presence-only;
+		// unknown scopes keep the queue's STALE semantics).
+		const heartbeatProjectId = resolveAndGuardPresentProject(request.body?.projectId, reply);
+		if (!heartbeatProjectId) return;
 		try {
 			return integrationQueue.heartbeat({
-				projectId: request.body?.projectId,
+				projectId: heartbeatProjectId,
 				targetBranch: request.body?.targetBranch,
 				executionId: request.body?.executionId,
 				epoch: request.body?.epoch,
@@ -1508,9 +1739,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		if (!integrationQueue) {
 			return reply.status(503).send({ error: "Integration queue unavailable.", code: "NO_INTEGRATION_QUEUE" });
 		}
+		// WP1 tenant fence: settling a merge lease is a project write —
+		// the request must name its project explicitly (presence-only;
+		// unknown scopes keep the queue's STALE semantics).
+		const reportProjectId = resolveAndGuardPresentProject(request.body?.projectId, reply);
+		if (!reportProjectId) return;
 		try {
 			const receipt = integrationQueue.report({
-				projectId: request.body?.projectId,
+				projectId: reportProjectId,
 				targetBranch: request.body?.targetBranch,
 				executionId: request.body?.executionId,
 				epoch: request.body?.epoch,
@@ -1560,6 +1796,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					code: "STALE_EPOCH",
 				});
 			}
+			// WP1 tenant fence: an ack naming another project must not
+			// consume this execution's queued steer.
+			executionLedger.checkProjectFence({
+				claimStore,
+				taskStore,
+				taskId: request.params.id,
+				projectId: ctx.projectId,
+			});
 			return steerStore.ack(request.body.executionId, request.body?.steerId, {
 				ok: request.body?.ok,
 				detail: request.body?.detail,
@@ -1570,7 +1814,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 	});
 
 	app.get("/tasks/:id/steers", async (request, reply) => {
-		const ctx = guardedTask(request, reply);
+		const ctx = guardedTaskView(request, reply);
 		if (!ctx) return;
 		const executionId = request.query?.executionId;
 		if (!executionId || typeof executionId !== "string") {

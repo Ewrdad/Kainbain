@@ -254,6 +254,30 @@ describe('api client endpoints', () => {
     expect(requests[0].opts.method).toBeUndefined(); // plain GET
   });
 
+  it('getVersions reports the running UI plus its API contract, encoded', async () => {
+    const { api } = await import('./api');
+    await api.getVersions('1.0.0', {
+      apiVersion: '1.0.0',
+      requiresBackendApi: '>=1.0.0 <2.0.0',
+    });
+    expect(requests.length).toBe(1);
+    const url = requests[0].url;
+    expect(url).toContain('/status/versions?');
+    expect(url).toContain(`uiVersion=${encodeURIComponent('1.0.0')}`);
+    expect(url).toContain(`frontendApiVersion=${encodeURIComponent('1.0.0')}`);
+    expect(url).toContain(`requiresBackendApi=${encodeURIComponent('>=1.0.0 <2.0.0')}`);
+    expect(requests[0].opts.method).toBeUndefined(); // plain GET
+  });
+
+  it('getVersions omits missing parts instead of sending empty params', async () => {
+    const { api } = await import('./api');
+    await api.getVersions(undefined, undefined);
+    expect(requests.length).toBe(1);
+    expect(requests[0].url.endsWith('/status/versions')).toBe(true);
+    await api.getVersions('1.0.0', { apiVersion: '', requiresBackendApi: '' });
+    expect(requests[1].url.endsWith(`/status/versions?uiVersion=${encodeURIComponent('1.0.0')}`)).toBe(true);
+  });
+
   it('getHarnessModels probes one harness, with refresh opting past the caches', async () => {
     const { api } = await import('./api');
     await api.getHarnessModels('pi');

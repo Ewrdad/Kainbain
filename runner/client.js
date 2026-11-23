@@ -1,3 +1,56 @@
+const TRANSIENT_BACKEND_STATUSES = new Set([502, 503, 504]);
+// Node system codes (ECONN*) plus undici fetch-failure codes (UND_ERR_*,
+// e.g. a destroyed socket surfaces as UND_ERR_SOCKET on Node 20/22/24).
+// Deliberately NOT matched: bare `TypeError: fetch failed` with no
+// recognized code (e.g. a misconfigured backendUrl) — ambiguous failures
+// stay loud rather than spinning the loop forever.
+const TRANSIENT_NETWORK_CODES = new Set([
+	"ECONNREFUSED",
+	"ECONNRESET",
+	"ETIMEDOUT",
+	"EAI_AGAIN",
+	"ENOTFOUND",
+	"EPIPE",
+	"EHOSTUNREACH",
+	"ENETUNREACH",
+	"ENETDOWN",
+	"UND_ERR_SOCKET",
+	"UND_ERR_CONNECT_TIMEOUT",
+	"UND_ERR_HEADERS_TIMEOUT",
+	"UND_ERR_BODY_TIMEOUT",
+]);
+
+/***
+ * MARK: isTransientBackendError
+ * @description Explicit non-fatal set for backend outages (S4): HTTP
+ *   502/503/504 (the backend or its proxy is restarting) plus
+ *   network-layer fetch rejections where the backend never answered
+ *   (refused/reset connection, timeout, DNS failure, dropped socket —
+ *   matched on stable `code`/`cause.code` signals, never message text).
+ *   Everything else returns false — STALE_EPOCH, auth rejections (401
+ *   INVALID_CREDENTIAL, 403), 429, 500, and unknown errors stay fatal
+ *   by construction, so new failure modes stay loud. Pure predicate:
+ *   no logging, no dependencies.
+ * @example isTransientBackendError(Object.assign(new Error('x'), { statusCode: 502 })) => true
+ * @param {*} err - Thrown value from a backend call.
+ * @returns {boolean} True only for the enumerated transient set.
+ ***/
+export function isTransientBackendError(err) {
+	if (!err || (typeof err !== "object" && typeof err !== "function")) return false;
+	// A status means the backend answered: only gateway outages are
+	// transient — 401/403/409/429/500 and friends stay fatal/loud.
+	const status = Number(err.statusCode);
+	if (Number.isFinite(status)) return TRANSIENT_BACKEND_STATUSES.has(status);
+	// No status: fetchImpl itself rejected. Walk the cause chain (undici
+	// nests the system error under `cause`) for a recognized code.
+	let current = err;
+	for (let depth = 0; depth < 4 && current && (typeof current === "object" || typeof current === "function"); depth += 1) {
+		if (typeof current.code === "string" && TRANSIENT_NETWORK_CODES.has(current.code)) return true;
+		current = current.cause;
+	}
+	return false;
+}
+
 /***
  * MARK: createRunnerClient
  * @description Thin fetch wrapper over the Runner-facing backend API
@@ -153,6 +206,7 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 			harnessId,
 			failureKind,
 			failureReason,
+			gitFailure = null,
 			durationMs,
 			taskFiles,
 			configHash = null,
@@ -190,6 +244,9 @@ export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 					...(harnessId ? { harnessId } : {}),
 					...(failureKind ? { failureKind } : {}),
 					...(failureReason ? { failureReason } : {}),
+					// Structured commit/hook failure (additive): passed
+					// through verbatim; old backends ignore the unknown key.
+					...(gitFailure && typeof gitFailure === "object" ? { gitFailure } : {}),
 					...(Number.isFinite(durationMs) ? { durationMs } : {}),
 				...(Array.isArray(taskFiles) && taskFiles.length ? { taskFiles } : {}),
 				},

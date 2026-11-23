@@ -50,6 +50,7 @@ export async function registerTaskFlowRoutes(app, deps) {
 		agentRunner,
 		claimStore,
 		steerStore,
+		executionLedger,
 	} = deps;
 
 	const curateAndStorePrompt = (projectId, task, project, extraCtx = {}) => {
@@ -336,6 +337,31 @@ export async function registerTaskFlowRoutes(app, deps) {
 		// session. No live lease → the embedded path below, unchanged.
 		const liveHold = claimStore?.describe?.(request.params.id);
 		if (liveHold) {
+			// WP1 tenant fence: the steer queues against the live lease,
+			// so the request-named project must be the lease's home
+			// project — a cross-project steer must never land in another
+			// project's execution. Legacy holds (projectId null) stay
+			// allowed. The ledger counts + audits the rejection on the
+			// home task when wired; either way the reply is the named
+			// fencing error and nothing is queued.
+			if (liveHold.projectId != null && liveHold.projectId !== id) {
+				try {
+					executionLedger?.checkProjectFence?.({
+						claimStore,
+						taskStore,
+						taskId: request.params.id,
+						projectId: id,
+					});
+				} catch (err) {
+					return reply
+						.status(err.statusCode || 409)
+						.send({ error: err.message, code: err.code });
+				}
+				return reply.status(409).send({
+					error: `Task ${request.params.id} is leased by project ${liveHold.projectId} — steer the task in that project.`,
+					code: "PROJECT_FENCE_MISMATCH",
+				});
+			}
 			try {
 				const { steerId } = steerStore.queue({
 					taskId: request.params.id,

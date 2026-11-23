@@ -54,6 +54,7 @@ fallback exists for legacy clients and tests.
 | GET | `/status/observability` | Observability snapshot (tasks/sessions summary). |
 | GET | `/status/config` | Active configuration (values, defaults, sources; secrets redacted). |
 | GET | `/api/system/config-spec` | Alias of `/status/config`. |
+| GET | `/status/versions` | Installed UI/backend/API versions, latest-known releases, the UI/backend API compatibility verdict, security summary, and update warnings (the Settings About page source; `?uiVersion=`, `?frontendApiVersion=`, and `?requiresBackendApi=` report the running UI). |
 
 `activeTask` and queue items report the run's picked harness/model plus, for
 alias runs, a separate `alias: { name, targetIndex }` (the alias behind the
@@ -80,8 +81,8 @@ step); live-session values are actuals.
 | GET | `/projects/:id/workflow` | Get the project's active workflow state. |
 | PUT | `/projects/:id/workflow` | Replace the project's workflow state. |
 | GET | `/projects/:id/workflows` | List saved workflows for the project. |
-| POST | `/projects/:id/workflows` | Save a workflow for the project. |
-| PATCH | `/projects/:id/workflows/:workflowId` | Update a saved workflow. |
+| POST | `/projects/:id/workflows` | Save a workflow for the project. Accepts an optional `baseBranch` (the branch the pipeline treats as its main branch; absent = repo default, invalid name = 400). |
+| PATCH | `/projects/:id/workflows/:workflowId` | Update a saved workflow. Accepts `baseBranch` (blank/`null` clears it back to the repo default, invalid name = 400). |
 | DELETE | `/projects/:id/workflows/:workflowId` | Delete a saved workflow. |
 | POST | `/projects/:id/workflows/:workflowId/switch` | Switch the active workflow. |
 | POST | `/projects/:id/workflow/jump` | Jump the active workflow to a stage. |
@@ -334,7 +335,7 @@ write-once, so bytes are immutable). Errors carry a structured `reason`
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
-| GET | `/docs` | Index JSON `{ sections, docs }` of all articles. |
+| GET | `/docs` | Index JSON `{ sections, sectionLabels, docs }` of all articles — `sections` is the sidebar group order, `sectionLabels` the per-group label, `docs` the articles. |
 | GET | `/docs/:slug` | One article as raw markdown (`text/markdown`). |
 
 ## Realtime (`api/routes/ws.js`)

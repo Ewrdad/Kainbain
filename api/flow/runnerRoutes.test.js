@@ -12,6 +12,10 @@ process.env.KAINBAIN_RUNNER_JOIN_TOKEN = "test-join-token";
 process.env.KAINBAIN_CLAIM_TTL_MS = "1000";
 
 const { default: app } = await import("../index.js");
+// Same singleton the app wired: lets tests read the observability
+// exposition directly (imported AFTER the app so the join-token env above
+// is already set when the singletons construct).
+const { taskStore } = await import("../taskStore.js");
 const { resolveCiTimeoutMs } = await import("./runnerRoutes.js");
 // Dynamic like the app import above: taskPersistence statically pulls the
 // flow graph, so a hoisted static import would construct singletons before
@@ -170,6 +174,49 @@ describe("Runner Routes Integration", () => {
 			runnerId: "claimer-1",
 			epoch: 1,
 		});
+	});
+
+	it("merges Runner-reported worktree evictions from heartbeat facts into the exposition, restart-safe", async () => {
+		// WP2: the Runner is a separate process, so its worktree-eviction
+		// counter reaches the backend only via `facts.signals` on heartbeat;
+		// the backend merges per-Runner deltas monotonically (a restart that
+		// resets the Runner's counter must never move the total backwards).
+		const credential = await onboard("signals-1");
+		const beatWith = (worktreeEvictions) =>
+			app.inject({
+				method: "POST",
+				url: "/runners/heartbeat",
+				headers: { "x-runner-credential": credential },
+				payload: {
+					runnerId: "signals-1",
+					facts: { ...FACTS, signals: { worktreeEvictions } },
+				},
+			});
+		const readEvictions = async () => {
+			const metrics = await taskStore.getObservabilityMetrics();
+			return metrics.productionSignals.worktreeEvictions;
+		};
+		const before = await readEvictions();
+		expect((await beatWith(2)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 2);
+		// A repeated report is not double-counted.
+		expect((await beatWith(2)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 2);
+		// A lower report means the Runner restarted: the whole new value is delta.
+		expect((await beatWith(1)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 3);
+		// Growth after the restart adds only the delta.
+		expect((await beatWith(4)).statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 6);
+		// A heartbeat without `facts.signals` changes nothing and still 200s.
+		const plain = await app.inject({
+			method: "POST",
+			url: "/runners/heartbeat",
+			headers: { "x-runner-credential": credential },
+			payload: { runnerId: "signals-1", facts: FACTS },
+		});
+		expect(plain.statusCode).toBe(200);
+		expect(await readEvictions()).toBe(before + 6);
 	});
 
 	it("enriches monitor assignments with cross-pipeline identity", async () => {
@@ -694,6 +741,213 @@ describe("Runner Routes Integration", () => {
 		// The runner's output tail must survive on the failure (it is what
 		// the stage report renders instead of a bare exit-code message).
 		expect(after.lastError.stdout).toMatch(/synthetic failing detail/);
+	});
+
+	it("failed completion with gitFailure persists structured commit diagnostics", async () => {
+		const credential = await onboard("gitfailure-1");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Hook failure fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		const hookOutput = [
+			"binary-guard check FAILED (2 corrupt binaries):",
+			"  docs/tasks/t1/assets/a.png: expected magic 89504e47, found efbfbd",
+			"  shot.png: expected magic 89504e47, found efbfbd",
+		].join("\n");
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				outcome: "failed",
+				failureKind: "commit-failed",
+				failureReason: "Commit blocked by pre-commit hook: 2 corrupt files",
+				gitFailure: {
+					kind: "hook-rejected",
+					phase: "stage-commit",
+					command: "git commit -m kb/t1: Runner stage output",
+					exitCode: 1,
+					hookName: "pre-commit",
+					files: ["docs/tasks/t1/assets/a.png", "shot.png"],
+					hookOutput,
+					remedy: "Re-capture each corrupt file, then retry the stage.",
+					summary: "Commit blocked by pre-commit hook: 2 corrupt files",
+				},
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		expect(JSON.parse(done.payload).accepted).toBe(true);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		// The new failure replaces any stale error (the incident showed a
+		// previous human rejection while the hook block stayed invisible).
+		expect(after.failureReason).toBe("Commit blocked by pre-commit hook: 2 corrupt files");
+		expect(after.lastError).toMatchObject({
+			message: "Commit blocked by pre-commit hook: 2 corrupt files",
+			failureKind: "commit-failed",
+			gitDiagnostics: {
+				kind: "hook-rejected",
+				phase: "stage-commit",
+				hookName: "pre-commit",
+				exitCode: 1,
+				files: ["docs/tasks/t1/assets/a.png", "shot.png"],
+			},
+		});
+		expect(after.lastError.gitDiagnostics.remedy).toContain("Re-capture");
+		expect(after.lastError.stdout).toContain("binary-guard check FAILED");
+		const failedRow = (after.timeline || []).find((entry) => entry.status === "Failed");
+		expect(failedRow).toBeDefined();
+		expect(failedRow.reason).toContain("Commit blocked by pre-commit hook");
+		expect(failedRow.stdout || "").toContain("binary-guard check FAILED");
+		const historyActions = after.history.map((h) => h.action).join("\n");
+		expect(historyActions).toMatch(/Stage failed in/);
+		// The -failure- stage report carries the hook detail on disk.
+		const taskMd = findTaskMarkdown(tempProjectsRoot, target);
+		expect(taskMd).toBeTruthy();
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		const taskDir = path.dirname(taskMd);
+		const failureReport = fs
+			.readdirSync(taskDir)
+			.find((name) => name.includes("-failure-") && name.endsWith(".md"));
+		expect(failureReport).toBeTruthy();
+		const reportBody = fs.readFileSync(path.join(taskDir, failureReport), "utf8");
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		expect(reportBody).toContain("binary-guard check FAILED");
+		expect(reportBody).toContain("shot.png");
+	});
+
+	it("failed completion with malformed gitFailure still records the failure", async () => {
+		const credential = await onboard("gitfailure-2");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Malformed gitFailure fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				outcome: "failed",
+				failureKind: "commit-failed",
+				failureReason: "Commit blocked by pre-commit hook",
+				gitFailure: "hook-rejected",
+			},
+		});
+		// Dropped with a warning, never a 400: the stage failure records.
+		expect(done.statusCode).toBe(200);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		expect(after.failureReason).toBe("Commit blocked by pre-commit hook");
+		expect(after.lastError).toBeDefined();
+		expect(after.lastError.gitDiagnostics).toBeUndefined();
+	});
+
+	it("failed completion without gitFailure records no diagnostics (old runner)", async () => {
+		const credential = await onboard("gitfailure-3");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Old runner fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		const { executionId, epoch } = JSON.parse(claim.payload);
+		const done = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/complete-execution`,
+			headers: { "x-runner-credential": credential },
+			payload: {
+				projectId: project.id,
+				executionId,
+				epoch,
+				outcome: "failed",
+				failureKind: "error",
+				failureReason: "synthetic stage failure",
+				output: "synthetic output",
+			},
+		});
+		expect(done.statusCode).toBe(200);
+		const after = JSON.parse(
+			(await app.inject({ method: "GET", url: `/tasks/${target}?projectId=${project.id}` })).payload,
+		);
+		expect(after.failureReason).toBe("synthetic stage failure");
+		expect(after.lastError.gitDiagnostics).toBeUndefined();
+	});
+
+	it("refuses direct claims on git-failure-parked tasks until the streak clears", async () => {
+		const credential = await onboard("gitfailure-park");
+		const taskRes = await app.inject({
+			method: "POST",
+			url: "/tasks",
+			payload: { projectId: project.id, goal: "Parked fixture" },
+		});
+		const target = JSON.parse(taskRes.payload).id;
+		// Three strikes recorded by earlier failed completions (see the
+		// applyRunnerReport streak test for the accumulation itself).
+		const parked = taskStore.getTask(project.id, target);
+		parked.gitFailureStreak = {
+			stageId: parked.currentStageId,
+			signature: "hook-rejected|pre-commit|stage-commit|a.png",
+			count: 3,
+			updatedAt: new Date().toISOString(),
+		};
+		const excludedBefore = taskStore.productionSignals?.claimExcluded?.GIT_FAILURE_PARKED || 0;
+		const refused = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(refused.statusCode).toBe(409);
+		expect(JSON.parse(refused.payload).code).toBe("GIT_FAILURE_PARKED");
+		// The refusal lands in the exclusion ledger as an intentional skip
+		// (an unregistered reason would silently drop instead of counting).
+		expect(taskStore.productionSignals?.claimExcluded?.GIT_FAILURE_PARKED || 0).toBe(
+			excludedBefore + 1,
+		);
+
+		// An operator retry lifts the parking: the next claim succeeds.
+		delete taskStore.getTask(project.id, target).gitFailureStreak;
+		const claim = await app.inject({
+			method: "POST",
+			url: `/tasks/${target}/claim`,
+			headers: { "x-runner-credential": credential },
+			payload: { projectId: project.id },
+		});
+		expect(claim.statusCode).toBe(200);
+		expect(JSON.parse(claim.payload).executionId).toBeTruthy();
 	});
 
 	it("claim then failed completion attributes the Runner on history, surviving reload", async () => {
@@ -1474,6 +1728,7 @@ describe("Runner Routes Integration", () => {
 			jobTypes: { runsCi: true, runsMerges: true, runsImpromptu: true },
 			directories: { masterDir: "", worktreeDir: "" },
 			projectScope: null,
+			desiredVersion: "latest",
 		});
 	});
 
@@ -2257,7 +2512,7 @@ describe("Runner Routes Integration", () => {
 
 		it("400s unknown commands fail-closed with UNKNOWN_COMMAND", async () => {
 			await onboard("command-2");
-			for (const command of ["requestRestart", "", null]) {
+			for (const command of ["requestReboot", "", null]) {
 				const res = await app.inject({
 					method: "POST",
 					url: "/runners/command-2/commands",

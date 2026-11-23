@@ -21,12 +21,13 @@ export const SETTINGS_TABS = [
   { id: 'images', label: 'Images', showFooterReset: false },
   { id: 'access', label: 'Access', showFooterReset: false },
   { id: 'ui', label: 'UI', showFooterReset: false },
+  { id: 'about', label: 'About', showFooterReset: false },
 ];
 
 /***
  * MARK: SETTINGS_TAB_LABELS
  * @description Ordered tab labels derived from SETTINGS_TABS (render order).
- * @example SETTINGS_TAB_LABELS => ['Runners', 'Models', 'Engine', 'Storage', 'Notifications', 'Prompt Layout', 'Images', 'Access', 'UI']
+ * @example SETTINGS_TAB_LABELS => ['Runners', 'Models', 'Engine', 'Storage', 'Notifications', 'Prompt Layout', 'Images', 'Access', 'UI', 'About']
  ***/
 export const SETTINGS_TAB_LABELS = SETTINGS_TABS.map((tab) => tab.label);
 

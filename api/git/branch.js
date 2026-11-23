@@ -766,14 +766,17 @@ function _forwardPrefixHints(from, to) {
 /***
  * MARK: returnToDefaultBranch
  * @description Checks out the project's default branch (resolved by
- *   defaultBranch). Idempotent no-op when already there. Refuses on a dirty
- *   working tree (GitDirtyTreeError) — callers finalize (commit first) so the
- *   return lands clean, and a blocked return fails loudly instead of leaving
- *   the tree stranded on a task branch.
+ *   defaultBranch, or the explicit `opts.targetBranch` when a task runs on
+ *   a pipeline with its own base branch). Idempotent no-op when already
+ *   there. Refuses on a dirty working tree (GitDirtyTreeError) — callers
+ *   finalize (commit first) so the return lands clean, and a blocked return
+ *   fails loudly instead of leaving the tree stranded on a task branch.
  * @example await returnToDefaultBranch('/repo') => { switched: true, branch: 'main' }
  * @param {string} projectCwd - Working directory for the command.
  * @param {Object} [opts]
  * @param {string} [opts.fallback] - Fallback default-branch name.
+ * @param {string} [opts.targetBranch] - Explicit branch to return to
+ *   (a task's pipeline base); resolved via defaultBranch() when omitted.
  * @param {boolean} [opts.checkClean=true] - Enforce the clean-tree guard.
  * @param {string} [opts.recovery] - 'ladder' or 'off' for the clean-tree guard.
  * @param {Object} [opts.project] - Project record hint for custom docs/state
@@ -783,7 +786,14 @@ function _forwardPrefixHints(from, to) {
  ***/
 export async function returnToDefaultBranch(projectCwd, opts = {}) {
 	const fallback = typeof opts.fallback === "string" ? opts.fallback : undefined;
-	const def = await defaultBranch(projectCwd, fallback ? { fallback } : {});
+	const explicitTarget =
+		typeof opts.targetBranch === "string" && opts.targetBranch.trim()
+			? opts.targetBranch.trim()
+			: null;
+	const def =
+		explicitTarget && isValidBranchName(explicitTarget)
+			? explicitTarget
+			: await defaultBranch(projectCwd, fallback ? { fallback } : {});
 	const current = await currentBranch(projectCwd).catch(() => null);
 	if (current && current === def) return { switched: false, branch: def };
 	const checkoutOpts = { checkClean: opts.checkClean };
@@ -836,6 +846,8 @@ export async function deleteBranch(projectCwd, branch) {
  * @param {Object} [opts]
  * @param {string} [opts.context] - Human string for the clean-tree guard.
  * @param {string} [opts.fallback] - Fallback default-branch name.
+ * @param {string} [opts.restoreBranch] - Explicit branch to restore after
+ *   `fn` (a task's pipeline base); resolved via defaultBranch() when omitted.
  * @param {string} [opts.taskId] - Owning task id for guard markers.
  * @param {Object} [opts.project] - Project record hint for custom docs/state
  *   dir names; forwarded to the guard, the switch, and the restore so all
@@ -851,7 +863,14 @@ export async function withCheckedOutBranch(projectCwd, branch, fn, opts = {}) {
 	}
 	_assertValidBranchName(branch, "withCheckedOutBranch");
 
-	const def = await defaultBranch(projectCwd, opts.fallback ? { fallback: opts.fallback } : {});
+	const explicitRestore =
+		typeof opts.restoreBranch === "string" && opts.restoreBranch.trim()
+			? opts.restoreBranch.trim()
+			: null;
+	const def =
+		explicitRestore && isValidBranchName(explicitRestore)
+			? explicitRestore
+			: await defaultBranch(projectCwd, opts.fallback ? { fallback: opts.fallback } : {});
 	const current = await currentBranch(projectCwd).catch(() => null);
 
 	if (current === branch) {
@@ -885,6 +904,11 @@ export async function withCheckedOutBranch(projectCwd, branch, fn, opts = {}) {
 		try {
 			const restoreOpts = { recovery: "off" };
 			if (opts.fallback) restoreOpts.fallback = opts.fallback;
+			// An explicit restore target rides through to the return, so a
+			// pipeline base restores to itself instead of the repo default.
+			if (explicitRestore && isValidBranchName(explicitRestore)) {
+				restoreOpts.targetBranch = explicitRestore;
+			}
 			if (opts.taskId) restoreOpts.taskId = opts.taskId;
 			_forwardPrefixHints(opts, restoreOpts);
 			await returnToDefaultBranch(projectCwd, restoreOpts);

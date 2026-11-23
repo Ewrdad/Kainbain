@@ -47,7 +47,9 @@ test('opens Manage Workflows menu item and switches to settings view (B1)', () =
   const manageItem = screen.getByRole('menuitem', { name: /Manage Workflows/i });
   expect(manageItem).toBeInTheDocument();
   expect(() => fireEvent.click(manageItem)).not.toThrow();
-  expect(setView).toHaveBeenCalledWith('settings');
+  // Deep-links the workflows tab itself: bare 'settings' would land on the
+  // Project tab, hiding the pipeline editor behind a second click.
+  expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
 });
 
 test('Configure stage drawer is confined to its stage column (footer-overlap contract)', () => {

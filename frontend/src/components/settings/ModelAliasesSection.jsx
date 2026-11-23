@@ -25,6 +25,10 @@ import {
 import { withFleetModels, effectiveModelSelection } from '../../services/fleetModelOptions';
 import { ReliabilityLine } from './ReliabilityLine';
 import { TruncatedText } from '../common/TruncatedText';
+import { CollapseToggleButton } from './CollapseToggleButton';
+import { DeleteAliasButton } from './DeleteAliasButton';
+import { AliasCollapsedRow } from './AliasCollapsedRow';
+import { aliasTargetSummary } from './aliasTargetSummary';
 import {
   ALIAS_HARNESS_ID,
   getAliasTargets,
@@ -650,7 +654,10 @@ function AliasTargetRow({
               {typeof target?.model === 'string' && target.model.trim() !== '' && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <p
-                    className="text-[10px] font-mono text-amber-600 dark:text-amber-400"
+                    // break-all: a very long stored ref wraps here instead of
+                    // overflowing the card (same wrap-before-ellipsis order
+                    // as the collapsed chips — model text is never clipped).
+                    className="text-[10px] font-mono text-amber-600 dark:text-amber-400 break-all"
                     data-testid={`model-alias-kept-model-${aliasIndex}-${targetIndex}`}
                     title="Kept with a warning — ignored at dispatch until the harness offers a catalogue"
                   >
@@ -852,88 +859,20 @@ function AliasTargetRow({
  * @returns {string} Summary preview text.
  ***/
 export function formatAliasSummary(targets, targetHarnesses = []) {
+  // Built on `aliasTargetSummary` so this plain-text fallback (tooltips/aria)
+  // and the collapsed row's chips can never drift apart.
   const list = Array.isArray(targets) ? targets : [];
   if (list.length === 0) return '0 targets';
   const countStr = list.length === 1 ? '1 target' : `${list.length} targets`;
   const parts = list.map((t) => {
-    const harnessId = typeof t?.harness === 'string' ? t.harness.trim() : '';
-    const entry = (Array.isArray(targetHarnesses) ? targetHarnesses : []).find(
-      (h) => h?.id === harnessId,
-    );
-    const harnessName = entry?.label || harnessId || 'unassigned';
-    const percentStr =
-      typeof t?.percent === 'number' && !Number.isNaN(t.percent) ? `${t.percent}%` : '';
-
-    let targetDesc = harnessName;
-    if (
-      entry?.modelSelection !== 'none' &&
-      t?.model &&
-      typeof t.model === 'string' &&
-      t.model.trim()
-    ) {
-      targetDesc = `${harnessName} (${t.model.trim()})`;
-    }
-    return percentStr ? `${percentStr} ${targetDesc}` : targetDesc;
+    const summary = aliasTargetSummary(t, targetHarnesses);
+    const targetDesc =
+      summary.showModel && summary.modelRef
+        ? `${summary.harnessLabel} (${summary.modelRef})`
+        : summary.harnessLabel;
+    return summary.percentText ? `${summary.percentText} ${targetDesc}` : targetDesc;
   });
   return `${countStr} · ${parts.join(', ')}`;
-}
-
-/***
- * MARK: CollapseToggleButton
- * @description Shared expand/collapse chevron for one alias card header.
- *   Single source for the toggle's test id, ARIA wiring (`aria-expanded` /
- *   `aria-controls` / `aria-label`), and chevron glyph, so the collapsed and
- *   expanded headers cannot drift apart.
- * @example <CollapseToggleButton index={0} aliasName="small" expanded onToggle={() => toggle(key)} disabled={false} />
- * @param {Object} props
- * @param {number} props.index - Positional alias index (test ids + control ids).
- * @param {string} props.aliasName - Draft alias name (accessible label fallback).
- * @param {boolean} props.expanded - True when the card body is visible.
- * @param {Function} props.onToggle - Click handler.
- * @param {boolean} [props.disabled=false] - Disables the toggle.
- ***/
-function CollapseToggleButton({ index, aliasName, expanded, onToggle, disabled = false }) {
-  const label = aliasName || index + 1;
-  return (
-    <button
-      type="button"
-      data-testid={`model-alias-toggle-${index}`}
-      aria-expanded={expanded}
-      aria-controls={`model-alias-body-${index}`}
-      aria-label={`${expanded ? 'Collapse' : 'Expand'} alias ${label}`}
-      onClick={onToggle}
-      disabled={disabled}
-      className="shrink-0 px-1.5 py-0.5 text-xs text-text-muted hover:text-on-surface cursor-pointer select-none font-mono"
-    >
-      {expanded ? '▾' : '▸'}
-    </button>
-  );
-}
-
-/***
- * MARK: DeleteAliasButton
- * @description Shared delete button for one alias card header. Single source
- *   for the accessible label and styling, so the collapsed and expanded
- *   headers cannot drift apart.
- * @example <DeleteAliasButton index={0} aliasName="small" onDelete={() => deleteRow(0)} disabled={false} />
- * @param {Object} props
- * @param {number} props.index - Positional alias index.
- * @param {string} props.aliasName - Draft alias name (accessible label fallback).
- * @param {Function} props.onDelete - Click handler.
- * @param {boolean} [props.disabled=false] - Disables the button.
- ***/
-function DeleteAliasButton({ index, aliasName, onDelete, disabled = false }) {
-  return (
-    <button
-      type="button"
-      aria-label={`Delete alias ${aliasName || index + 1}`}
-      onClick={onDelete}
-      disabled={disabled}
-      className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center text-xs text-text-muted hover:text-error disabled:opacity-50 cursor-pointer"
-    >
-      ✕
-    </button>
-  );
 }
 
 /***
@@ -1144,8 +1083,11 @@ export function ModelAliasesSection({
     }
   }, [rows.length, rowKeys, isCollapsed, toggleCollapse]);
 
+  // Full width on purpose: the settings panel is much wider than any max-w
+  // cap on desktop, and provider-prefixed model refs in the summary chips
+  // need the room — capping the section is what cut names off.
   return (
-    <div data-testid="model-aliases-section" className="space-y-3 max-w-2xl">
+    <div data-testid="model-aliases-section" className="space-y-3 w-full min-w-0">
       <h3 className="text-sm font-bold uppercase tracking-wide text-text-high flex items-center gap-2">
         <span className="text-primary">🏷️</span> Model Aliases
       </h3>
@@ -1235,49 +1177,17 @@ export function ModelAliasesSection({
                 className="flex flex-col gap-2 p-2 bg-surface-container border border-border-standard rounded-sm"
               >
                 {collapsed ? (
-                  <div className="flex items-center justify-between gap-2 flex-wrap min-w-0">
-                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                      <CollapseToggleButton
-                        index={index}
-                        aliasName={row?.name}
-                        expanded={false}
-                        onToggle={() => toggleCollapse(key)}
-                        disabled={disabled}
-                      />
-                      <span
-                        id={`model-alias-header-${index}`}
-                        className="text-xs font-mono font-bold text-on-surface truncate"
-                        title={row?.name || `Alias ${index + 1}`}
-                      >
-                        {row?.name || `Alias ${index + 1}`}
-                      </span>
-                      <span
-                        data-testid={`model-alias-summary-${index}`}
-                        className="px-1.5 py-0.5 bg-surface-deep border border-border-standard rounded-sm text-[10px] text-text-muted font-mono min-w-0 max-w-full inline-flex"
-                      >
-                        <TruncatedText text={formatAliasSummary(targets, targetHarnesses)} />
-                      </span>
-                      {rowError && (
-                        <span
-                          role="alert"
-                          data-testid={`model-alias-error-alert-${index}`}
-                          className="inline-flex min-w-0 max-w-full"
-                        >
-                          {/* Read-only view change: intentionally not disabled —
-                              expanding a card to read its error mutates
-                              nothing, even while the section is saving. */}
-                          <button
-                            type="button"
-                            data-testid={`model-alias-error-badge-${index}`}
-                            onClick={() => toggleCollapse(key)}
-                            title={`${rowError} (Click to expand)`}
-                            className="px-1.5 py-0.5 bg-error/10 border border-error/50 rounded-sm text-[10px] font-bold text-error cursor-pointer break-all"
-                          >
-                            ⚠ {rowError}
-                          </button>
-                        </span>
-                      )}
-                      {showReliabilityLines && (
+                  <AliasCollapsedRow
+                    index={index}
+                    aliasName={row?.name}
+                    targets={targets}
+                    targetHarnesses={targetHarnesses}
+                    rowError={rowError}
+                    disabled={disabled}
+                    onToggle={() => toggleCollapse(key)}
+                    onDelete={() => deleteRow(index)}
+                    reliabilityLine={
+                      showReliabilityLines ? (
                         <div className="text-[10px] text-text-muted">
                           {/* Collapsed cards stay compact: the visual badge is
                               unchanged, but assistive technology hears that
@@ -1291,17 +1201,9 @@ export function ModelAliasesSection({
                             {...aliasReliabilityTitles(row?.name, aliasStats)}
                           />
                         </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <DeleteAliasButton
-                        index={index}
-                        aliasName={row?.name}
-                        onDelete={() => deleteRow(index)}
-                        disabled={disabled}
-                      />
-                    </div>
-                  </div>
+                      ) : null
+                    }
+                  />
                 ) : (
                   <>
                     <div className="flex min-w-0 items-center justify-between gap-2">

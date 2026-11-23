@@ -11,6 +11,7 @@
  ***/
 export { _sanitizeTaskTitle, toTaskSummary } from './taskIdentity.js';
 export { TASK_BRANCH_PREFIX, taskBranchName, resolveTaskBranch, isBranchModeEnabled, isWorktreeIsolationEnabled, resolveDirtyTreeRecoveryMode, ensureTaskBranch, ensureTaskBranchRef, syncMainToRemoteBestEffort } from './taskBranches.js';
+export { normalizeBaseBranchName, resolveTaskBaseBranch, ensureBaseBranchExists, ensureTaskBaseBranch } from './taskBaseBranch.js';
 export { finalizeTaskBranch } from './taskFinalize.js';
 export { isUnrecoverableError, isTransientInfrastructureError, isOperatorAbortError, isGitLockError, classifyStageError } from './taskErrors.js';
 export { safeParseJsonArray, parseStoredRecords, _formatFrontmatterValue, _parseFrontmatter } from './taskFiles.js';

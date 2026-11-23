@@ -14,6 +14,7 @@ import { isTerminalTaskStatus, resolveReopenedStatus, resolveStageLabel, stageEl
 import { resolveStagesForTask } from './taskScheduler.js';
 import { killTaskProcess } from './taskControl.js';
 import { buildTimelineAttribution } from './runAttribution.js';
+import { clearGitFailureStreak } from './scheduler/clearGitFailureStreak.js';
 
 /***
  * MARK: releaseEngineOwnership
@@ -133,6 +134,18 @@ export function moveToStage(
 	}
 	task.failureReason = null;
 	task.lastError = null;
+	// A success advance or an explicit operator move/jump ends any
+	// git-failure episode: the tree moved on, or the operator took over, so
+	// the consecutive-failure streak (and its auto-dispatch parking)
+	// clears. Failback moves deliberately preserve the streak so the
+	// walk-back accumulates toward parking instead of resetting per stage.
+	if (
+		options?.operatorMove === true ||
+		reason === "Advanced" ||
+		reason === "Advanced (First Stage)"
+	) {
+		clearGitFailureStreak(task);
+	}
 
 	task.enteredStageAt = new Date().toISOString();
 	task.updatedAt = task.enteredStageAt;
@@ -857,6 +870,8 @@ export async function resumeTask(
 	// An operator resume serves the pickup directly (dispatch below), so any
 	// startup-recovery priority is consumed here rather than lingering.
 	clearResumedMarker(task);
+	// An operator resume takes the task back: any git-failure parking lifts.
+	clearGitFailureStreak(task);
 	task.status = "in_stage";
 	task.updatedAt = new Date().toISOString();
 	store._resetAutoIteration(task);
@@ -914,6 +929,10 @@ export async function retryStage(
 	// A manual retry serves the pickup directly (dispatch below), so any
 	// startup-recovery priority is consumed here rather than lingering.
 	clearResumedMarker(task);
+	// A manual retry is a fresh attempt with a fresh budget: any git-failure
+	// parking lifts (the preserved failureReason/lastError below still feed
+	// the next attempt's prompt — only the streak clears).
+	clearGitFailureStreak(task);
 	// Preserve failureReason/lastError here: executeStage snapshots them at entry
 	// to reinject the failure into the next attempt's prompt, then clears them.
 	// (Clearing here would blind the retried attempt to the failure that parked it.)

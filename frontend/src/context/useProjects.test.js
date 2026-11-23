@@ -98,6 +98,34 @@ describe('useProjects', () => {
     expect(api.createProject).toHaveBeenCalledWith({ name: 'C' });
   });
 
+  it('createProject forwards the advanced docsRepo option', async () => {
+    api.createProject.mockResolvedValue({ id: 'p3', name: 'C' });
+    const { result } = renderHook(() => useProjects({}));
+    await act(async () => {
+      await result.current.createProject('C', {
+        gitUrl: 'git@github.com:me/repo.git',
+        docsRepo: { url: 'git@github.com:me/repo-docs.git' },
+      });
+    });
+    expect(api.createProject).toHaveBeenCalledWith({
+      name: 'C',
+      gitUrl: 'git@github.com:me/repo.git',
+      docsRepo: { url: 'git@github.com:me/repo-docs.git' },
+    });
+  });
+
+  it('createProject omits docsRepo when not provided', async () => {
+    api.createProject.mockResolvedValue({ id: 'p3', name: 'C' });
+    const { result } = renderHook(() => useProjects({}));
+    await act(async () => {
+      await result.current.createProject('C', { gitUrl: 'git@github.com:me/repo.git' });
+    });
+    expect(api.createProject).toHaveBeenCalledWith({
+      name: 'C',
+      gitUrl: 'git@github.com:me/repo.git',
+    });
+  });
+
   it('registerProject adopts the project and selects it', async () => {
     api.registerProject.mockResolvedValue({ id: 'p4', name: 'Adopted Repo', cwd: '/repos/adopted' });
     const { result } = renderHook(() => useProjects({}));

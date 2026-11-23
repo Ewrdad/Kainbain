@@ -5,7 +5,11 @@ import {
 	belowMinimumRunnerVersion,
 	buildBelowMinimumRefusal,
 	coerceRunnerVersion,
+	DESIRED_VERSION_LATEST,
+	fleetKnownVersions,
+	isPinnedDesiredVersion,
 	loadBackendApiVersion,
+	normalizeDesiredVersion,
 	RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS,
 	runnerVersionAtLeast,
 	shouldAutoRequestUpdate,
@@ -60,6 +64,22 @@ describe("runnerVersionCompat", () => {
 	it("coerces v-prefixed versions", () => {
 		assert.equal(coerceRunnerVersion("v1.2.3"), "1.2.3");
 		assert.equal(runnerVersionAtLeast("v0.2.0", "0.1.0"), true);
+	});
+
+	it("never coerces a commit sha into a phantom version", () => {
+		// semver.coerce would mangle these into bogus versions (8044.0.0);
+		// a bare 7+ hex run is a hash, not a product version.
+		assert.equal(coerceRunnerVersion("f8044e37"), null);
+		assert.equal(coerceRunnerVersion("fbcf8442ee031e2edbc9f0b30195afa410296cf3"), null);
+		assert.equal(coerceRunnerVersion("28aac94"), null);
+		// Version-tagged builds keep their dotted core.
+		assert.equal(coerceRunnerVersion("1.0.0-28aac94"), "1.0.0");
+		assert.equal(coerceRunnerVersion("0.1.0"), "0.1.0");
+		// Sha-like input is permissive everywhere, never a fleet lockout.
+		assert.equal(runnerVersionAtLeast("f8044e37", "9.9.9"), true);
+		assert.equal(belowMinimumRunnerVersion("f8044e37", "9.9.9"), false);
+		assert.equal(updateAvailableForRunner("f8044e37", "9.9.9"), false);
+		assert.equal(normalizeDesiredVersion("f8044e37"), DESIRED_VERSION_LATEST);
 	});
 
 	it("builds one shared 409 refusal for every below-minimum runner", () => {
@@ -127,6 +147,69 @@ describe("runnerVersionCompat", () => {
 				now: Date.now(),
 			}),
 			true,
+		);
+	});
+
+	it("normalizes the per-runner version setting to latest-or-canonical", () => {
+		assert.equal(normalizeDesiredVersion(null), "latest");
+		assert.equal(normalizeDesiredVersion(undefined), "latest");
+		assert.equal(normalizeDesiredVersion(""), "latest");
+		assert.equal(normalizeDesiredVersion("latest"), "latest");
+		assert.equal(normalizeDesiredVersion("Latest"), "latest");
+		assert.equal(normalizeDesiredVersion("v1.2.3"), "1.2.3");
+		assert.equal(normalizeDesiredVersion("1.2.3"), "1.2.3");
+		assert.equal(normalizeDesiredVersion("not-a-version"), "latest");
+		assert.equal(normalizeDesiredVersion({}), "latest");
+		assert.equal(DESIRED_VERSION_LATEST, "latest");
+	});
+
+	it("treats only exact versions as pinned", () => {
+		assert.equal(isPinnedDesiredVersion("1.2.3"), true);
+		assert.equal(isPinnedDesiredVersion("latest"), false);
+		assert.equal(isPinnedDesiredVersion(null), false);
+		assert.equal(isPinnedDesiredVersion(undefined), false);
+		assert.equal(isPinnedDesiredVersion("bogus"), false);
+	});
+
+	it("never auto-nudges pinned runners, only latest-tracked trailers", () => {
+		const base = {
+			facts: { versions: { runner: "0.1.0" }, commands: ["requestModelRediscovery", "requestUpdate"] },
+			pendingCommands: [],
+			commandResults: {},
+			recommendedVersion: "0.2.0",
+		};
+		assert.equal(shouldAutoRequestUpdate(base), true);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: "latest" }), true);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: null }), true);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: "0.2.0" }), false);
+		assert.equal(shouldAutoRequestUpdate({ ...base, desiredVersion: "0.1.0" }), false);
+	});
+
+	it("lists fleet-known versions newest-first for the version dropdown", () => {
+		const runners = [
+			{ facts: { versions: { runner: "0.1.0" } } },
+			{ facts: { versions: { runner: "0.3.0" } } },
+			{ facts: { versions: { runner: "0.3.0" } } },
+			{ facts: { versions: {} } },
+			{},
+		];
+		assert.deepEqual(
+			fleetKnownVersions({ runners, recommendedVersion: "0.2.0", minimumVersion: "0.1.0" }),
+			["0.3.0", "0.2.0", "0.1.0"],
+		);
+		assert.deepEqual(fleetKnownVersions({ runners: [] }), []);
+		assert.deepEqual(fleetKnownVersions({}), []);
+	});
+
+	it("keeps sha-like runner reports out of the fleet version list", () => {
+		const runners = [
+			{ facts: { versions: { runner: "0.1.0" } } },
+			{ facts: { versions: { runner: "f8044e37" } } },
+			{ runnerVersion: "fbcf8442ee031e2edbc9f0b30195afa410296cf3" },
+		];
+		assert.deepEqual(
+			fleetKnownVersions({ runners, recommendedVersion: "0.2.0" }),
+			["0.2.0", "0.1.0"],
 		);
 	});
 });

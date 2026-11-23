@@ -80,4 +80,32 @@ describe('HistoryFailureReason', () => {
     expect(screen.getByText('Validation missing on empty input')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View full reason' })).toBeInTheDocument();
   });
+
+  test('shows the hook file list for a commit-failure timeline row', () => {
+    // The Failed row handleStageFailure writes for a runner gitFailure: the
+    // one-line summary as the reason, the hook output (with the affected
+    // files) as the stdout excerpt.
+    render(
+      <HistoryFailureReason
+        entry={{
+          stage: 'Build',
+          status: 'Failed',
+          duration: '4s',
+          timestamp: '2026-11-21T06:00:00.000Z',
+          reason: 'Commit blocked by pre-commit hook: 2 corrupt files',
+          stageId: 'build',
+          stageName: 'Build',
+          stdout:
+            'binary-guard check FAILED (2 corrupt binaries):\n  docs/tasks/t1/assets/a.png: expected magic 89504e47, found efbfbd\n  shot.png: expected magic 89504e47, found efbfbd',
+        }}
+      />,
+    );
+    expect(
+      screen.getByText('Commit blocked by pre-commit hook: 2 corrupt files'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View full reason' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('docs/tasks/t1/assets/a.png');
+    expect(dialog).toHaveTextContent('shot.png');
+  });
 });

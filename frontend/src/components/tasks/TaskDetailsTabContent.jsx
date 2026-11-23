@@ -11,6 +11,8 @@ import { TaskCompleteToggleButton } from './TaskCompleteToggleButton';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { approvalCopy } from '../stageTypes';
 import { FailureMessage } from './FailureMessage';
+import { GitFailureDetails } from './GitFailureDetails';
+import { pickFailureBannerTitle, isCommitFailureTask } from './failureReason';
 
 export function TaskDetailsTab({
   activeProjectId,
@@ -77,6 +79,10 @@ export function TaskDetailsTab({
   // backend 409): the checkpoint banner hides and the failure banner above
   // — with its prominent Retry Stage — owns recovery.
   const isTerminallyFailed = task?.status === 'failed';
+  // Runner-reported commit/hook failures render their structured envelope
+  // (hook, files, remedy, full output) under the reason, with a heading
+  // that names the commit instead of the stage.
+  const isCommitFailure = isFailed && isCommitFailureTask(task);
   return (
     <div className="space-y-5">
       {/* Stage Execution Failure Alert Banner */}
@@ -90,7 +96,7 @@ export function TaskDetailsTab({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-error animate-pulse shadow-[0_0_8px_rgba(248,81,73,0.6)]" />
               <span className="text-xs font-bold uppercase tracking-wider text-error font-mono flex items-center gap-1">
-                {isRejected ? '⚠️ Stage Rejected' : '⚠️ Stage Execution Failed'}
+                {pickFailureBannerTitle({ isRejected, isCommitFailure })}
               </span>
             </div>
             {(task?.lastError?.stageName || taskStage?.name) && (
@@ -105,6 +111,12 @@ export function TaskDetailsTab({
             taskId={task?.id}
             className="p-2.5 bg-surface-container rounded border border-error/30 font-mono text-xs text-error break-words whitespace-pre-wrap leading-relaxed select-text"
           />
+          {isCommitFailure && (
+            <GitFailureDetails
+              diagnostics={task?.lastError?.gitDiagnostics}
+              className="p-2.5 bg-surface-container rounded border border-error/30 text-error space-y-2"
+            />
+          )}
           <div className="flex items-center gap-2 pt-1">
             <button
               type="button"

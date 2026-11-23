@@ -343,3 +343,251 @@ describe("applyUpdate", () => {
 		fs.rmSync(root, { recursive: true, force: true });
 	});
 });
+
+describe("checkForUpdate with a pinned targetVersion (mirror index)", () => {
+	const byVersion = {
+		"0.2.0": fixtureManifest({ version: "0.2.0" }),
+		"0.3.0": fixtureManifest({ version: "0.3.0" }),
+	};
+	const textFor = (version) => JSON.stringify(byVersion[version]);
+	const indexFetch = async (url) => {
+		const href = String(url);
+		if (href.endsWith("releases.json")) {
+			return {
+				ok: true,
+				status: 200,
+				text: async () =>
+					JSON.stringify({
+						schema: 1,
+						component: "runner",
+						releases: ["0.3.0", "0.2.0"].map((version) => ({
+							version,
+							manifestUrl: `http://mirror.local/r/${version}/manifest.json`,
+							signatureUrl: `http://mirror.local/r/${version}/manifest.json.minisig`,
+						})),
+					}),
+			};
+		}
+		for (const version of Object.keys(byVersion)) {
+			if (href === `http://mirror.local/r/${version}/manifest.json`) {
+				return { ok: true, status: 200, text: async () => textFor(version) };
+			}
+			if (href === `http://mirror.local/r/${version}/manifest.json.minisig`) {
+				return { ok: true, status: 200, text: async () => signTestManifest(Buffer.from(textFor(version), "utf8")) };
+			}
+		}
+		return { ok: false, status: 404 };
+	};
+	const quiet = { warn: () => {}, log: () => {} };
+	const check = (currentVersion, targetVersion) =>
+		checkForUpdate({
+			currentVersion,
+			targetVersion,
+			updateUrl: "http://mirror.local/r",
+			fetchImpl: indexFetch,
+			verifyImpl: verifyWithTestKey,
+			platform: "linux",
+			arch: "x64",
+			logger: quiet,
+		});
+
+	it("installs exactly the pin, never a newer substitute", async () => {
+		const got = await check("0.1.0", "0.2.0");
+		assert.equal(got.ok, true);
+		assert.equal(got.update?.version, "0.2.0");
+	});
+
+	it("is a no-op when the pin equals the running version", async () => {
+		const got = await check("0.2.0", "0.2.0");
+		assert.equal(got.ok, true);
+		assert.equal(got.update, null);
+		assert.match(got.reason, /already on pinned/i);
+	});
+
+	it("refuses a pin older than running (never downgrades)", async () => {
+		const got = await check("0.3.0", "0.2.0");
+		assert.equal(got.ok, false);
+		assert.match(got.reason, /never downgrades/i);
+	});
+
+	it("fails loud when the pin is not listed", async () => {
+		const got = await check("0.1.0", "0.9.9");
+		assert.equal(got.ok, false);
+		assert.match(got.reason, /not found/i);
+	});
+
+	it("rejects a pin that is not a version", async () => {
+		const got = await check("0.1.0", "banana");
+		assert.equal(got.ok, false);
+		assert.match(got.reason, /not a valid/i);
+	});
+
+	it("fails loud when the pinned release cannot run here", async () => {
+		const darwinOnly = fixtureManifest({
+			version: "0.2.0",
+			assets: [fixtureManifest().assets[2]],
+		});
+		const darwinText = JSON.stringify(darwinOnly);
+		const fetchDarwin = async (url) => {
+			const href = String(url);
+			if (href.endsWith("releases.json")) {
+				return {
+					ok: true,
+					status: 200,
+					text: async () =>
+						JSON.stringify({
+							schema: 1,
+							component: "runner",
+							releases: [
+								{
+									version: "0.2.0",
+									manifestUrl: "http://mirror.local/r/0.2.0/manifest.json",
+									signatureUrl: "http://mirror.local/r/0.2.0/manifest.json.minisig",
+								},
+							],
+						}),
+				};
+			}
+			if (href.endsWith("manifest.json")) return { ok: true, status: 200, text: async () => darwinText };
+			if (href.endsWith("manifest.json.minisig")) {
+				return { ok: true, status: 200, text: async () => signTestManifest(Buffer.from(darwinText, "utf8")) };
+			}
+			return { ok: false, status: 404 };
+		};
+		const got = await checkForUpdate({
+			currentVersion: "0.1.0",
+			targetVersion: "0.2.0",
+			updateUrl: "http://mirror.local/r",
+			fetchImpl: fetchDarwin,
+			verifyImpl: verifyWithTestKey,
+			platform: "linux",
+			arch: "x64",
+			logger: quiet,
+		});
+		assert.equal(got.ok, false);
+		assert.match(got.reason, /cannot run here/i);
+	});
+});
+
+describe("checkForUpdate with a pinned targetVersion (GitHub pointer)", () => {
+	const quiet = { warn: () => {}, log: () => {} };
+	const manifest302 = fixtureManifest({ version: "0.3.0" });
+	const manifest302Text = JSON.stringify(manifest302);
+	const manifest200 = fixtureManifest({ version: "0.2.0" });
+	const manifest200Text = JSON.stringify(manifest200);
+	const manifest400 = fixtureManifest({ version: "0.4.0" });
+	const manifest400Text = JSON.stringify(manifest400);
+
+	it("installs the pin straight off the latest pointer when it matches", async () => {
+		const fetchImpl = async (url) => {
+			const href = String(url);
+			if (href.endsWith("/releases/latest")) {
+				return {
+					ok: true,
+					status: 200,
+					text: async () =>
+						JSON.stringify({
+							tag_name: "runner-v0.3.0",
+							prerelease: false,
+							assets: [
+								{ name: "manifest.json", browser_download_url: "https://cdn.local/0.3.0/manifest.json" },
+								{ name: "manifest.json.minisig", browser_download_url: "https://cdn.local/0.3.0/manifest.json.minisig" },
+							],
+						}),
+				};
+			}
+			if (href === "https://cdn.local/0.3.0/manifest.json") {
+				return { ok: true, status: 200, text: async () => manifest302Text };
+			}
+			if (href === "https://cdn.local/0.3.0/manifest.json.minisig") {
+				return { ok: true, status: 200, text: async () => signTestManifest(Buffer.from(manifest302Text, "utf8")) };
+			}
+			return { ok: false, status: 404 };
+		};
+		const got = await checkForUpdate({
+			currentVersion: "0.1.0",
+			targetVersion: "0.3.0",
+			updateUrl: "https://api.github.com/repos/Ewrdad/Kainbain/releases/latest",
+			fetchImpl,
+			verifyImpl: verifyWithTestKey,
+			platform: "linux",
+			arch: "x64",
+			logger: quiet,
+		});
+		assert.equal(got.ok, true);
+		assert.equal(got.update?.version, "0.3.0");
+	});
+
+	it("walks the releases list for a pin older than latest", async () => {
+		const fetchImpl = async (url) => {
+			const href = String(url);
+			if (href.endsWith("/releases/latest")) {
+				return {
+					ok: true,
+					status: 200,
+					text: async () =>
+						JSON.stringify({
+							tag_name: "runner-v0.4.0",
+							prerelease: false,
+							assets: [
+								{ name: "manifest.json", browser_download_url: "https://cdn.local/0.4.0/manifest.json" },
+								{ name: "manifest.json.minisig", browser_download_url: "https://cdn.local/0.4.0/manifest.json.minisig" },
+							],
+						}),
+				};
+			}
+			if (href === "https://api.github.com/repos/Ewrdad/Kainbain/releases?per_page=30&page=1") {
+				return {
+					ok: true,
+					status: 200,
+					text: async () =>
+						JSON.stringify([
+							{
+								tag_name: "runner-v0.4.0",
+								prerelease: false,
+								assets: [
+									{ name: "manifest.json", browser_download_url: "https://cdn.local/0.4.0/manifest.json" },
+									{ name: "manifest.json.minisig", browser_download_url: "https://cdn.local/0.4.0/manifest.json.minisig" },
+								],
+							},
+							{
+								tag_name: "runner-v0.2.0",
+								prerelease: false,
+								assets: [
+									{ name: "manifest.json", browser_download_url: "https://cdn.local/0.2.0/manifest.json" },
+									{ name: "manifest.json.minisig", browser_download_url: "https://cdn.local/0.2.0/manifest.json.minisig" },
+								],
+							},
+						]),
+				};
+			}
+			// Latest still verifies first (to learn its version); the pin
+			// exact-match is then fetched from the list walk.
+			if (href === "https://cdn.local/0.4.0/manifest.json") {
+				return { ok: true, status: 200, text: async () => manifest400Text };
+			}
+			if (href === "https://cdn.local/0.4.0/manifest.json.minisig") {
+				return { ok: true, status: 200, text: async () => signTestManifest(Buffer.from(manifest400Text, "utf8")) };
+			}
+			if (href === "https://cdn.local/0.2.0/manifest.json") {
+				return { ok: true, status: 200, text: async () => manifest200Text };
+			}
+			if (href === "https://cdn.local/0.2.0/manifest.json.minisig") {
+				return { ok: true, status: 200, text: async () => signTestManifest(Buffer.from(manifest200Text, "utf8")) };
+			}
+			return { ok: false, status: 404 };
+		};
+		const got = await checkForUpdate({
+			currentVersion: "0.1.0",
+			targetVersion: "0.2.0",
+			updateUrl: "https://api.github.com/repos/Ewrdad/Kainbain/releases/latest",
+			fetchImpl,
+			verifyImpl: verifyWithTestKey,
+			platform: "linux",
+			arch: "x64",
+			logger: quiet,
+		});
+		assert.equal(got.ok, true);
+		assert.equal(got.update?.version, "0.2.0");
+	});
+});

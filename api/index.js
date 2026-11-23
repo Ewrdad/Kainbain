@@ -107,7 +107,7 @@ if (config.seedDemo === true) {
 	});
 }
 
-const { resolveProjectId, requireProject, resolveAndGuardProject } = createProjectResolvers(projectStore);
+const { resolveProjectId, requireProject, resolveAndGuardProject, resolveRequiredProjectId, resolveAndGuardRequiredProject, resolveAndGuardPresentProject } = createProjectResolvers(projectStore);
 const { getOrCreateSession, disposeSession, isAgentRunning } = createSessionHelpers({
 	projectStore,
 	sessionStore,
@@ -236,6 +236,9 @@ const integrationQueue = new IntegrationQueue({ ttlMs: config.claimTtlMs });
 // task (same precedent as taskStore.sessionStore).
 taskStore.claimStore = claimStore;
 taskStore.runnerRegistry = runnerRegistry;
+// WP2: read-only ledger handle for the observability exposition (the
+// cumulative `staleRejected` counter feeds the fencing breakdown).
+taskStore.executionLedger = executionLedger;
 
 const deps = {
 	authService,
@@ -248,6 +251,9 @@ const deps = {
 	agentRunner,
 	resolveProjectId,
 	resolveAndGuardProject,
+	resolveRequiredProjectId,
+	resolveAndGuardRequiredProject,
+	resolveAndGuardPresentProject,
 	hasSessionCapability,
 	guardSessionCapability,
 	getOrCreateSession,

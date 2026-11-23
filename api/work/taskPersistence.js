@@ -6,6 +6,7 @@ import { _formatFrontmatterValue, _parseFrontmatter } from "./taskFiles.js";
 import { normalizeSurveyFileName } from "./taskSurvey.js";
 import { resolveTaskTitleAndGoal } from "./taskIdentity.js";
 import { computeStageDelta, getTaskDiffStat, getCommitRangeDiffStat } from "./taskDiffStat.js";
+import { resolveTaskBaseBranch } from "./taskBaseBranch.js";
 import { _atomicWriteFileSync } from "../house/index.js";
 import { parseStoredRecords } from "./taskFiles.js";
 import { reportCreatedAt } from "../../shared/reportTimestamp.js";
@@ -70,6 +71,7 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			`projectId: ${_formatFrontmatterValue(task.projectId)}`,
 			`workflowId: ${_formatFrontmatterValue(task.workflowId || "wf-default")}`,
 			...(task.branch ? [`branch: ${_formatFrontmatterValue(task.branch)}`] : []),
+			...(task.baseBranch ? [`baseBranch: ${_formatFrontmatterValue(task.baseBranch)}`] : []),
 			`reviewBaseline: ${_formatFrontmatterValue(task.reviewBaseline ? JSON.stringify(task.reviewBaseline) : "")}`,
 			`title: ${_formatFrontmatterValue(task.title)}`,
 			`status: ${_formatFrontmatterValue(task.status)}`,
@@ -106,6 +108,9 @@ export function saveTaskMarkdown(taskStore, projectCwd, task) {
 			...(task.mergeAttemptId ? [`mergeAttemptId: ${_formatFrontmatterValue(task.mergeAttemptId)}`] : []),
 			...(task.deployAttemptId ? [`deployAttemptId: ${_formatFrontmatterValue(task.deployAttemptId)}`] : []),
 			...(task.stallCount ? [`stallCount: ${Number(task.stallCount) || 0}`] : []),
+			...(task.gitFailureStreak
+				? [`gitFailureStreak: ${_formatFrontmatterValue(JSON.stringify(task.gitFailureStreak))}`]
+				: []),
 			"---",
 		].join("\n");
 
@@ -480,7 +485,28 @@ export function recordTimelineWithDiffStat(
 					diffStatOpts,
 				);
 			} else {
-				stat = await getTaskDiffStat(cwd, task, diffStatOpts);
+				// The badge must agree with the review view, which diffs
+				// against the task's effective pipeline base (pinned
+				// snapshot, else the pipeline's live setting): legacy
+				// tasks without a snapshot would otherwise badge
+				// task-vs-main while the review shows task-vs-feature.
+				// Pure store lookup, no git — and best-effort, so a
+				// failing lookup degrades to the pinned-only path.
+				let effectiveBase = null;
+				try {
+					const resolved = await resolveTaskBaseBranch({
+						task,
+						projectStore: store?.projectStore,
+						projectId: task?.projectId,
+					});
+					if (resolved?.source !== "repo") effectiveBase = resolved?.branch || null;
+				} catch {
+					effectiveBase = null;
+				}
+				stat = await getTaskDiffStat(cwd, task, {
+					...diffStatOpts,
+					...(effectiveBase ? { baseBranch: effectiveBase } : {}),
+				});
 			}
 		} catch {
 			stat = null;
@@ -918,6 +944,33 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 	const autoRetrying = activeExecutionStatus ? parsedAutoRetrying : false;
 	const autoIterating = activeExecutionStatus ? parsedAutoIterating : false;
 
+	let gitFailureStreak;
+	if (typeof data.gitFailureStreak === "string" && data.gitFailureStreak.trim()) {
+		try {
+			const parsed = JSON.parse(data.gitFailureStreak);
+			if (
+				parsed &&
+				typeof parsed === "object" &&
+				!Array.isArray(parsed) &&
+				typeof parsed.stageId === "string" &&
+				parsed.stageId.trim() &&
+				typeof parsed.signature === "string" &&
+				parsed.signature.trim() &&
+				Number.isInteger(parsed.count) &&
+				parsed.count >= 1
+			) {
+				gitFailureStreak = {
+					stageId: parsed.stageId,
+					signature: parsed.signature,
+					count: parsed.count,
+					...(typeof parsed.updatedAt === "string" ? { updatedAt: parsed.updatedAt } : {}),
+				};
+			}
+		} catch {
+			// Tolerate corrupt section: no streak, the task dispatches normally.
+		}
+	}
+
 	let reviewBaseline;
 	if (typeof data.reviewBaseline === "string" && data.reviewBaseline.trim()) {
 		try {
@@ -943,6 +996,7 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		projectId: data.projectId || projectId,
 		workflowId: data.workflowId || "wf-default",
 		branch: data.branch || undefined,
+		baseBranch: data.baseBranch || undefined,
 		reviewBaseline,
 		title,
 		goal: taskGoal,
@@ -986,6 +1040,7 @@ export function parseTaskMarkdown(taskStore, content, taskId, projectId) {
 		mergeAttemptId: data.mergeAttemptId || undefined,
 		deployAttemptId: data.deployAttemptId || undefined,
 		stallCount: Number(data.stallCount) || 0,
+		gitFailureStreak,
 		history:
 			history.length > 0
 				? history

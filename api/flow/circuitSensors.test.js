@@ -72,6 +72,21 @@ describe("classifiers", () => {
 			false,
 		);
 	});
+
+	it("never treats a runner-classified commit failure as infrastructure", () => {
+		// Hook text rides on the error (message/stdout): a hook complaining
+		// about connectivity must not read as engine trouble.
+		expect(
+			isInfraLikeFailure("Commit failed (exit 1): fetch failed in the scan hook", {
+				failureKind: "commit-failed",
+			}),
+		).toBe(false);
+		expect(
+			isInfraLikeFailure("Commit failed (exit 1): ECONNREFUSED by the license hook", {
+				failureKind: "commit-failed",
+			}),
+		).toBe(false);
+	});
 });
 
 describe("window helpers", () => {
@@ -185,6 +200,21 @@ describe("recordCircuitFailure (infra window)", () => {
 			now: 0,
 		});
 		expect(getCircuitSensors(store).infra).toHaveLength(0);
+	});
+
+	it("ignores commit-failed hook text on both the auth and infra sensors", () => {
+		const store = makeStore();
+		for (let i = 0; i < 4; i += 1) {
+			recordCircuitFailure(store, {
+				taskId: `t${i}`,
+				error: "Commit failed (exit 1): 401 Unauthorized from the license hook; fetch failed",
+				failureKind: "commit-failed",
+				now: i,
+			});
+		}
+		expect(getCircuitSensors(store).infra).toHaveLength(0);
+		expect(getCircuitSensors(store).auth).toHaveLength(0);
+		expect(isTripped(store)).toBe(false);
 	});
 });
 

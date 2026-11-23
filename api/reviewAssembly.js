@@ -26,11 +26,19 @@ import {
 	drainGitLockRecoveries,
 	formatGitLockRecoveryNotice,
 } from "./git.js";
+// Pure validation comes from the defining module, not the git barrel (see
+// api/work/taskBaseBranch.js): the barrel is mocked out in unit tests and
+// those mocks do not carry pure helpers.
+import { isValidBranchName } from "./git/validation.js";
 import { config } from "./config.js";
 import {
 	isReviewDiffPreserved,
 	isValidReviewBaseline,
 } from "./work/taskBranches.js";
+import {
+	normalizeBaseBranchName,
+	resolveTaskBaseBranch,
+} from "./work/taskBaseBranch.js";
 import { docsTasksIgnorePath } from "./docsPath.js";
 import { isTaskFilePath } from "./work/isTaskFilePath.js";
 
@@ -64,7 +72,9 @@ function emptyReview(task, { branchSupported, reason, baseBranch = null }) {
 
 /***
  * MARK: resolveReviewBase
- * @description Resolves the default branch to diff the task branch against.
+ * @description Resolves the branch to diff the task branch against: the
+ *   task's pipeline base when one is pinned (so Files Changed shows
+ *   task-vs-feature, not task-vs-main), else the repo default branch.
  *   Guards the unborn-repo anomaly where defaultBranch() falls back to the
  *   current branch — never treats the task branch itself as the base (the
  *   diff would be empty and self-referential). Returns null when no base
@@ -72,9 +82,22 @@ function emptyReview(task, { branchSupported, reason, baseBranch = null }) {
  * @example await resolveReviewBase('/repo', 'kb/task-1') => 'main'
  * @param {string} projectCwd - Managed project working directory.
  * @param {string} taskBranch - The task's branch name.
+ * @param {Object} [opts]
+ * @param {string} [opts.baseBranch] - Preferred pipeline base (pinned task
+ *   value first); falls back to the repo default when absent or missing.
  * @returns {Promise<string|null>} Base branch name, or null.
  ***/
-export async function resolveReviewBase(projectCwd, taskBranch) {
+export async function resolveReviewBase(projectCwd, taskBranch, opts = {}) {
+	const preferred = normalizeBaseBranchName(opts.baseBranch);
+	if (preferred && isValidBranchName(preferred) && preferred !== taskBranch) {
+		try {
+			if (await branchExists(projectCwd, preferred)) {
+				return preferred;
+			}
+		} catch {
+			// Fall through to the repo default below.
+		}
+	}
 	let baseBranch = null;
 	try {
 		const resolved = await defaultBranch(projectCwd);
@@ -262,8 +285,8 @@ async function buildPreservedReview({
 
 /***
  * MARK: buildTaskReview
- * @description Gathers the git state for the task branch vs the repo's default
- *   branch: checkpoint snapshot (D2), merge-base diff files with per-file
+ * @description Gathers the git state for the task branch vs the task's
+ *   pipeline base branch: checkpoint snapshot (D2), merge-base diff files with per-file
  *   patches (size-capped), commit list (newest-first, D8), ahead/behind counts.
  *   Read-only w.r.t. refs — the only mutation is the idempotent snapshot
  *   commit when the worktree sits on the task branch and is dirty.
@@ -304,6 +327,12 @@ export async function buildTaskReview(deps, projectCwd, projectId, taskId) {
 	}
 
 	const taskBranch = task.branch;
+	// The task's pipeline base (pinned snapshot first) is the diff base;
+	// the resolver falls back to the repo default when unconfigured.
+	const pinnedBase = (
+		await resolveTaskBaseBranch({ task, projectStore, projectId, cwd: projectCwd })
+	)?.branch;
+	const reviewBaseOpts = pinnedBase ? { baseBranch: pinnedBase } : {};
 	const baseline = isValidReviewBaseline(task.reviewBaseline)
 		? task.reviewBaseline
 		: null;
@@ -314,7 +343,7 @@ export async function buildTaskReview(deps, projectCwd, projectId, taskId) {
 		// gone (e.g. deleted post-merge) — that is the point of preserving
 		// it. Without preservation, today's empty state applies unchanged.
 		if (isReviewDiffPreserved(project) && baseline) {
-			const baseBranch = await resolveReviewBase(projectCwd, taskBranch);
+			const baseBranch = await resolveReviewBase(projectCwd, taskBranch, reviewBaseOpts);
 			let uncommittedChanges = false;
 			try {
 				uncommittedChanges = !(await isWorkingTreeClean(projectCwd, {
@@ -411,7 +440,7 @@ export async function buildTaskReview(deps, projectCwd, projectId, taskId) {
 	}
 
 	// Resolve the base branch (never the task branch itself).
-	const baseBranch = await resolveReviewBase(projectCwd, taskBranch);
+	const baseBranch = await resolveReviewBase(projectCwd, taskBranch, reviewBaseOpts);
 	if (!baseBranch) {
 		return emptyReview(task, {
 			branchSupported: true,

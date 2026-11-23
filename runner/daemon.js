@@ -4,13 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, touchWorkdir } from "./project.js";
+import { listOrphanWorkdirs, prepareIntegrationWorkdir, prepareWorkdir, reapTaskWorkdirIfTerminal, reapTerminalOrphanWorkdirs, removeIntegrationWorkdir, runGit, slugForRepo, syncTaskDocs, writeClaimTaskAssets, resolveRunnerDocsDirName, resolveRunnerDocsRepoUrl, resolveRunnerKainbainHome, shouldSyncTaskDocs, touchWorkdir, withGitFailurePhase } from "./project.js";
 import { RunnerGitError } from "./project.js";
 import { runHarnessStage } from "./harness.js";
 import { runImpromptuJob } from "./impromptu.js";
 import { createStructuredEventSender } from "./logEvents.js";
 import { applyUpdate as defaultApplyUpdate, checkForUpdate as defaultCheckForUpdate } from "./updates/index.js";
-import { defaultInstallRoot, markUpdateSuccess, readUpdateState } from "./updates/state.js";
+import { isValidVersion } from "./updates/manifest.js";
+import { defaultInstallRoot, markUpdateSuccess, readUpdateState, requestWrapperRestart } from "./updates/state.js";
 // The Runner bundle ships shared/ next to this folder (runner/{runner,api,shared}
 // in prod and in the distributable tarball), so ../shared resolves both in the
 // repo and in every deployed layout — the same copy the backend executes.
@@ -19,8 +20,16 @@ import { clearDiscoveryCache, getDiscoveryStatus, provenanceForIds, recordRoundF
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
+import { buildGitFailureDetails, isDeterministicGitFailure } from "../shared/gitFailure.js";
+import { redactSecretsText } from "../shared/redactSecrets.js";
 import { appendAttestationTrailers, hashStageConfig, isWellFormedConfigHash } from "../shared/stageAttestation.js";
 import { resolveAttestationStage } from "../api/work/resolveAttestationStage.js";
+// WP2 signal: this daemon's process-local production counters (worktree
+// evictions, recorded by project.js) ride every heartbeat as `facts.signals`
+// so the backend exposition can merge them — the Runner is a separate
+// process from the backend, so its counters would otherwise never surface.
+// Cycle-free: productionSignals.js imports nothing.
+import { processSignalTotals } from "../api/watch/productionSignals.js";
 // The Runner bundle ships api/ next to runner/, so the backend's own
 // discovery helpers (standard install dirs, the pi snapshot path, the
 // KAINBAIN_*_BIN overrides) are the single source of truth for where harness
@@ -28,8 +37,14 @@ import { resolveAttestationStage } from "../api/work/resolveAttestationStage.js"
 // detects on the same host (SDK-style pi installs under ~/.pi/agent are
 // frequently NOT on PATH, which is why PATH-only probing missed them).
 import { DISCOVERY_ENV_VARS, candidateExecutables, standardSearchDirs, piSnapshotPath } from "../api/agent/harnessDiscovery.js";
+// Single source of truth for branch-name safety: the backend validates the
+// pipeline base with the same allow-list before it ever reaches a claim, and
+// the Runner re-checks here so a tampered or hand-built claim can never turn
+// the checkout below into a git flag injection.
+import { isValidBranchName } from "../api/git/validation.js";
 import { commitAndPush } from "./gitOps.js";
 import { saveRunnerCredential } from "./credentialFile.js";
+import { isTransientBackendError } from "./client.js";
 
 /***
  * MARK: RUNNER_SOURCE_DIR
@@ -835,15 +850,26 @@ export function resolveHarnessConfig(config = {}, { detected, detectOpts } = {})
  * @description Retargets a backend-curated prompt to the prepared worktree:
  *   the backend curates with its own project cwd (it owns task/stage truth),
  *   so every occurrence of that cwd prefix is rewritten to the worktree the
- *   harness will actually run in. Empty prompt (old backend) stays empty so
- *   the caller falls back to its minimal prompt.
+ *   harness will actually run in. For docs-repo projects the backend's
+ *   KainBain home (`docsHome`, the docs-repo checkout) is additionally
+ *   rewritten to the paired docs worktree (`docsWorkdir`), so curated
+ *   `.../docs/tasks/<id>` paths keep working where the docs actually live
+ *   on this Runner. The docs-home rewrite runs FIRST: the default docs
+ *   checkout (`<cwd>-kainbain-docs`) contains the cwd as a prefix, so the
+ *   reverse order would corrupt it. Empty prompt (old backend) stays empty
+ *   so the caller falls back to its minimal prompt.
  * @example applyBackendPrompt({ prompt: 'see /repo/docs', backendCwd: '/repo', workdir: '/w' }) => 'see /w/docs'
- * @param {Object} opts - `{ prompt, backendCwd, workdir }`.
+ * @example applyBackendPrompt({ prompt: 'see /srv/kb/docs', backendCwd: '/repo', workdir: '/w', docsHome: '/srv/kb', docsWorkdir: '/w-docs' }) => 'see /w-docs/docs'
+ * @param {Object} opts - `{ prompt, backendCwd, workdir, docsHome?, docsWorkdir? }`.
  * @returns {string} The retargeted prompt.
  ***/
-export function applyBackendPrompt({ prompt, backendCwd, workdir } = {}) {
-	const text = typeof prompt === "string" ? prompt : "";
-	if (!text || !backendCwd || !workdir || backendCwd === workdir) return text;
+export function applyBackendPrompt({ prompt, backendCwd, workdir, docsHome = null, docsWorkdir = null } = {}) {
+	let text = typeof prompt === "string" ? prompt : "";
+	if (!text) return text;
+	if (docsHome && docsWorkdir && docsHome !== docsWorkdir && docsHome !== backendCwd) {
+		text = text.split(docsHome).join(docsWorkdir);
+	}
+	if (!backendCwd || !workdir || backendCwd === workdir) return text;
 	return text.split(backendCwd).join(workdir);
 }
 
@@ -1105,7 +1131,7 @@ export async function refreshDiscoveredModels({ config, logger, discoverFn, disc
  *   `facts.commands` so Settings can tell "too old" from "failed" (R1).
  * @example SUPPORTED_RUNNER_COMMANDS.includes('requestUpdate') => true
  ***/
-export const SUPPORTED_RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate"];
+export const SUPPORTED_RUNNER_COMMANDS = ["requestModelRediscovery", "requestUpdate", "requestRestart"];
 
 /***
  * MARK: effectiveDirectoriesFor
@@ -1129,8 +1155,9 @@ export function effectiveDirectoriesFor(config = {}) {
  * MARK: factsFor
  * @description Heartbeat facts for one Runner: harnesses, models, tiers,
  *   disk headroom, versions (protocol + runner + api + this boot's build
- *   identity, boot time, and stale-code flag), directories, commands, and
- *   discovery status. `codeTree` overrides the stale-code scan root (tests
+ *   identity, boot time, and stale-code flag), directories, commands,
+ *   discovery status, and this process's WP2 signal totals (`signals`).
+ *   `codeTree` overrides the stale-code scan root (tests
  *   point it at a temp-dir fixture); production callers omit it and scan
  *   this daemon's own tree against its boot fingerprint. The `build`
  *   object is a fresh copy per call, so a downstream mutation of one
@@ -1169,6 +1196,10 @@ export function factsFor({ config, harnessVersions, updateStatus = null, command
 		directories: effectiveDirectoriesFor(config),
 		commands: SUPPORTED_RUNNER_COMMANDS,
 		workRoot: typeof config.workRoot === "string" ? config.workRoot : null,
+		// WP2: process-local signal totals (cumulative since this boot;
+		// the backend merges per-Runner deltas monotonically, so a restart
+		// that resets this counter can never move the fleet total backwards).
+		signals: { worktreeEvictions: processSignalTotals().worktreeEvictions },
 		discoveryStatus: getDiscoveryStatus(runnerHarnessIds(config), { staleMs: config.modelDiscoveryStaleMs }),
 		// Config warnings (dropped malformed model pins) plus fatal config
 		// errors ride every heartbeat so Settings shows WHY an advertised
@@ -1178,6 +1209,67 @@ export function factsFor({ config, harnessVersions, updateStatus = null, command
 		...(updateStatus ? { updateStatus } : {}),
 		...(commandAck ? { commandAck } : {}),
 	};
+}
+
+/***
+ * MARK: retryTransient
+ * @description Runs one idempotent backend call, riding through short
+ *   backend outages (S4): transient failures (502/503/504, dropped
+ *   socket — see `isTransientBackendError`) retry once per entry of
+ *   `waitsMs`, then the last error still throws. Bounded by
+ *   construction, never infinite: single-shot mode keeps its failure
+ *   contract and non-transient failures propagate untouched. A missing
+ *   or malformed wait list means no retries — the first error throws,
+ *   so a caller bug can never mask the backend's answer.
+ * @example await retryTransient({ callBackend: () => client.dispatchClaim({}), waitsMs: [1000, 2000] })
+ * @param {Object} opts - Options.
+ * @param {Function} opts.callBackend - Idempotent backend call to attempt.
+ * @param {Array<number>} [opts.waitsMs] - One wait per retry, in ms (default: none — throw on first failure).
+ * @returns {Promise<*>} The call's result.
+ ***/
+async function retryTransient({ callBackend, waitsMs = [] } = {}) {
+	const waits = Array.isArray(waitsMs) ? waitsMs : [];
+	for (let attempt = 0; ; attempt += 1) {
+		try {
+			return await callBackend();
+		} catch (err) {
+			if (!isTransientBackendError(err) || attempt >= waits.length) throw err;
+			const waitMs = Number(waits[attempt]);
+			await new Promise((resolveWait) => setTimeout(resolveWait, Number.isFinite(waitMs) && waitMs > 0 ? waitMs : 0));
+		}
+	}
+}
+
+/***
+ * MARK: describeBackendOutageCause
+ * @description One-line, secret-redacted cause for a transient backend
+ *   failure (S4): fetch rejections carry the stable system code the
+ *   classifier matched on — undici's bare "fetch failed" names nothing,
+ *   so the code (`ECONNRESET`, `UND_ERR_SOCKET`, …) is what lets an
+ *   operator tell "backend down" from "DNS broken" in the task history.
+ *   Gateway statuses keep the backend's own message instead. Never
+ *   returns an empty string: callers only invoke it on
+ *   classifier-positive errors, and the fallback covers defensive use.
+ * @example describeBackendOutageCause({ error: Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } }) }) => 'fetch failed (ECONNRESET)'
+ * @param {Object} opts - Options.
+ * @param {*} opts.error - The transient backend error to describe.
+ * @returns {string} Redacted one-line cause, never empty.
+ ***/
+function describeBackendOutageCause({ error } = {}) {
+	const rawMessage = typeof error?.message === "string" ? error.message : typeof error === "string" ? error : "";
+	const message = redactSecretsText(rawMessage).trim();
+	const status = Number(error?.statusCode);
+	if (Number.isFinite(status)) return message || `status ${status}`;
+	// Mirror of the classifier's cause walk: report the first code found,
+	// which is the signal the outage was ridden through on.
+	let current = error;
+	for (let depth = 0; depth < 4 && current && (typeof current === "object" || typeof current === "function"); depth += 1) {
+		if (typeof current.code === "string" && current.code) {
+			return message ? `${message} (${current.code})` : current.code;
+		}
+		current = current.cause;
+	}
+	return message || "backend unreachable";
 }
 
 /***
@@ -1215,11 +1307,18 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 		}
 		let collectedCredential = "";
 		for (;;) {
-			const reg = await client.register({
-				runnerId: config.runnerId,
-				joinToken: config.joinToken,
-				facts: factsFor({ config, harnessVersions: joinVersions, commandAck: stagedCommandAck(state) }),
-				joinNonce,
+			// S4: joining during a backend restart window rides through
+			// a few transient failures instead of exiting into a
+			// systemd restart storm; auth/unknown failures still throw.
+			const reg = await retryTransient({
+				callBackend: () =>
+					client.register({
+						runnerId: config.runnerId,
+						joinToken: config.joinToken,
+						facts: factsFor({ config, harnessVersions: joinVersions, commandAck: stagedCommandAck(state) }),
+						joinNonce,
+					}),
+				waitsMs: [250, 500, 1000],
 			});
 			if (reg.status === "active") {
 				if (typeof reg?.credential === "string" && reg.credential.trim()) {
@@ -1270,7 +1369,9 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 		Object.assign(harnessVersions, await probeHarnessVersions(id));
 	}
 	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) });
-	const beat = await client.heartbeat({ runnerId: config.runnerId, facts });
+	// S4: same ride-through as the register poll above — one blip at boot
+	// must not cost the process.
+	const beat = await retryTransient({ callBackend: () => client.heartbeat({ runnerId: config.runnerId, facts }), waitsMs: [250, 500, 1000] });
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
@@ -1355,7 +1456,7 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
  *   advertisement — selection then behaves as before, ungated).
  * @example updateDirectiveFromBeat({ update: { backendApiVersion: '1.0.0' } }) => { backendApiVersion: '1.0.0', ... }
  * @param {Object} [beat] - Heartbeat/register response body.
- * @returns {{backendApiVersion: string|null, desiredRunnerVersion: string|null, minimumRunnerVersion: string|null}} Directive.
+ * @returns {{backendApiVersion: string|null, desiredRunnerVersion: string|null, minimumRunnerVersion: string|null, desiredVersion: string|null}} Directive.
  ***/
 export function updateDirectiveFromBeat(beat = {}) {
 	const update = beat?.update && typeof beat.update === "object" ? beat.update : {};
@@ -1364,7 +1465,32 @@ export function updateDirectiveFromBeat(beat = {}) {
 		backendApiVersion: pick(update.backendApiVersion),
 		desiredRunnerVersion: pick(update.desiredRunnerVersion),
 		minimumRunnerVersion: pick(update.minimumRunnerVersion),
+		// Operator's per-runner version setting ('latest' default, or one
+		// exact release). Old backends omit it — null reads as 'latest',
+		// which preserves today's behaviour exactly.
+		desiredVersion: pick(update.desiredVersion),
 	};
+}
+
+/***
+ * MARK: pinnedDesiredVersion
+ * @description Exact release the runner must run instead of tracking
+ *   latest, read off the heartbeat directive (`update.desiredVersion`):
+ *   a valid version string, or null for `latest`/missing/unknown (old
+ *   backends, or junk that must never strand the runner — fail-open to
+ *   today's latest-tracking behaviour). Pinned runners never auto-update;
+ *   only a manual Update installs the pin.
+ * @example pinnedDesiredVersion({ desiredVersion: '1.2.3' }) => '1.2.3'
+ * @example pinnedDesiredVersion({ desiredVersion: 'latest' }) => null
+ * @param {Object} [directive] - Directive from updateDirectiveFromBeat.
+ * @returns {string|null} Pinned version, or null when tracking latest.
+ ***/
+export function pinnedDesiredVersion(directive = {}) {
+	const raw = directive && typeof directive === "object" ? directive.desiredVersion : null;
+	if (typeof raw !== "string") return null;
+	const trimmed = raw.trim();
+	if (!trimmed || trimmed.toLowerCase() === "latest") return null;
+	return isValidVersion(trimmed) ? trimmed : null;
 }
 
 /***
@@ -1403,9 +1529,15 @@ function stageCommandAck(state, ack) {
  *   catalogue without a pin edit); `requestUpdate` runs the existing idle-only
  *   self-update at once when idle, or parks `state.pendingUpdate` for
  *   the next idle point when an execution is live (never interrupts
- *   work, D5). Every handled command stages exactly one ack on
- *   `state.commandAcks` for the next heartbeat facts; unknown commands
- *   are ignored (the backend never sends them — enqueue is fail-closed).
+ *   work, D5); `requestRestart` reboots the runner on its current
+ *   version at once — a live execution is stopped (destructive,
+ *   operator-confirmed in Settings) and its claim lease expires so the
+ *   work re-queues, exactly like a crash. The reboot goes through the
+ *   wrapper's `restart-requested` sentinel (same `current` tree, no
+ *   update check). Every handled command stages
+ *   exactly one ack on `state.commandAcks` for the next heartbeat facts;
+ *   unknown commands are ignored (the backend never sends them — enqueue
+ *   is fail-closed).
  *   Commands already staged or in flight are skipped, so the backend's
  *   at-least-once redelivery never double-applies. Pass fresh
  *   `detectedHarnesses` (production callers probe the host) to append the
@@ -1421,7 +1553,7 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 	if (!(state.commandFlight instanceof Set)) state.commandFlight = new Set();
 	const alreadyStaged = (cmd) => state.commandAcks.some((a) => a && a.command === cmd);
 	for (const cmd of pendingCommands) {
-		if (cmd !== "requestModelRediscovery" && cmd !== "requestUpdate") continue;
+		if (cmd !== "requestModelRediscovery" && cmd !== "requestUpdate" && cmd !== "requestRestart") continue;
 		if (alreadyStaged(cmd) || state.commandFlight.has(cmd)) continue;
 		state.commandFlight.add(cmd);
 		try {
@@ -1494,6 +1626,42 @@ export async function handlePendingCommands({ config, client, logger, state, pen
 						stageCommandAck(state, { command: cmd, ok: true, detail: upd?.reason || "no update available" });
 					}
 				}
+			}
+			if (cmd === "requestRestart") {
+				// Reboot on the CURRENT version: no update check is
+				// interleaved (Restart !== Update). A live execution is
+				// stopped at once — the operator confirmed this in
+				// Settings, and the orphaned claim lease expires so the
+				// work re-queues like after a crash. Confirm the ack with
+				// a final heartbeat first (same peek-until-ack reason as
+				// the update path: without it the rebooted runner would
+				// collect the same command again and restart in a loop).
+				const busy = Boolean(state?.executionId);
+				const ack = {
+					command: cmd,
+					ok: true,
+					detail: busy ? "restarting now; running work stopped" : "restarting on current version",
+				};
+				stageCommandAck(state, ack);
+				try {
+					if (typeof client?.heartbeat === "function") {
+						await client.heartbeat({ runnerId: config.runnerId, facts: factsFor({ config, commandAck: ack }) });
+					}
+				} catch (err) {
+					logger.warn?.(`Restart ack heartbeat failed (restarting anyway): ${err?.message || err}`);
+				}
+				// Same-version reboot needs the wrapper's help: it only
+				// re-execs when `current` changed (a staged update), so a bare
+				// exit 0 here would stop the runner instead of rebooting it.
+				// The sentinel asks the wrapper to boot the SAME tree again;
+				// best-effort — an unwrapped (direct node) runner just exits.
+				try {
+					requestWrapperRestart({ installRoot: installRootFor(config) });
+				} catch (err) {
+					logger.warn?.(`Restart sentinel not written (exiting without a supervised reboot): ${err?.message || err}`);
+				}
+				logger.log?.(`Runner restarting on current version${busy ? " (running work stopped)" : ""}`);
+				process.exit(0);
 			}
 		} finally {
 			state.commandFlight.delete(cmd);
@@ -1597,27 +1765,112 @@ export function ciWorkdirFor({ runOnBranch, workdir, projectCwd } = {}) {
 }
 
 /***
+ * MARK: checkoutPrimaryBase
+ * @description Checks the primary checkout onto a backend-passed pipeline
+ *   base branch before a primary-mode CI command runs there. Idempotent
+ *   no-op when already on the branch. When the branch is missing locally
+ *   it is adopted from the remote (`origin/<base>`, fetched best-effort
+ *   first): the backend pushes an auto-created base precisely so remote
+ *   runners see it, and a runner that never fetched it must not fail a
+ *   stage the backend already prepared. Adoption only — the runner never
+ *   forks a missing base from the default (that would verify the wrong
+ *   code) and never moves an existing local base (the checkout may hold
+ *   operator work; staleness matches the pre-existing main-branch
+ *   contract). Fails loud when the name is not a valid git branch name,
+ *   when the branch exists neither locally nor on the remote, or when the
+ *   checkout refuses (dirty tree) — a primary CI run on the wrong branch
+ *   would verify the wrong code.
+ * @example await checkoutPrimaryBase('/repo', 'feature/base') => undefined (now on 'feature/base')
+ ***/
+async function checkoutPrimaryBase(projectCwd, base) {
+	if (!isValidBranchName(base)) {
+		throw new Error(`Refusing to check out suspicious primary branch name '${base}'`);
+	}
+	let localKnown = false;
+	try {
+		await runGit(projectCwd, ["rev-parse", "--verify", `refs/heads/${base}`]);
+		localKnown = true;
+	} catch {
+		localKnown = false;
+	}
+	if (!localKnown) {
+		// Best-effort fetch first: without it a base the backend just
+		// pushed is invisible here. A failed fetch (offline, no remote)
+		// only means adoption is unavailable; the loud error below owns it.
+		try {
+			await runGit(projectCwd, ["fetch", "origin"]);
+		} catch {
+			// Fall through to the local/remote existence checks below.
+		}
+		let remoteKnown = false;
+		try {
+			await runGit(projectCwd, ["rev-parse", "--verify", `origin/${base}`]);
+			remoteKnown = true;
+		} catch {
+			remoteKnown = false;
+		}
+		if (!remoteKnown) {
+			throw new Error(`CI stage runOnBranch 'primary' needs branch '${base}' in the primary checkout (the task's pipeline base branch) — it exists neither locally nor on the remote (a best-effort fetch ran first)`);
+		}
+		try {
+			await runGit(projectCwd, ["branch", "--track", base, `origin/${base}`]);
+		} catch {
+			// Tolerate the adopt race (a sibling created it first): only
+			// proceed when the local ref verifiably exists now.
+			try {
+				await runGit(projectCwd, ["rev-parse", "--verify", `refs/heads/${base}`]);
+			} catch {
+				throw new Error(`CI stage runOnBranch 'primary' needs branch '${base}' in the primary checkout (the task's pipeline base branch) — could not adopt it from 'origin/${base}'`);
+			}
+		}
+	}
+	let current = "";
+	try {
+		current = (await runGit(projectCwd, ["rev-parse", "--abbrev-ref", "HEAD"])).stdout.trim();
+	} catch {
+		current = "";
+	}
+	if (current === base) return;
+	try {
+		await runGit(projectCwd, ["checkout", base]);
+	} catch (err) {
+		throw new Error(`Could not check out primary branch '${base}' in the primary checkout (${err?.message || err}) — refusing to run on the wrong branch`);
+	}
+}
+
+/***
  * MARK: resolveCiWorkdir
  * @description Resolves the working directory for a dispatched CI stage,
  *   honouring the stage's runOnBranch mode end to end (the UI toggle must
  *   never be silently dropped): 'task' (default) runs in the task worktree;
  *   'primary' runs in the primary checkout (project.cwd on this host), where
- *   host/publish commands such as deploy.sh expect to run; 'custom' runs in
- *   a fresh ephemeral detached worktree at the named branch — never in the
- *   shared primary checkout (nothing engine-owned can dirty it) and never in
- *   the task worktree (a custom branch is not kb/*). The returned `cleanup`
- *   removes the ephemeral worktree again (custom mode only; null otherwise).
+ *   host/publish commands such as deploy.sh expect to run — checked out
+ *   onto the backend-passed primaryBranch when the task's pipeline names
+ *   its own base branch; 'custom' runs in a fresh ephemeral detached
+ *   worktree at the named branch — never in the shared primary checkout
+ *   (nothing engine-owned can dirty it) and never in the task worktree (a
+ *   custom branch is not kb/*). The returned `cleanup` removes the ephemeral
+ *   worktree again (custom mode only; null otherwise).
  * @example await resolveCiWorkdir({ runOnBranch: 'custom', customBranch: 'release/next', workdir: '/w/kb-t', projectCwd: '/repo', repoUrl: null, workRoot: '/w', taskId: 't' }) => { workdir: '/w/kb-ci-t', cleanup: [Function] }
- * @param {Object} opts - `{ runOnBranch, customBranch, workdir, projectCwd, repoUrl, workRoot, taskId }`.
+ * @param {Object} opts - `{ runOnBranch, customBranch, primaryBranch, workdir, projectCwd, repoUrl, workRoot, taskId }`.
  * @returns {Promise<{workdir: string, cleanup: (Function|null)}>}
  * @throws {Error} Custom mode with a blank branch name, or a branch that does
  *   not exist in the source repo (fails loud, mirroring the backend's
  *   resolveCiBranchPlan — never silently fall back to the task worktree).
+ *   A passed primaryBranch that is missing or cannot be checked out fails
+ *   the same loud way.
  ***/
-export async function resolveCiWorkdir({ runOnBranch, customBranch, workdir, projectCwd, repoUrl = null, workRoot, taskId } = {}) {
+export async function resolveCiWorkdir({ runOnBranch, customBranch, primaryBranch, workdir, projectCwd, repoUrl = null, workRoot, taskId } = {}) {
 	const mode = typeof runOnBranch === "string" ? runOnBranch.trim().toLowerCase() : "task";
 	if (mode !== "custom") {
-		return { workdir: ciWorkdirFor({ runOnBranch, workdir, projectCwd }), cleanup: null };
+		const resolved = ciWorkdirFor({ runOnBranch, workdir, projectCwd });
+		// A pipeline base travels from new backends only; old backends omit
+		// it and the checkout runs exactly as before (mixed-fleet safe).
+		const base = typeof primaryBranch === "string" ? primaryBranch.trim() : "";
+		if (mode === "primary" && base && resolved === projectCwd && projectCwd) {
+			await checkoutPrimaryBase(projectCwd, base);
+		}
+		return { workdir: resolved, cleanup: null };
 	}
 	const branch = typeof customBranch === "string" ? customBranch.trim() : "";
 	if (!branch) {
@@ -1744,11 +1997,14 @@ export function sanitizeCiEnv(value) {
 		return {};
 	}
 }
-export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null } = {}) {
+export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null, docsWorkdir = null } = {}) {
 	const resolved = resolveRunnerDocsDirName(
 		docsDirName ?? (typeof project === "object" && project !== null ? project : null),
 	);
-	const dir = path.join(workdir, resolved, "tasks", taskId);
+	// With a separate docs repo the task docs live in the paired docs
+	// worktree (synced through git), not in the code worktree.
+	const base = docsWorkdir || workdir;
+	const dir = path.join(base, resolved, "tasks", taskId);
 	const files = [];
 	let total = 0;
 	try {
@@ -1784,6 +2040,7 @@ async function executeAssignment({
 	harnessId = null,
 	runOnBranch = "",
 	customBranch = "",
+	primaryBranch = "",
 	integration = null,
 	taskAssets = null,
 }) {
@@ -1804,6 +2061,7 @@ async function executeAssignment({
 		if (!ciTimeoutMs && Number(claim.timeoutMs)) ciTimeoutMs = Number(claim.timeoutMs);
 		if (!runOnBranch && typeof claim.runOnBranch === "string") runOnBranch = claim.runOnBranch;
 		if (!customBranch && typeof claim.customBranch === "string") customBranch = claim.customBranch;
+		if (!primaryBranch && typeof claim.primaryBranch === "string") primaryBranch = claim.primaryBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
 		// Claim-shipped task images: the dispatch loop passes them
@@ -1882,6 +2140,13 @@ async function executeAssignment({
 		// Hoisted so the failure path below can flush the trailing
 		// structured batch before reporting the stage as failed.
 		let structuredSender = null;
+		// Hoisted so the commit-failure branch can name the phase, report
+		// the one-line summary through the same sequenced log sender, and
+		// ship task files from the prepared worktree. The branch stays
+		// null when worktree setup itself threw.
+		let sendLogs = null;
+		let gitPhase = "worktree-setup";
+		let assignmentBranch = null;
 		// Latched by the verdict watcher in the runHarnessStage onEvent
 		// callback below when the agent calls the fail_stage tool (mirrors
 		// the embedded path's stageFailureRequested in api/agentRunner.js).
@@ -1895,34 +2160,46 @@ async function executeAssignment({
 				stageId,
 				event: "started",
 			});
-			const { workdir, branch, mode, reused, recoveredTo, baseSha, evicted } = await prepareWorkdir({
+			const docsRepoUrl = resolveRunnerDocsRepoUrl(project) || (typeof claim?.docsRepoUrl === "string" && claim.docsRepoUrl.trim() ? claim.docsRepoUrl.trim() : null);
+			const { workdir, branch, mode, reused, recoveredTo, baseSha, evicted, docsWorkdir = null, docsRecoveredTo = null } = await prepareWorkdir({
 				repoUrl: project.gitUrl || project.repoUrl || null,
 				localPath: project.cwd || null,
 				workRoot: config.workRoot,
 				taskId: taskId,
+				docsRepoUrl,
+				docsLocalPath: typeof project?.docsRepo?.localPath === "string" && project.docsRepo.localPath.trim() ? project.docsRepo.localPath.trim() : null,
+				logger,
 			});
 			state.workdir = workdir;
-			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}` : ""}).`);
+			state.docsWorkdir = docsWorkdir;
+			assignmentBranch = branch;
+			logger.log(`Workdir ${workdir} (${mode}${reused ? ", reused" : ""}${baseSha ? `, base ${baseSha.slice(0, 7)}` : ""}${recoveredTo ? `, residue parked on ${recoveredTo}` : ""}${evicted ? `, evicted stale ${evicted.evicted}${evicted.parkedTo ? ` (residue parked on ${evicted.parkedTo})` : ""}` : ""})${docsWorkdir ? ` + docs worktree ${docsWorkdir}${docsRecoveredTo ? ` (residue parked on ${docsRecoveredTo})` : ""}` : ""}.`);
 			// Task prompt inputs (idea files, reference images) land in the
 			// live task folder outside the task branch — mirror them into
-			// the worktree so the harness actually sees them.
+			// the worktree so the harness actually sees them. With a separate
+			// docs repo the docs already live in the paired docs worktree
+			// (synced through git), so the copy is skipped; the sync source
+			// is the primary's KainBain home (the docs checkout on the
+			// backend host), never the code repo.
 			try {
 				const syncStats = {};
-				const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, workdir, taskId, docsDirName: project?.docsDirName, stats: syncStats });
-				if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) (${syncStats.assets ?? 0} task asset(s)) into worktree.`);
+				if (shouldSyncTaskDocs({ project, docsWorkdir })) {
+					const synced = await syncTaskDocs({ primaryCwd: project.cwd || null, primaryHome: resolveRunnerKainbainHome(project?.cwd, project), workdir, destWorkdir: docsWorkdir || workdir, taskId, docsDirName: project?.docsDirName, stats: syncStats });
+					if (synced > 0) logger.log(`Synced ${synced} task-doc file(s) (${syncStats.assets ?? 0} task asset(s)) into worktree.`);
+				}
 				// Remote-Runner delivery arm: with no local primary checkout
 				// the sync above copies nothing, so the claim's taskAssets
 				// bytes land here instead — before the first stage runs.
 				// Entries the worktree already has are skipped, never
 				// overwritten (a local sync or the agent wins).
-				const shipped = await writeClaimTaskAssets({ workdir, taskId, assets: claimTaskAssets, docsDirName: project?.docsDirName });
+				const shipped = await writeClaimTaskAssets({ workdir, destWorkdir: docsWorkdir || workdir, taskId, assets: claimTaskAssets, docsDirName: project?.docsDirName });
 				if (shipped > 0) logger.log(`Wrote ${shipped} claim-shipped task asset(s) into worktree.`);
 			} catch (err) {
 				logger.log(`Task-doc sync skipped: ${err?.message || err}`);
 			}
 
 			let seq = 0;
-			const sendLogs = async (bytes) => {
+			sendLogs = async (bytes) => {
 				for (const chunk of String(bytes).split("\n")) {
 					if (!chunk) continue;
 					await client.logs({
@@ -1939,7 +2216,13 @@ async function executeAssignment({
 			// Backend-curated stage prompt (backend owns curation; the
 			// Runner only retargets the backend cwd prefix to the worktree).
 			// Absent prompt (old backend) falls back to the minimal prompt.
-			let prompt = applyBackendPrompt({ prompt: backendPrompt, backendCwd: project.cwd, workdir });
+			let prompt = applyBackendPrompt({
+				prompt: backendPrompt,
+				backendCwd: project.cwd,
+				workdir,
+				docsHome: resolveRunnerKainbainHome(project?.cwd, project),
+				docsWorkdir,
+			});
 			if (!prompt) {
 				prompt = [`Task goal: ${task.goal || task.title || taskId}`, `Stage: ${stageId}`].join("\n");
 			}
@@ -1984,7 +2267,7 @@ async function executeAssignment({
 				let ciCleanup = null;
 				try {
 					({ workdir: ciWorkdir, cleanup: ciCleanup } = await resolveCiWorkdir({
-						runOnBranch, customBranch, workdir,
+						runOnBranch, customBranch, primaryBranch, workdir,
 						projectCwd: project.cwd || null,
 						repoUrl: project.gitUrl || project.repoUrl || null,
 						workRoot: config.workRoot,
@@ -1999,7 +2282,7 @@ async function executeAssignment({
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
 						...(configHash ? { configHash } : {}),
 						committed: false,
-						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: "",
+						taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: "",
 						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 						model: servedModel,
 						durationMs: Date.now() - runStartedAt,
@@ -2014,7 +2297,7 @@ async function executeAssignment({
 					const ci = await runCiCommand({
 						command, workdir: ciWorkdir,
 						timeoutMs: ciTimeoutMs || 600000,
-						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${workdir}/docs/tasks/${taskId}` },
+						env: { ...sanitizeCiEnv(ciEnv), KAINBAIN_TASK_ID: taskId, KAINBAIN_TASK_DOCS: `${docsWorkdir || workdir}/docs/tasks/${taskId}` },
 						onLog: (text) => { sendLogs(text).catch(() => {}); },
 					});
 					state.session = null; stopRenewal();
@@ -2024,9 +2307,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -2117,10 +2400,14 @@ async function executeAssignment({
 			});
 
 			const stageMessage = `kb/${taskId} ${stageId}: Runner ${config.runnerId} stage output`;
+			gitPhase = "stage-commit";
 			const { sha, pushed, pushSkipped, beforeSha, pushState, skipped } = await commitAndPush({
 				workdir,
 				branch,
 				taskDocsPath: `docs/tasks/${taskId}`,
+				// Docs-repo projects: the paired docs worktree (same kb/<taskId>
+				// branch in the docs repo) is committed and pushed FIRST.
+				docsWorkdir,
 				message: configHash
 					? appendAttestationTrailers(stageMessage, { taskId, stageId, configHash })
 					: stageMessage,
@@ -2162,7 +2449,7 @@ async function executeAssignment({
 					failureReason: verdictDecision.failureReason,
 					...(configHash ? { configHash } : {}),
 					committed: !skipped,
-					taskFiles: collectTaskFiles({ workdir, taskId }),
+					taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }),
 					output: String(output || "").slice(0, 20000),
 					durationMs: Date.now() - runStartedAt,
 				});
@@ -2182,7 +2469,7 @@ async function executeAssignment({
 				outcome: "passed",
 				...(configHash ? { configHash } : {}),
 				committed: !skipped,
-				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
+				taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }),
 				output: String(output || "").slice(0, 20000),
 				durationMs: Date.now() - runStartedAt,
 			});
@@ -2205,6 +2492,67 @@ async function executeAssignment({
 					// Interrupting is best-effort: the lease TTL still bounds the damage.
 				}
 				return { interrupted: true, executionId, epoch, reason };
+			}
+			if (err?.gitFailure && isDeterministicGitFailure(err.gitFailure)) {
+				// Deterministic commit/hook/merge rejection (e.g. the
+				// pre-commit binary guard refusing corrupt PNGs in the
+				// stage-end commit): re-running the same tree fails the
+				// same way, so report once as a FAILED completion
+				// carrying the structured payload and RETURN — like
+				// WORKTREE_CAP_REACHED above, never rethrow. Rethrowing
+				// crash-loops under Restart=always while the task keeps
+				// its stale error. (Recovery snapshots bypass hooks, so
+				// this branch only fires for task-branch commits.)
+				withGitFailurePhase({ error: err, phase: gitPhase });
+				const gitFailure = err.gitFailure;
+				const failureReason = redactSecretsText(gitFailure.summary).trim() || "Runner commit failed";
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flushing is best-effort: the failure report matters more.
+				}
+				if (sendLogs) {
+					try {
+						await sendLogs(`commit failed: ${failureReason}`);
+					} catch {
+						// Logging is best-effort: the completion matters more.
+					}
+				}
+				if (typeof logger.error === "function") logger.error(`commit failed (${gitFailure.phase || gitPhase}): ${failureReason}`);
+				else logger.log(`commit failed (${gitFailure.phase || gitPhase}): ${failureReason}`);
+				try {
+					const receipt = await client.complete({
+						taskId: taskId,
+						projectId: projectId,
+						executionId,
+						epoch,
+						...(assignmentBranch ? { branch: assignmentBranch } : {}),
+						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+						model: servedModel,
+						outcome: "failed",
+						failureKind: "commit-failed",
+						failureReason,
+						gitFailure,
+						...(configHash ? { configHash } : {}),
+						committed: false,
+						...(state.workdir
+							? { taskFiles: collectTaskFiles({ workdir: state.workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir: state.docsWorkdir }) }
+							: {}),
+						durationMs: Date.now() - runStartedAt,
+					});
+					return { ...receipt, gitFailureReported: true, gitFailureSummary: failureReason };
+				} catch (reportErr) {
+					// The report itself failed (lost lease, unreachable
+					// backend): best-effort interrupt WITH the reason so the
+					// history names the cause, then still return — a
+					// reporting failure must never crash the runner either.
+					try {
+						await client.interrupt({ taskId, projectId, executionId, reason: failureReason.slice(0, 500) });
+					} catch {
+						// Interrupting is best-effort: the lease TTL still bounds the damage.
+					}
+					return { gitFailureReported: true, reportFailed: true, reason: failureReason };
+				}
 			}
 			if (err?.failedOutcome) {
 				// The harness ran and failed: report through the engine's
@@ -2258,6 +2606,29 @@ async function executeAssignment({
 					durationMs: Date.now() - runStartedAt,
 				});
 			}
+			if (isTransientBackendError(err)) {
+				// Backend outage mid-assignment (LAN blip, backend
+				// restart-window 502/503/504, dropped socket): release via
+				// interrupt WITH the reason and RETURN — the same
+				// report-and-return precedent as WORKTREE_CAP_REACHED
+				// above, never rethrow. The dispatch loop keeps polling;
+				// single-shot mode maps this to a clean non-zero exit
+				// below. The `transient` flag is additive and internal.
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flushing is best-effort: the interrupt matters more.
+				}
+				const reason = `Backend unreachable mid-assignment: ${describeBackendOutageCause({ error: err })}`.slice(0, 500);
+				if (typeof logger.error === "function") logger.error(reason);
+				else logger.log(reason);
+				try {
+					await client.interrupt({ taskId, projectId, executionId, reason });
+				} catch {
+					// Interrupting is best-effort: the lease TTL still bounds the damage.
+				}
+				return { interrupted: true, executionId, epoch, reason, transient: true };
+			}
 			// Flush the trailing structured batch before interrupting: the
 			// tool/error trail up to the failure point must be stored, not
 			// only whatever the text tap carried.
@@ -2266,11 +2637,17 @@ async function executeAssignment({
 			} catch {
 				// Flushing is best-effort: the interrupt matters more.
 			}
+			// Transient faults (git lock/timeout, harness transport) keep
+			// the interrupt+rethrow path — but the reason now travels on
+			// the interrupt so the task history names the cause instead of
+			// a bare "lease dropped".
+			const interruptReason = redactSecretsText(String(err?.message || "Runner execution failed")).trim().slice(0, 500);
 			try {
 				await client.interrupt({
 					taskId: taskId,
 					projectId: projectId,
 					executionId,
+					...(interruptReason ? { reason: interruptReason } : {}),
 				});
 			} catch {
 				// Interrupting is best-effort: the lease TTL still bounds the damage.
@@ -2412,7 +2789,23 @@ async function executeIntegrationAssignment({
 				}).catch(() => {});
 				state.session = null; stopRenewal(); clearInterval(integrationTimer);
 				await finishProgress();
-				return await failTask(detail, { taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }) });
+				const mergeText = [`${mergeErr?.message || ""}`, `${mergeErr?.stderr || ""}`, `${mergeErr?.stdout || ""}`]
+					.map((part) => part.trim())
+					.filter(Boolean)
+					.join("\n");
+				return await failTask(detail, {
+					taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName }),
+					gitFailure: buildGitFailureDetails({
+						phase: "merge",
+						command: `git merge --no-ff origin/${taskBranch}`,
+						exitCode: Number.isInteger(mergeErr?.exitCode) ? mergeErr.exitCode : null,
+						kind: "merge-conflict",
+						files: conflicted,
+						hookOutput: mergeText,
+						remedy: `Resolve each listed file on '${taskBranch}', commit the resolution, and retry the merge stage — the integration runner never resolves code.`,
+						summary: detail,
+					}),
+				});
 			}
 			const mergeSha = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 			try {
@@ -2474,8 +2867,49 @@ async function executeIntegrationAssignment({
 			await finishProgress();
 			return await failTask(`stale-head: ${err.message}`);
 		}
+		if (err?.gitFailure && isDeterministicGitFailure(err.gitFailure)) {
+			// Deterministic commit/hook rejection inside the merge (e.g. a
+			// hook refusing the merge commit): settle the integration lease
+			// as failed and report the task as failed with the structured
+			// payload — never rethrow into the restart loop.
+			withGitFailurePhase({ error: err, phase: "merge" });
+			const gitFailure = err.gitFailure;
+			const failureReason = redactSecretsText(gitFailure.summary).trim() || "Integration commit failed";
+			try {
+				await sendLogs(`[integrate] commit failed: ${failureReason}`);
+			} catch {
+				// Logging is best-effort: the reports matter more.
+			}
+			await client.integrationReport({
+				projectId, targetBranch, executionId: integrationExecutionId, epoch: integrationEpoch,
+				outcome: "failed", detail: failureReason,
+			}).catch(() => {});
+			await finishProgress();
+			return await failTask(failureReason, { failureKind: "commit-failed", gitFailure });
+		}
+		if (isTransientBackendError(err)) {
+			// Backend outage mid-integrate (LAN blip, backend
+			// restart-window 502/503/504, dropped socket): release via
+			// interrupt WITH the reason and RETURN — parity with the
+			// executeAssignment branch above, never rethrow. The
+			// integration lease TTL bounds the half-reported merge.
+			const reason = `Backend unreachable mid-assignment: ${describeBackendOutageCause({ error: err })}`.slice(0, 500);
+			if (typeof logger.error === "function") logger.error(reason);
+			else logger.log(reason);
+			try {
+				// reason is never empty — describeBackendOutageCause always falls back.
+				await client.interrupt({ taskId, projectId, executionId, reason });
+			} catch {
+				// Interrupting is best-effort: the lease TTL still bounds the damage.
+			}
+			return { interrupted: true, executionId, epoch, reason, transient: true };
+		}
+		const interruptReason = redactSecretsText(String(err?.message || "Integration execution failed")).trim().slice(0, 500);
 		try {
-			await client.interrupt({ taskId, projectId, executionId });
+			await client.interrupt({
+				taskId, projectId, executionId,
+				...(interruptReason ? { reason: interruptReason } : {}),
+			});
 		} catch {
 			// Interrupting is best-effort: the lease TTL still bounds the damage.
 		}
@@ -2552,6 +2986,7 @@ export async function runSingleAssignment({
 			projectId: config.projectId,
 			taskId: config.taskId,
 			workRoot: config.workRoot,
+			logger,
 		});
 		// Idle-only update close-out: a requestUpdate that arrived
 		// mid-assignment parked state.pendingUpdate — this is the
@@ -2566,6 +3001,15 @@ export async function runSingleAssignment({
 			} catch (err) {
 				logger.warn?.(`Runner self-update failed (keeping current version): ${err?.message || err}`);
 			}
+		}
+		if (result?.transient === true && result?.interrupted === true) {
+			// S4: single-shot has no loop to continue, so a transient
+			// ride-through still ends the process — as a clean
+			// non-zero exit carrying the release reason (the task was
+			// already released with it above), preserving the CI
+			// failure contract. Dispatch mode never takes this path:
+			// the loop keeps polling on a transient result.
+			throw new Error(result.reason || "Backend unreachable mid-assignment; task released.");
 		}
 		return result;
 	} finally {
@@ -2600,10 +3044,13 @@ export function installRootFor(config = {}) {
  *   into the new version. Any verification failure returns ok:false and
  *   keeps the current installation untouched.
  * @example await maybeSelfUpdate({ config, client }) => { checked: false, ... }
- * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?, force?).
+ * @param {Object} opts - Options (config, client?, logger?, installRoot?, now?, updateState?, updateDeps?, force?, targetVersion?).
  *   `force` bypasses the interval gate for the 409 path, where the backend
  *   explicitly ordered an update — the Runner checks immediately instead of
- *   waiting out the jittered hour.
+ *   waiting out the jittered hour. A pinned `desiredVersion` in the
+ *   heartbeat directive (`updateState.updateDirective`) skips non-force
+ *   checks entirely (manual Update only) and becomes the force-check
+ *   target; an explicit `targetVersion` overrides it.
  * @returns {Promise<Object>} `{ checked, ok, update?, applied?, reason? }`. Apply
  *   failures are contained here (ok:false, failed status noted) and never throw.
  ***/
@@ -2616,8 +3063,19 @@ export async function maybeSelfUpdate({
 	updateState = null,
 	updateDeps = {},
 	force = false,
+	targetVersion = null,
 } = {}) {
 	if (!config?.autoUpdate) return { checked: false, reason: "auto-update disabled" };
+	// Per-runner version setting (heartbeat directive): pinned runners
+	// never auto-update — only a manual Update (force) installs the pin,
+	// resolved here as the check target. An explicit targetVersion wins
+	// for callers that already resolved one.
+	const directivePin = pinnedDesiredVersion(updateState?.updateDirective);
+	const effectiveTarget =
+		typeof targetVersion === "string" && targetVersion ? targetVersion : directivePin;
+	if (effectiveTarget && !force) {
+		return { checked: false, reason: `pinned to ${effectiveTarget}: manual update only` };
+	}
 	const interval = Number(config.updateCheckIntervalMs) || 3600000;
 	const state = updateState || {};
 	const last = Number(state.lastUpdateCheckAt) || 0;
@@ -2647,6 +3105,7 @@ export async function maybeSelfUpdate({
 			currentVersion: RUNNER_VERSION,
 			updateUrl: config.updateUrl,
 			backendApiVersion: typeof directive.backendApiVersion === "string" ? directive.backendApiVersion : null,
+			targetVersion: effectiveTarget || null,
 			logger,
 		});
 	} catch (err) {
@@ -2684,7 +3143,12 @@ export async function maybeSelfUpdate({
  *   `CLAIM_CONFLICT` inside the fence and the loop simply polls again. A
  *   `STALE_RUNNER` answer triggers one fresh heartbeat and a single retry;
  *   `RUNNER_PAUSED` (operator-parked) backs off and re-polls until resumed;
- *   anything else throws loud.
+ *   transient backend outages (502/503/504, dropped socket) retry with
+ *   backoff and re-poll without consuming idle budget; anything else
+ *   throws loud. A failing assignment never kills the loop:
+ *   the task is released via interrupt inside the assignment and the loop
+ *   logs and keeps polling (`STALE_EPOCH` still propagates — a fenced-out
+ *   lease needs a fresh join).
  * @example await runDispatchLoop({ config, client }) => { assignments: 2, polls: 5 }
  * @param {Object} opts - Options.
  * @param {Object} opts.config - Normalized runner config (dispatch mode).
@@ -2724,7 +3188,7 @@ export async function runDispatchLoop({
 	const sweepEveryPolls = 12;
 	const sweepTerminalWorkdirs = async (why) => {
 		try {
-			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: config.workRoot });
+			const reaped = await reapTerminalOrphanWorkdirs({ client, workRoot: config.workRoot, logger });
 			if (reaped.length) {
 				logger.log(
 					`Workdir sweep (${why}): reaped ${reaped.length} terminal workdir(s): ${reaped.map((d) => path.basename(d)).join(", ")}`,
@@ -2781,6 +3245,29 @@ export async function runDispatchLoop({
 					}
 					await new Promise((r) => setTimeout(r, pollMs));
 					continue;
+				} else if (isTransientBackendError(err)) {
+					// S4 ride-through: the backend is restarting or the
+					// LAN blipped (502/503/504, dropped socket). Retry
+					// the idempotent poll a few times with growing
+					// waits; on recovery the answer below is processed
+					// normally, else back off and re-poll WITHOUT
+					// consuming idle budget — the same shape as the
+					// 429/RUNNER_PAUSED branches above. A non-transient
+					// failure during retry still throws loud.
+					try {
+						answer = await retryTransient({
+							callBackend: () => client.dispatchClaim({ projectIds: config.projectIds ?? null }),
+							waitsMs: [1000, 2000, 4000].map((waitMs) => Math.min(waitMs, pollMs)),
+						});
+					} catch (retryErr) {
+						if (!isTransientBackendError(retryErr)) throw retryErr;
+						polls += 1;
+						const cause = describeBackendOutageCause({ error: retryErr }).slice(0, 200);
+						if (typeof logger.warn === "function") logger.warn(`Dispatch: backend unreachable (${cause}); backing off.`);
+						else logger.log(`Dispatch: backend unreachable (${cause}); backing off.`);
+						await new Promise((r) => setTimeout(r, pollMs));
+						continue;
+					}
 				} else {
 					throw err;
 				}
@@ -2856,41 +3343,68 @@ export async function runDispatchLoop({
 					`Requirements want harness '${wanted}' (not loaded); serving with primary '${servingId}'.`,
 				);
 			}
-			await executeAssignment({
-				config,
-				client,
-				logger,
-				harness: harnesses[servingId] ?? harness,
-				harnessId: servingId,
-				state,
-				projectId: answer.projectId,
-				taskId: answer.taskId,
-				lease: {
-				executionId: answer.executionId,
-				epoch: answer.epoch,
-				// Stage attestation rides the lease: the hash the backend
-				// computed at dispatch, echoed into the wrap-up commit and
-				// the completion below. Old backends omit it (local compute).
-				...(typeof answer.configHash === "string" && answer.configHash.trim()
-					? { configHash: answer.configHash.trim() }
-					: {}),
-			},
-				backendPrompt: answer.prompt || "",
-				taskAssets: answer.taskAssets,
-				kind: answer.kind || "",
-				ciCommand: answer.command || "",
-				runOnBranch: answer.runOnBranch || "",
-				customBranch: answer.customBranch || "",
-				ciTimeoutMs: Number(answer.timeoutMs) || 0,
-				ciEnv: answer.env,
-				// The backend already matched this task against our
-				// advertised models: serve exactly its required model.
-				model: answer.requirements?.model || null,
-				// Leased integrations carry their target/task SHAs here;
-				// executeAssignment routes `integrate` to the merge
-				// procedure instead of a harness.
-				integration: answer.integration ?? null,
-			});
+			// Composed containment: the assignment result feeds the
+			// one-poll git-failure backoff below, while the try/catch is
+			// the restart-storm barrier — a throwing assignment is logged
+			// and contained instead of exiting 1 into systemd restarts.
+			let assignmentResult = null;
+			try {
+				assignmentResult = await executeAssignment({
+					config,
+					client,
+					logger,
+					harness: harnesses[servingId] ?? harness,
+					harnessId: servingId,
+					state,
+					projectId: answer.projectId,
+					taskId: answer.taskId,
+					lease: {
+					executionId: answer.executionId,
+					epoch: answer.epoch,
+					// Stage attestation rides the lease: the hash the backend
+					// computed at dispatch, echoed into the wrap-up commit and
+					// the completion below. Old backends omit it (local compute).
+					...(typeof answer.configHash === "string" && answer.configHash.trim()
+						? { configHash: answer.configHash.trim() }
+						: {}),
+				},
+					backendPrompt: answer.prompt || "",
+					taskAssets: answer.taskAssets,
+					kind: answer.kind || "",
+					ciCommand: answer.command || "",
+					runOnBranch: answer.runOnBranch || "",
+					customBranch: answer.customBranch || "",
+					primaryBranch: answer.primaryBranch || "",
+					ciTimeoutMs: Number(answer.timeoutMs) || 0,
+					ciEnv: answer.env,
+					// The backend already matched this task against our
+					// advertised models: serve exactly its required model.
+					model: answer.requirements?.model || null,
+					// Leased integrations carry their target/task SHAs here;
+					// executeAssignment routes `integrate` to the merge
+					// procedure instead of a harness.
+					integration: answer.integration ?? null,
+				});
+			} catch (err) {
+				// STALE_EPOCH keeps propagating: our lease lost its fence
+				// and only a fresh join re-establishes it — containing it
+				// here would let the loop act on superseded state.
+				if (err?.code === "STALE_EPOCH") throw err;
+				// Per-task containment: a worktree-setup or harness failure
+				// already released the task via interrupt inside
+				// executeAssignment — log it and keep polling instead of
+				// exiting 1 into a systemd restart storm that blocks every
+				// other task. (Recovery snapshots bypass repo hooks, so a
+				// hook rejection can no longer be the throw here; hook
+				// rejections on task-branch commits report as structured
+				// failed completions and return, never throw.)
+				const reason = `Assignment ${answer.projectId}/${answer.taskId} failed (${err?.message || err}); task released, continuing dispatch.`;
+				// This catch is the restart-storm barrier: its own logging
+				// must never throw back out, so every sink is checked.
+				if (typeof logger?.error === "function") logger.error(reason);
+				else if (typeof logger?.warn === "function") logger.warn(reason);
+				else console.error(reason);
+			}
 			// Terminal tasks never run again: reclaim their workdir slot
 			// now instead of growing into the cap (best-effort, never
 			// throws).
@@ -2899,7 +3413,17 @@ export async function runDispatchLoop({
 				projectId: answer.projectId,
 				taskId: answer.taskId,
 				workRoot: config.workRoot,
+				logger,
 			});
+			if (assignmentResult?.gitFailureReported) {
+				// A deterministic git failure was just reported for this
+				// task: pause one poll cycle so the same task+stage is not
+				// re-claimed immediately. The process stays alive and polls
+				// for other work afterwards; the backend parks the task
+				// after three consecutive strikes.
+				logger.log(`Dispatch: backing off one poll cycle (${pollMs}ms) after a deterministic git failure report.`);
+				await new Promise((r) => setTimeout(r, pollMs));
+			}
 			if (state.pendingUpdate) {
 				try {
 					const upd = await maybeSelfUpdate({ config, client, logger, installRoot: installRootFor(config), updateState: state, force: true });

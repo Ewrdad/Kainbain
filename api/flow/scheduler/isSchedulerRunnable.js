@@ -2,6 +2,7 @@ import {
 	normalizeStageType,
 } from '../../projectStore.js';
 import { isAutoResumable } from './isAutoResumable.js';
+import { isGitFailureParked } from './isGitFailureParked.js';
 
 /***
  * MARK: isSchedulerRunnable
@@ -9,7 +10,9 @@ import { isAutoResumable } from './isAutoResumable.js';
  *   task right now". An `in_stage` task needs an automated, unpaused stage
  *   and no blockers; an `interrupted` task additionally needs the
  *   `isAutoResumable` policy (merge/human/paused/blocked interruptions stay
- *   parked for the operator or the continuity plugin). The
+ *   parked for the operator or the continuity plugin); and a task parked
+ *   after consecutive deterministic git failures (`isGitFailureParked`)
+ *   stays unrunnable until an operator retries, resumes, or moves it. The
  *   `allowInterrupted` flag keeps existing in_stage-only call sites on their
  *   exact current behaviour until they opt into resume pickup.
  * @param {Object} task
@@ -31,6 +34,11 @@ export function isSchedulerRunnable(
 	if (!task || !stage) return false;
 	if (blocked) return false;
 	if (claimed) return false;
+	// Git-failure parking: three consecutive deterministic commit/hook
+	// failures pause auto-dispatch (embedded and Runner scans share this
+	// gate) until the operator acts — re-running the poisoned tree is
+	// provably futile.
+	if (isGitFailureParked(task)) return false;
 	if (task.status === "interrupted") {
 		if (!allowInterrupted) return false;
 		if (!isAutoResumable(task, stage, { blocked })) return false;

@@ -3,6 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { healthChecker as defaultHealthChecker } from "../healthChecker.js";
 import { getConfigSpec } from "../config/index.js";
+import { config } from "../config.js";
+import {
+	buildVersionInfo,
+	readApiContract,
+	readBackendVersion,
+	readSecurityReport,
+} from "../versionInfo.js";
 
 /***
  * MARK: readApiVersion
@@ -155,6 +162,124 @@ export default async function statusRoutes(app, { deps } = {}) {
 			};
 		},
 	);
+
+	const versionInfoSchema = {
+		querystring: {
+			type: "object",
+			properties: {
+				// Real UI versions are a few chars; the cap rejects absurd
+				// input with a 400 instead of feeding it to semver coercion.
+				uiVersion: { type: "string", maxLength: 128 },
+				// The running UI's own API contract (baked from
+				// frontend/version.json): the apiVersion it speaks plus the
+				// backend range it requires. Ranges run longer than plain
+				// versions, hence the wider cap.
+				frontendApiVersion: { type: "string", maxLength: 128 },
+				requiresBackendApi: { type: "string", maxLength: 256 },
+			},
+		},
+		response: {
+			200: {
+				type: "object",
+				properties: {
+					ui: {
+						type: "object",
+						properties: {
+							installed: { type: ["string", "null"] },
+							latest: { type: ["string", "null"] },
+							status: { type: "string" },
+							updateUrl: { type: "string" },
+						},
+					},
+					backend: {
+						type: "object",
+						properties: {
+							installed: { type: ["string", "null"] },
+							latest: { type: ["string", "null"] },
+							status: { type: "string" },
+							updateUrl: { type: "string" },
+						},
+					},
+					apis: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								name: { type: "string" },
+								installed: { type: ["string", "null"] },
+								latest: { type: ["string", "null"] },
+								status: { type: "string" },
+								frontendApiVersion: { type: ["string", "null"] },
+								requiresBackendApi: { type: ["string", "null"] },
+								compatibility: {
+									type: "object",
+									properties: {
+										status: { type: "string" },
+										detail: { type: "string" },
+									},
+								},
+								accepts: { type: "object", additionalProperties: true },
+								updateUrl: { type: "string" },
+							},
+						},
+					},
+					security: {
+						type: "object",
+						properties: {
+							status: { type: "string" },
+							checkedAt: { type: ["string", "null"] },
+							summary: { type: "string" },
+							reportUrl: { type: ["string", "null"] },
+						},
+					},
+					checkedAt: { type: "string" },
+					warnings: { type: "array", items: { type: "string" } },
+				},
+			},
+		},
+	};
+
+	app.get("/status/versions", { schema: versionInfoSchema }, async (request) => {
+		const queryUiVersion =
+			typeof request.query?.uiVersion === "string" ? request.query.uiVersion : null;
+		const queryFrontendApi = {
+			apiVersion:
+				typeof request.query?.frontendApiVersion === "string"
+					? request.query.frontendApiVersion
+					: null,
+			requiresBackendApi:
+				typeof request.query?.requiresBackendApi === "string"
+					? request.query.requiresBackendApi
+					: null,
+		};
+		// `deps.versions` is a test seam: integration tests inject stubbed
+		// sources without touching the global config singleton or disk.
+		const versionSources = deps?.versions || {};
+		return buildVersionInfo({
+			uiVersion: queryUiVersion,
+			backendVersion:
+				"backendVersion" in versionSources
+					? versionSources.backendVersion
+					: readBackendVersion(),
+			apiContract:
+				"apiContract" in versionSources ? versionSources.apiContract : readApiContract(),
+			frontendApi:
+				"frontendApi" in versionSources ? versionSources.frontendApi : queryFrontendApi,
+			latest: {
+				ui: config.latestUiVersion,
+				backend: config.latestBackendVersion,
+				api: config.latestApiVersion,
+				...versionSources.latest,
+			},
+			security:
+				"security" in versionSources
+					? versionSources.security
+					: readSecurityReport({
+							reportPath: config.securityReportPath,
+							reportUrl: config.securityReportUrl,
+						}),
+		});
+	});
 
 	app.get(
 		"/status/health",

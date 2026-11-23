@@ -217,12 +217,13 @@ export function useWorkflow({ onNotification } = {}) {
    * @returns {Promise<Object>}
    ***/
   const createWorkflow = useCallback(
-    async (projectId, { name, stages: customStages, isDefault = false }) => {
+    async (projectId, { name, stages: customStages, isDefault = false, baseBranch }) => {
       try {
         const created = await api.createProjectWorkflow(projectId, {
           name,
           stages: customStages,
           isDefault,
+          ...(baseBranch ? { baseBranch } : {}),
         });
         await fetchWorkflow(projectId);
         onNotificationRef.current?.({
