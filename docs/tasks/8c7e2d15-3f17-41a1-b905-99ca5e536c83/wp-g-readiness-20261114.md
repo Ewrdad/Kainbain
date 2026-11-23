@@ -452,3 +452,25 @@ decision + restarts with rediscovery receipts, live §6.3 UI pass,
 explicit human who/when/scope for q3 leftovers + q4 infeasibility) and
 a later agent run confirms §6.1 all-pass. Evidence in
 `run49-20261119-2135.md` (`verification-20261114.md` addendum).
+
+## Addendum 2026-11-23 ~13:05Z (run51 read-only re-verification)
+
+NOT READY (unchanged since run50/review). Branch already synced
+(HEAD `4198583f`, behind `origin/main` 0 / ahead 79); §6.5 FULLY green on
+this HEAD: runner 526/526, dispatch 175/175, routes 193/193, frontend
+91/91, with ENGINE-DIR-UNTOUCHED proven bit-identical before/after our
+suite block (shas unchanged since run50 — no new external rewrite); §6.4
+fixture 12/12. Live §6.1 PARTIAL: local-alpha fully PASS; local-bravo
+discovery PASS but `paused:true` persists (muse-ember still 2 runners);
+server2-alpha still FAIL (pre-WP-B `f430f537`, pi `ERR_MODULE_NOT_FOUND`,
+fresh atMs `1795438872429` — discovery re-ran and still fails; tarball
+staged `ac919e2a…`, no lowercase `version.json`, `cross-spawn` still
+absent). Backend build 637 unchanged since run50. §6.2 PASS (130 models,
+zero `test-fleet`, 2 quarantined leftovers awaiting q3 grant). §6.3/§6.4
+live pending operator; explicit human grant still absent (zero DELETEs
+issued). WP-G may proceed to its HUMAN dispatch decision ONLY after
+operator completes the run51 recommendation list (Bundle B + bravo
+decision + restarts with rediscovery receipts, live §6.3 UI pass,
+explicit human who/when/scope for q3 leftovers + q4 infeasibility) and
+a later agent run confirms §6.1 all-pass. Evidence in
+`run51-20261123-1305.md` (`verification-20261114.md` addendum).
