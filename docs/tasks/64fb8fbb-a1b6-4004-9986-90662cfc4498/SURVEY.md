@@ -56,3 +56,38 @@
   "answers": {}
 }
 ```
+
+## Round 2
+
+```survey-json
+{
+  "round": 2,
+  "generatedAt": "2026-11-23T12:13:49.000Z",
+  "stage": "question-me",
+  "questions": [
+    {
+      "id": "q5",
+      "type": "single",
+      "text": "When we spot a missing picture at send time, what should we offer the person?",
+      "options": [
+        "Let them attach the missing file right there, or send as words-only without the picture link (Recommended)",
+        "Just name the missing file and ask them to fix it and try again"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q6",
+      "type": "single",
+      "text": "For feedback that is only pictures with no words, how much writing should we ask for before it can be sent?",
+      "options": [
+        "Any short note explaining what the pictures show (Recommended)",
+        "A longer detailed description of the problem"
+      ],
+      "required": false,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
