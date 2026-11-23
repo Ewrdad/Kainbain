@@ -70,6 +70,37 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "10 MiB (the value suggested in the task brief)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Send one small 'failed' report instead (task files left out, exact byte size in the failure reason), then stop — never send the big report again"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Skip all common binary types entirely (images, PDFs, archives, and similar)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Scale the file cap up to most of the agreed backend limit from q1 (limit minus output minus JSON overhead)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "All runner-to-backend routes (complete-execution, logs, log-events, progress, heartbeat, …)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
