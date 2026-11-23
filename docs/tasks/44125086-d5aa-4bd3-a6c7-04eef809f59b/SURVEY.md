@@ -71,3 +71,63 @@
   "answers": {}
 }
 ```
+
+## Round 2
+
+```survey-json
+{
+  "round": 2,
+  "generatedAt": "2026-11-23T13:06:20.000Z",
+  "stage": "stage-1792362077711",
+  "questions": [
+    {
+      "id": "q6",
+      "type": "single",
+      "text": "The app-loading helper only receives the test's page. If the whole browser dies mid-test, that page is dead for good — a real fix has to create a brand-new page and the test must carry on with it. Today about 25 spec files call this helper. How much are you comfortable changing those spec files?",
+      "options": [
+        "Not at all — the recovery must be hidden inside the helper/test fixtures so the spec files do not change",
+        "A little — the helper may ask for more (e.g. the browser) as long as most call sites stay the same",
+        "As much as it takes — spec files can be updated where needed"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q7",
+      "type": "single",
+      "text": "Where should the official list of 'known infra-flake' error messages live, so there is one obvious place to add a new one later (the 'how to add signatures' doc will point there)?",
+      "options": [
+        "A committed data file in this repo next to the canary tests, documented in the canary README",
+        "Wherever task 8769b002 already put its three flake signatures — I will say where in the notes",
+        "Inside the gate script itself, not a separate data file"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q8",
+      "type": "single",
+      "text": "When the gate catches a failed test whose error matches the flake list, it can re-run that test afterwards. Is re-running only the failed test(s) acceptable, or must the whole ~17-minute canary run repeat?",
+      "options": [
+        "Just the failed test(s) — the faster the better",
+        "The whole canary run again — safest, even though it costs another ~17 minutes",
+        "Either is fine"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q9",
+      "type": "single",
+      "text": "Should a forgiven flake be tracked over time (a recorded baseline with a counter per signature), so we can later prove the flake is gone and remove it from the list?",
+      "options": [
+        "Yes — keep a recorded baseline with counts per signature",
+        "No — a clear line in the CI report naming the lane/signature is enough"
+      ],
+      "required": true,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
