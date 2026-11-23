@@ -32,6 +32,19 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes - use two separate labels (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Show both, e.g. 'Tried 2 times, 4 infra resumes' (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
