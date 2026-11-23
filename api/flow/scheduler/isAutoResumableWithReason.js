@@ -49,6 +49,10 @@ export function isAutoResumableWithReason(task, stage, { blocked = false, trippe
 	// resume is unaffected. The ledger resets the count on every stage
 	// change and clears it on completion, so a count at/over the bound
 	// always belongs to the stage being resumed.
+	// Task 3b82f6ae (S1): this guard keys ONLY off `runnerInterruptCount`.
+	// Capacity refusals ("Runner workdir unavailable:") are counted on the
+	// separate `capacityRefusalCount`, which is deliberately NOT consulted
+	// here — a full runner must never park the task as a death loop.
 	if (
 		Number.isInteger(task.runnerInterruptCount) &&
 		task.runnerInterruptCount >= MAX_RUNNER_INTERRUPTS

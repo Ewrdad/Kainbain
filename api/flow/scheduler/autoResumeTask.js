@@ -36,6 +36,21 @@ export function autoResumeTask(store, projectId, taskId, projectCwd, { reason } 
 	task.wasInterrupted = false;
 	task.status = "in_stage";
 	task.updatedAt = new Date().toISOString();
+	// Task 3b82f6ae (S1): count consecutive resumes per task+stage so the
+	// scheduler can slow re-dispatch of a repeatedly interrupted task
+	// (resumeBackoff). A stage change restarts the streak at 1; completion
+	// clears it (executionLedger.completeExecution).
+	const resumeStageId = task.currentStageId ?? null;
+	if (
+		task.consecutiveResumeStage === resumeStageId &&
+		Number.isInteger(task.consecutiveResumes)
+	) {
+		task.consecutiveResumes += 1;
+	} else {
+		task.consecutiveResumes = 1;
+		task.consecutiveResumeStage = resumeStageId;
+	}
+	task.lastResumedAt = task.updatedAt;
 	if (typeof store._resetAutoIteration === "function") {
 		store._resetAutoIteration(task);
 	}
