@@ -23,6 +23,7 @@ import { decideAgentStageVerdict } from "../shared/stageVerdict.js";
 import { buildGitFailureDetails, isDeterministicGitFailure } from "../shared/gitFailure.js";
 import { redactSecretsText } from "../shared/redactSecrets.js";
 import { appendAttestationTrailers, hashStageConfig, isWellFormedConfigHash } from "../shared/stageAttestation.js";
+import { COMPLETE_EXECUTION_BODY_LIMIT_BYTES } from "../shared/completionLimits.js";
 import { resolveAttestationStage } from "../api/work/resolveAttestationStage.js";
 // WP2 signal: this daemon's process-local production counters (worktree
 // evictions, recorded by project.js) ride every heartbeat as `facts.signals`
@@ -1817,6 +1818,113 @@ export function sanitizeCiEnv(value) {
 		return {};
 	}
 }
+/***
+ * MARK: COMPLETION_FILE_MAX_BYTES
+ * @description Per-file ceiling for task files packed into a
+ *   `complete-execution` report: files whose UTF-8 content exceeds
+ *   256 KiB are skipped (the 413 completion-payload loop, task d164fb3f).
+ * @example COMPLETION_FILE_MAX_BYTES => 262144
+ ***/
+export const COMPLETION_FILE_MAX_BYTES = 256 * 1024;
+
+/***
+ * MARK: COMPLETION_FILES_BUDGET_BYTES
+ * @description Total ceiling for task-file contents packed into one
+ *   `complete-execution` report: 1 MiB minus 64 KiB of headroom. The
+ *   headroom covers the ≤20 KiB `output` tail plus JSON
+ *   escaping/envelope overhead, so the composed envelope
+ *   (`taskFiles + output + overhead`) provably fits under Fastify's
+ *   1 MiB default — the runner half alone breaks the 413 loop even
+ *   against an un-upgraded backend (task d164fb3f, RESPONSE.md S2).
+ *   Deliberately NOT scaled up to the 10 MiB backend limit: that
+ *   would reintroduce the same cliff one asset-folder later.
+ * @example COMPLETION_FILES_BUDGET_BYTES => 983040
+ ***/
+export const COMPLETION_FILES_BUDGET_BYTES = 1024 * 1024 - 64 * 1024;
+
+/***
+ * MARK: COMPLETION_SKIPPED_BINARY_EXTENSIONS
+ * @description Lower-cased file extensions NEVER packed into a
+ *   `complete-execution` report (task d164fb3f, D3): binary assets
+ *   such as PNG screenshots are unreadable as UTF-8 prose, bloat the
+ *   report past the backend body limit, and travel through git anyway.
+ *   Text formats (`.md`, `.txt`, `.json`, `.log`, …) always ship.
+ ***/
+const COMPLETION_SKIPPED_BINARY_EXTENSIONS = new Set([
+	// images (incl. SVG: markup, not task prose)
+	".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".heic", ".heif",
+	".bmp", ".ico", ".tiff", ".tif", ".svg",
+	// documents / archives
+	".pdf", ".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar",
+	// fonts
+	".woff", ".woff2", ".ttf", ".otf", ".eot",
+	// media
+	".mp3", ".wav", ".ogg", ".flac", ".mp4", ".webm", ".mov", ".avi", ".mkv",
+	// executables / objects
+	".exe", ".dll", ".so", ".dylib", ".bin", ".o", ".a",
+]);
+
+/***
+ * MARK: isSkippedBinary
+ * @description Whether a task-doc file name is a binary asset excluded
+ *   from `complete-execution` reports (extension match, case-insensitive;
+ *   extension-less names and text formats are kept). Total on untrusted
+ *   input: non-strings and empty names read as "keep" (the read/parse
+ *   still decides), never throw.
+ * @example isSkippedBinary("shot.PNG") => true
+ * @example isSkippedBinary("notes.txt") => false
+ * @param {unknown} name - File name from the task-docs directory.
+ * @returns {boolean} True when the file must be excluded from the report.
+ ***/
+export function isSkippedBinary(name) {
+	try {
+		if (typeof name !== "string" || !name) return false;
+		const dot = name.lastIndexOf(".");
+		if (dot < 0) return false;
+		return COMPLETION_SKIPPED_BINARY_EXTENSIONS.has(name.slice(dot).toLowerCase());
+	} catch {
+		return false;
+	}
+}
+
+/***
+ * MARK: measureCompletionBytes
+ * @description Measures the UTF-8 byte size of a completion report's
+ *   variable envelope (`taskFiles + output` as JSON) — the quantity the
+ *   backend body limit constrains. Total: unstringifiable input reads as 0.
+ * @example measureCompletionBytes({ taskFiles: [], output: "ok" }) => 30
+ * @param {Object} [args] - Envelope parts.
+ * @param {Array} [args.taskFiles] - Packed task files.
+ * @param {string} [args.output] - Sliced stage output.
+ * @returns {number} Envelope bytes (0 when unmeasurable).
+ ***/
+export function measureCompletionBytes({ taskFiles = [], output = "" } = {}) {
+	try {
+		return Buffer.byteLength(JSON.stringify({ taskFiles, output }), "utf8");
+	} catch {
+		return 0;
+	}
+}
+
+/***
+ * MARK: isPayloadTooLarge
+ * @description Whether an error is the backend's deterministic "report
+ *   too large" refusal: HTTP 413 (the runner client's `statusCode`) or
+ *   Fastify's `FST_ERR_CTP_BODY_TOO_LARGE` code. Total on untrusted
+ *   input, never throws.
+ * @example isPayloadTooLarge({ statusCode: 413 }) => true
+ * @example isPayloadTooLarge(new Error("x")) => false
+ * @param {unknown} err - Candidate error.
+ * @returns {boolean} True for a payload-too-large refusal.
+ ***/
+export function isPayloadTooLarge(err) {
+	try {
+		return !!err && (err.statusCode === 413 || err.code === "FST_ERR_CTP_BODY_TOO_LARGE");
+	} catch {
+		return false;
+	}
+}
+
 export function collectTaskFiles({ workdir, taskId, docsDirName = null, project = null, docsWorkdir = null } = {}) {
 	const resolved = resolveRunnerDocsDirName(
 		docsDirName ?? (typeof project === "object" && project !== null ? project : null),
@@ -1830,16 +1938,52 @@ export function collectTaskFiles({ workdir, taskId, docsDirName = null, project 
 	try {
 		for (const name of fs.readdirSync(dir)) {
 			if (name === "task.md") continue;
+			if (isSkippedBinary(name)) continue;
 			try {
 				const content = fs.readFileSync(path.join(dir, name), "utf8");
 				const bytes = Buffer.byteLength(content, "utf8");
-				if (bytes > 256 * 1024 || total + bytes > 1024 * 1024) continue;
+				if (bytes > COMPLETION_FILE_MAX_BYTES || total + bytes > COMPLETION_FILES_BUDGET_BYTES) continue;
 				files.push({ name, content });
 				total += bytes;
 			} catch { /* unreadable/binary: skip */ }
 		}
 	} catch { /* no task docs: nothing to ship */ }
 	return files;
+}
+
+/***
+ * MARK: completeWithPayloadTag
+ * @description Sends one `complete-execution` report, tagging a failure
+ *   with its origin so the `executeAssignment` catch can tell "the
+ *   report itself was refused" from any other fault: on error the
+ *   thrown error gains `fromComplete = true`, the measured
+ *   `reportBytes` (UTF-8 size of the JSON report handed to the
+ *   client), the `reportOutcome`, and the `reportCommitted` flag, then
+ *   rethrows unchanged. Success passes the receipt through untouched.
+ *   Only the two post-run report sites use this wrapper (task d164fb3f).
+ * @example await completeWithPayloadTag(client, { outcome: "passed", ... }) => receipt
+ * @param {Object} client - Runner backend client.
+ * @param {Object} report - Completion report args for `client.complete`.
+ * @returns {Promise<Object>} The backend receipt.
+ ***/
+async function completeWithPayloadTag(client, report) {
+	let reportBytes = 0;
+	try {
+		reportBytes = Buffer.byteLength(JSON.stringify(report), "utf8");
+	} catch {
+		reportBytes = 0;
+	}
+	try {
+		return await client.complete(report);
+	} catch (err) {
+		if (err && typeof err === "object") {
+			err.fromComplete = true;
+			err.reportBytes = reportBytes;
+			err.reportOutcome = typeof report?.outcome === "string" ? report.outcome : null;
+			err.reportCommitted = report?.committed === true;
+		}
+		throw err;
+	}
 }
 
 async function executeAssignment({
@@ -2255,7 +2399,7 @@ async function executeAssignment({
 				failStageRequest,
 			});
 			if (verdictDecision.failed) {
-				return await client.complete({
+				return await completeWithPayloadTag(client, {
 					taskId: taskId,
 					projectId: projectId,
 					executionId,
@@ -2277,7 +2421,7 @@ async function executeAssignment({
 			if (verdictDecision.failOpenWarning) {
 				logger.warn(verdictDecision.failOpenWarning);
 			}
-			return await client.complete({
+			return await completeWithPayloadTag(client, {
 				taskId: taskId,
 				projectId: projectId,
 				executionId,

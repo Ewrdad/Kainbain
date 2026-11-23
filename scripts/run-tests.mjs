@@ -469,6 +469,8 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"--test",
 				"runner/ciBranchWorkdir.test.js",
 				"runner/daemon.test.js",
+				"runner/daemon.collectTaskFiles.test.js",
+				"runner/daemon.complete413.test.js",
 				"runner/client.test.js",
 			"runner/impromptu.test.js",
 				"runner/config.test.js",
