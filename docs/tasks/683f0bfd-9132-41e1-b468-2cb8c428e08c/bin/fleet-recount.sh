@@ -1,93 +1,106 @@
 #!/usr/bin/env bash
-# fleet-recount.sh <label> — GUIDE-07 §5 fleet script + WIDE_NET_ANALYSIS.md §2 table.
+# fleet-recount.sh <label> [task-dir] — GUIDE-07 §5 fleet recount +
+# WIDE_NET_ANALYSIS.md §2 table, over one project, read-only against the
+# backend API (approved: this task's SURVEY.md q2). Scope is pinned to project
+# 0fd41821-... so results compare directly with the 2026-11-21 baseline.
 #
-# Read-only against the backend API (PROD-READ-ONLY, approved by SURVEY.md q2).
-# Scope pinned to project 0fd41821 (full UUID) per SURVEY.md q4, so the output
-# compares directly with the 2026-11-21 baseline in WIDE_NET_ANALYSIS.md §2.
+# Outputs (under task-dir, default: current directory):
+#   raw/<label>/<taskId>.json        raw GET /tasks/<id> payloads (evidence)
+#   recount-<label>.jsonl            one aggregated row per task  (jq/per-task.jq)
+#   recount-<label>-table.json       WIDE_NET §2 aggregate         (jq/aggregate.jq)
+#   recount-<label>-e5worklist.json  post-finished interrupts      (jq/e5-worklist.jq, GUIDE-05 §4 scope)
+#   recount-<label>-errors.jsonl     tasks that failed to fetch/parse (only written on failure)
+#   recount-<label>-meta.json        run metadata (api, project, window, counts)
+#   stdout                           the §2 table + E5 worklist, for the run log
 #
-# Outputs (relative to the task folder, pass TASK_DIR env or run from there):
-#   raw/<label>/<taskId>.json      raw GET /tasks/<id> payloads (evidence)
-#   recount-<label>.jsonl          one aggregated row per task (GUIDE-07 §5 shape)
-#   stdout                         the WIDE_NET §2 table + E5 worklist
-#
-# Usage: cd docs/tasks/683f0bfd-... && bin/fleet-recount.sh before > RECOUNT-BEFORE-raw.txt
+# Failure behaviour (deliberate, so a partial run is loud, never silent):
+#   - the task list itself unreachable/invalid/empty -> exit 1, no outputs written
+#   - one task fails to download or parse -> recorded in -errors.jsonl, the
+#     loop continues, the table is still written, and the script exits 2 at
+#     the end so the gap cannot be missed
+#   - API base / project overridable via KAINBAIN_API_BASE / KAINBAIN_PROJECT_ID
+#     (the test suite drives this script against a local mock API)
 set -euo pipefail
-API_BASE="${KAINBAIN_API_BASE:-http://192.168.1.206:3100}"
-PROJECT_ID="${KAINBAIN_PROJECT_ID:-0fd41821-d8a5-4e49-bc2e-28ce8c739a0a}"
-LABEL="${1:?usage: fleet-recount.sh <before|after> [task-dir]}"
-TASK_DIR="${2:-$(pwd)}"
-RAW_DIR="$TASK_DIR/raw/$LABEL"
-mkdir -p "$RAW_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "$SCRIPT_DIR/lib.sh"
 
-PER_TASK_JQ='
-def ts: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601;
-. as $t |
-([$t.history[]? | select(.action | test("interrupted execution"))]) as $ints |
-{
-  task: $t.id,
-  status: $t.status,
-  runner_interrupts: ($ints | length),
-  with_reason: ([$ints[] | select(.action | test("Reason:"))] | length),
-  bare: ([$ints[] | select(.action | test("Reason:") | not)] | length),
-  per_runner: ($ints | map(.action | capture("Runner (?<r>[^ ]+) interrupted execution").r)
-                   | group_by(.) | map({runner: .[0], n: length})),
-  reasons: ([$ints[] | select(.action | test("Reason:"))
-              | .action | capture("Reason: (?<x>.*)$").x] | unique),
-  auto_resumed: ([$t.history[]? | select(.action | test("Auto-resumed after server restart"))] | length),
-  server_restart: ([$t.history[]? | select(.action | test("interrupted by server restart"))] | length),
-  recovered_server_restart: ([$t.history[]? | select(.action | test("Execution recovered after server restart"))] | length),
-  escalated: ([$t.history[]? | select(.action | test("Runner deaths escalated"))] | length),
-  failed_stage: ([$t.history[]? | select(.action | test("Stage failed in|Failed back to stage"))] | length),
-  git_failure_streak: ($t.gitFailureStreak.count // 0),
-  last_error_git_kind: ($t.lastError.gitDiagnostics.kind // null),
-  interrupt_details: [
-    $t.history | to_entries[] | select(.value.action | test("interrupted execution")) |
-    .key as $i | .value |
-    ($t.history[0:$i] | map(select(.action | test(": started$"))) | last) as $s |
-    ($t.history[0:$i] | map(select(.action | test(": (started|prompted|finished)$"))) | last) as $p |
-    {
-      ts: .timestamp,
-      runner: (.action | capture("Runner (?<r>[^ ]+) interrupted execution").r),
-      reason: (if .action | test("Reason:") then (.action | capture("Reason: (?<x>.*)$").x) else null end),
-      delta_s_from_started: (if $s then ((.timestamp | ts) - ($s.timestamp | ts)) else null end),
-      prev_progress_event: ($p.action // null)
-    }
-  ]
-}'
+main() {
+  require_commands curl jq date mktemp
+  local label="${1:-}"
+  [ -n "$label" ] || die "usage: fleet-recount.sh <before|after|...> [task-dir]"
+  local task_dir="${2:-$(pwd)}"
+  local api_base="${KAINBAIN_API_BASE:-http://192.168.1.206:3100}"
+  local project_id="${KAINBAIN_PROJECT_ID:-0fd41821-d8a5-4e49-bc2e-28ce8c739a0a}"
+  local raw_dir="$task_dir/raw/$label"
+  mkdir -p "$raw_dir"
+  local started; started="$(date -u +%FT%TZ)"
+  log "fleet-recount label=$label api=$api_base project=$project_id task_dir=$task_dir started=$started"
 
-AGG_JQ='
-{
-  tasks_total: length,
-  tasks_with_interrupts: ([.[] | select(.runner_interrupts > 0)] | length),
-  runner_interrupts: ([.[].runner_interrupts] | add // 0),
-  with_reason: ([.[].with_reason] | add // 0),
-  bare: ([.[].bare] | add // 0),
-  per_runner: ([.[].per_runner[]?] | group_by(.runner) | map({runner: .[0].runner, n: (map(.n) | add)}) | sort_by(.runner)),
-  le15s_after_started: ([.[].interrupt_details[]? | select(.delta_s_from_started != null and .delta_s_from_started <= 15)] | length),
-  ge120s_after_started: ([.[].interrupt_details[]? | select(.delta_s_from_started != null and .delta_s_from_started >= 120)] | length),
-  post_finished_interrupts: ([.[].interrupt_details[]? | select(.prev_progress_event != null and (.prev_progress_event | test(": finished$")))] | length),
-  median_delta_s: ([.[].interrupt_details[]? | select(.delta_s_from_started != null) | .delta_s_from_started] | sort as $d | (if ($d|length) > 0 then $d[($d|length)/2] else null end)),
-  auto_resumed: ([.[].auto_resumed] | add // 0),
-  server_restart: ([.[].server_restart] | add // 0),
-  recovered_server_restart: ([.[].recovered_server_restart] | add // 0),
-  escalated: ([.[].escalated] | add // 0),
-  failed_stage_actions: ([.[].failed_stage] | add // 0),
-  tasks_with_git_failure_streak: ([.[] | select(.git_failure_streak > 0)] | length),
-  reason_vocabulary: ([.[].reasons[]?] | unique)
-}'
+  # 1. task list — must be a non-empty array of well-formed ids, otherwise the
+  #    API is down, the project id is wrong, or we got an error page.
+  local list_tmp; list_tmp="$(mktemp)"
+  if ! api_get_json "$api_base/tasks?projectId=$project_id" "$list_tmp.list"; then
+    rm -f "$list_tmp" "$list_tmp.list"
+    die "cannot list tasks at $api_base/tasks?projectId=$project_id — API down or wrong project; nothing written"
+  fi
+  local ids; ids="$(jq -r 'if type == "array" then (.[].id // empty) else empty end' "$list_tmp.list")"
+  rm -f "$list_tmp" "$list_tmp.list"
+  local n; n="$(printf '%s\n' "$ids" | grep -c . || true)"
+  [ "$n" -gt 0 ] || die "GET /tasks returned zero tasks for project $project_id — refusing to write an empty baseline"
+  if printf '%s\n' "$ids" | grep -qvE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+    die "task list contains a malformed id — refusing to continue (got: $(printf '%s\n' "$ids" | grep -vE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' | head -3 | tr '\n' ' '))"
+  fi
+  log "task list ok: $n tasks"
 
-echo "# fleet-recount label=$LABEL api=$API_BASE project=$PROJECT_ID at $(date -u +%FT%TZ)" >&2
-IDS=$(curl -s -m 60 "$API_BASE/tasks?projectId=$PROJECT_ID" | jq -r '.[].id')
-echo "tasks: $(echo "$IDS" | wc -l)" >&2
-: > "$TASK_DIR/recount-$LABEL.jsonl"
-for t in $IDS; do
-  curl -s -m 60 "$API_BASE/tasks/$t?projectId=$PROJECT_ID" > "$RAW_DIR/$t.json"
-  jq -c "$PER_TASK_JQ" "$RAW_DIR/$t.json" >> "$TASK_DIR/recount-$LABEL.jsonl"
-done
+  # 2. per-task fetch + aggregate row. One bad task never aborts the loop.
+  local jsonl="$task_dir/recount-$label.jsonl" errors="$task_dir/recount-$label-errors.jsonl"
+  local table="$task_dir/recount-$label-table.json" worklist="$task_dir/recount-$label-e5worklist.json"
+  : > "$jsonl"
+  : > "$errors"
+  local ok=0 failed=0 t raw row_tmp
+  row_tmp="$(mktemp)"
+  for t in $ids; do
+    raw="$raw_dir/$t.json"
+    if api_get_json "$api_base/tasks/$t?projectId=$project_id" "$raw" \
+       && jq -e 'type == "object" and ((.history // []) | type == "array")' "$raw" >/dev/null 2>&1 \
+       && jq -c -f "$SCRIPT_DIR/jq/per-task.jq" "$raw" > "$row_tmp" 2>/dev/null; then
+      cat "$row_tmp" >> "$jsonl"
+      ok=$((ok + 1))
+    else
+      failed=$((failed + 1))
+      rm -f "$raw"
+      printf '{"task":"%s","error":"fetch or parse failed"}\n' "$t" >> "$errors"
+      log "WARN: task $t failed to fetch/parse — recorded in recount-$label-errors.jsonl, continuing"
+    fi
+  done
+  rm -f "$row_tmp"
+  log "fetched $ok tasks, $failed failed"
 
-echo "## WIDE_NET_ANALYSIS.md §2 table — label=$LABEL, project $PROJECT_ID, $(date -u +%FT%TZ)"
-jq -s "$AGG_JQ" "$TASK_DIR/recount-$LABEL.jsonl" | tee "$TASK_DIR/recount-$LABEL-table.json"
-echo
-echo "## E5 worklist — post-finished interrupts (GUIDE-05 §4 scope), label=$LABEL"
-jq -s '[.[] | {task, interrupt_details: [.interrupt_details[] | select(.prev_progress_event != null and (.prev_progress_event | test(": finished$")))]} | select(.interrupt_details | length > 0)]' \
-  "$TASK_DIR/recount-$LABEL.jsonl" | tee "$TASK_DIR/recount-$LABEL-e5worklist.json"
+  # 3. aggregates (atomic writes), printed to stdout for the run log too.
+  jq -s -f "$SCRIPT_DIR/jq/aggregate.jq" "$jsonl" > "$table.tmp" && mv "$table.tmp" "$table"
+  jq -s -f "$SCRIPT_DIR/jq/e5-worklist.jq" "$jsonl" > "$worklist.tmp" && mv "$worklist.tmp" "$worklist"
+  jq -n --arg label "$label" --arg api "$api_base" --arg project "$project_id" \
+      --arg started "$started" --arg finished "$(date -u +%FT%TZ)" \
+      --argjson ok "$ok" --argjson failed "$failed" \
+      '{label: $label, api: $api, project: $project, startedAt: $started, finishedAt: $finished, tasksFetched: $ok, tasksFailed: $failed}' \
+    > "$task_dir/recount-$label-meta.json"
+
+  echo "## WIDE_NET_ANALYSIS.md §2 table — label=$label, project $project_id, $(date -u +%FT%TZ)"
+  jq . "$table"
+  echo
+  echo "## E5 worklist — post-finished interrupts (GUIDE-05 §4 scope), label=$label"
+  jq . "$worklist"
+  echo
+  if [ "$failed" -gt 0 ]; then
+    echo "## ERRORS — $failed task(s) failed, see recount-$label-errors.jsonl" >&2
+    cat "$errors" >&2
+    log "exiting 2: $failed of $n tasks failed"
+    exit 2
+  fi
+  log "done: label=$label ok=$ok failed=$failed"
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
