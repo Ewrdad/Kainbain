@@ -67,6 +67,21 @@ post-converge interrupts only — bare → ~0; reasons name Causes 1/3/4;
 deterministic commit failures arrive as FAILED + `gitFailure` with NO
 interrupt row. Record backend build + sibling-fix landings as confounds.
 
+## Watch note 2026-11-23T14:31–14:45Z (non-canonical; frozen numbers above stand)
+
+- Snapshot `runners-now/…T143103Z.*`: still `0.1.0` everywhere, knob `0.1.0`,
+  `availableVersions ["0.1.0"]`, no nudges — NOT-CONVERGED; backend build 637.
+- Mid recount `recount-mid-1431-*` (14:32:40–14:33:06Z): 148 interrupts, 0
+  non-cap reasons, 9 newer than BEFORE (5 bare + 4 cap, all 0.1.0).
+  Total dipped 149→148: task `history` arrays churn as tasks advance, so the
+  recount is a point-in-time snapshot — AFTER stays timestamp-gated (§4.2).
+- E5 addendum (`E5-SWEEP.md`): 6 newer post-`finished` rows → 4× Cause 2
+  (413), 1× covered MERGE_CONFLICT, 1× evidence gap (`7f347a7a` 12:16Z,
+  206-host journal unreachable from server2). No new Cause-5 ticket.
+- Reported CI `Linting (frontend)` failure (`…-133841`) does not reproduce on
+  HEAD `3bb0e68f` (lint 0 errors; only frontend delta is the 1-line test
+  de-flake). Kit suite 71/71. See `RUN-LOG.md` 14:28–14:45 entry.
+
 ## Kit map (all under this task folder)
 
 `IMPLEMENTATION_PLAN.md` (corrected) · `SURVEY.md` · `RUN-LOG.md` ·

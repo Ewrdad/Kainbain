@@ -88,6 +88,52 @@ record for this branch (newer BEFORE recount, fuller E5, fresh 12:22Z snapshot).
   125 ≤15s median 4s, 28 post-`finished`, 49 escalated, 0 server-restart,
   0 `gitFailure`, per-runner 108/41, 24/24 vocab cap strings) — matches
   `RECOUNT-BEFORE.md` + `BASELINE.md` exactly.
+- **14:28–14:45** — This run (server2-alpha, stage 5 re-run after CI report of a
+  `Linting (frontend)` failure in fast-gate `…-133841`, verdict dir not present
+  on this checkout):
+  - **Lint**: `npm run lint --prefix frontend` → **0 errors** (221 warnings,
+    pre-existing); the two touched files (`useOnboarding.js`,
+    `useOnboarding.test.js`) lint clean individually. The reported failure does
+    NOT reproduce on HEAD `3bb0e68f` — it matches the already-reverted 12:07
+    out-of-scope hook edit (`react-hooks/set-state-in-effect`), reverted 12:27;
+    the branch's only remaining frontend delta vs `7ac148ce` is the 1-line
+    test-only de-flake. No fix needed; nothing changed.
+  - **De-flaked test**: `npx vitest run src/hooks/useOnboarding.test.js` →
+    4/4 pass.
+  - **Kit suite**: `bin/tests/run-tests.sh` → **71 passed, 0 failed** (log
+    `raw/tests-run-20261123T143202Z.log`).
+  - **Survey re-read**: task `SURVEY.md` answers unchanged (all recommended);
+    source `RESPONSE_SURVEY.md` still `"answers": {}` → q9 gradual/no-restart
+    stays a hard constraint.
+  - **Fresh snapshot** (`runners-now/`, `…T143103Z.*`): **still `0.1.0`
+    everywhere, knob `0.1.0`, `availableVersions ["0.1.0"]`, no nudges** —
+    NOT-CONVERGED both named runners; backend still build 637, `deployedAt`
+    11:36:08Z, headSha `65580333` (no restart). AFTER stays blocked on the
+    human PROD-ACTION (raise knob to `0.2.1`).
+  - **Mid recount** (`fleet-recount.sh mid-1431`, fetched 14:32:40–14:33:06Z,
+    81/81 tasks, 0 failed → `recount-mid-1431-table.json`): 148 runner
+    interrupts (103 local / 45 server2), 70 reasoned, 78 bare, 118 ≤15s
+    (median 4s), 22 ≥2min, 34 post-`finished`, 49 escalated, 0 server-restart,
+    0 `gitFailure`, reason vocabulary 100% workdir-cap strings (0 non-cap).
+    9 interrupts are newer than the canonical BEFORE (11:46:55Z): 5 bare +
+    4 cap-reasoned, all on 0.1.0 — negative control holds.
+  - **Non-monotonicity note**: the total dipped 149→148 although time passed,
+    because the recount counts rows in each task's CURRENT `history` array,
+    which churns as tasks advance (8 tasks changed status/shape in-window;
+    e.g. this task 5→1, `8c7e2d15` 1→0 on failed→in_stage). The recount is a
+    point-in-time snapshot, not a cumulative counter — the AFTER comparison
+    MUST stay timestamp-gated at each runner's converge time (plan §4.2), as
+    already specified. Canonical BEFORE (`recount-before-*`, 11:46Z) untouched.
+  - **E5 extension** (6 new post-`finished` interrupts, see `E5-SWEEP.md`
+    addendum): 4× `7f6220c3` server2-alpha bare → Cause 2 (pushed:true commit
+    + `Backend 413 on complete-execution` in-window, journal-decisive); 1×
+    `44125086` 13:01:05Z server2-alpha bare → Cause 5 MERGE_CONFLICT covered
+    (push-path SURVEY.md conflict; local output `e0cde7ef` landed 13:01:04,
+    push refused); 1× `7f347a7a` 12:16:09Z local-alpha bare → evidence gap
+    (206-host worktree+journal unreachable from server2 — no key auth;
+    origin window negative, no recovery branch). Ticket decision unchanged:
+    **no new Cause-5 code ticket** (no uncovered commit-loop class found).
+  - Observe-only held: zero knob changes, restarts, updates, reaps, re-runs.
 
 ## Effective survey decisions (answers + live-data overrides)
 
