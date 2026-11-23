@@ -31,7 +31,8 @@ import { DiffStatBadge } from './DiffStatBadge';
 import { RunAttributionBadge } from './RunAttributionBadge';
 import { HistoryFailureReason } from './HistoryFailureReason';
 import { FailureMessage } from './FailureMessage';
-import { isRejectedTask } from './failureReason';
+import { GitFailureDetails } from './GitFailureDetails';
+import { pickFailureBannerTitle, isCommitFailureTask, isRejectedTask } from './failureReason';
 import { BlockedByEditor } from './BlockedByEditor';
 import { LogsPanel, useTaskLogs } from './LogsPanel';
 import { TaskDetailHistoryPane } from './TaskDetailHistoryPane';
@@ -73,6 +74,7 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     currentStageId,
     stages = [],
     projects = [],
+    projectWorkflows = [],
     processLogs: wsProcessLogs = [],
     engineState,
     isAgentRunning,
@@ -295,6 +297,24 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   const workingLocationText = workingLocationBranch
     ? `Works on ${workingLocationBranch} · ${task?.workingLocation?.workspaceIsolation || 'quarantine'}${task?.workingLocation?.worktreePath ? ` · ${task.workingLocation.worktreePath}` : ''}`
     : null;
+  // Effective base branch (mirrors the backend resolver chain): the task's
+  // pinned snapshot first, then the pipeline's live setting, else the repo
+  // default. Shown wherever the branch is shown.
+  const taskPipeline = (projectWorkflows || []).find((w) => w?.id === task?.workflowId);
+  const pinnedBaseBranch =
+    typeof task?.baseBranch === 'string' && task.baseBranch.trim()
+      ? task.baseBranch.trim()
+      : null;
+  const liveBaseBranch =
+    typeof taskPipeline?.baseBranch === 'string' && taskPipeline.baseBranch.trim()
+      ? taskPipeline.baseBranch.trim()
+      : null;
+  const effectiveBaseBranch = pinnedBaseBranch || liveBaseBranch;
+  const baseBranchText = workingLocationBranch
+    ? effectiveBaseBranch
+      ? `Base branch: ${effectiveBaseBranch}${pinnedBaseBranch ? ' (pinned to this task)' : ' (from pipeline)'}`
+      : 'Base branch: repo default'
+    : null;
   const isInterrupted = task?.wasInterrupted === true || task?.status === 'interrupted';
   const isPaused = task?.status === 'paused';
   // RETRYING is reserved for a same-stage in-place retry: a task whose
@@ -305,6 +325,10 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   const isRejectedFailure = isRejectedTask(task);
   const isFailed = isTaskFailed(task);
   const isRejected = isFailed && isRejectedFailure;
+  // Runner-reported commit/hook failures render their structured envelope
+  // (hook, files, remedy, full output) under the reason, with a heading
+  // that names the commit instead of the stage.
+  const isCommitFailure = isFailed && isCommitFailureTask(task);
   const failureMessage =
     task?.failureReason || task?.lastError?.message || 'Stage execution failed.';
   const formattedKey = task?.id ? formatTaskKey(task.id) : '';
@@ -863,7 +887,7 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-error animate-pulse shadow-[0_0_8px_rgba(248,81,73,0.6)]" />
                     <span className="text-xs font-bold uppercase tracking-wider text-error font-mono flex items-center gap-1">
-                      {isRejected ? '⚠️ Stage Rejected' : '⚠️ Stage Execution Failed'}
+                      {pickFailureBannerTitle({ isRejected, isCommitFailure })}
                     </span>
                   </div>
                   {(task?.lastError?.stageName || taskStage?.name) && (
@@ -878,6 +902,12 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                   taskId={task?.id}
                   className="p-3 bg-surface-container rounded border border-error/30 font-mono text-xs text-error break-words whitespace-pre-wrap leading-relaxed select-text"
                 />
+                {isCommitFailure && (
+                  <GitFailureDetails
+                    diagnostics={task?.lastError?.gitDiagnostics}
+                    className="p-3 bg-surface-container rounded border border-error/30 text-error space-y-2"
+                  />
+                )}
                 <div className="flex items-center gap-3 pt-1">
                   <button
                     type="button"
@@ -1059,6 +1089,25 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                     title="Where this task's work lives: branch, isolation mode, and worktree path when enabled"
                   >
                     {workingLocationText}
+                  </p>
+                )}
+                {baseBranchText && (
+                  <p className="text-[11px] font-mono text-text-muted break-all">
+                    <span title="The branch this task branched off and merges back into">
+                      {baseBranchText}
+                    </span>{' '}
+                    <button
+                      type="button"
+                      onClick={() => setView?.('settings', { section: 'workflows' })}
+                      title={
+                        pinnedBaseBranch
+                          ? 'This task keeps its pinned base branch; change the pipeline base for future tasks'
+                          : 'Change the pipeline base branch for future tasks'
+                      }
+                      className="underline underline-offset-2 hover:text-on-surface cursor-pointer"
+                    >
+                      {pinnedBaseBranch ? 'Change pipeline base' : 'Edit in pipeline settings'}
+                    </button>
                   </p>
                 )}
               </div>

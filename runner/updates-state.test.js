@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+	RESTART_REQUEST_FILE,
 	STALE_UPDATE_LOCK_MS,
 	UPDATE_LOCK_FILE,
 	acquireUpdateLock,
@@ -12,6 +13,7 @@ import {
 	markUpdateSuccess,
 	pruneOldReleases,
 	readUpdateState,
+	requestWrapperRestart,
 	writeUpdateState,
 } from "./updates/state.js";
 
@@ -183,5 +185,29 @@ describe("bootstrapUpdateState", () => {
 		markUpdateSuccess({ installRoot: root, version: "0.2.0" });
 		assert.equal(readUpdateState(root).status, "success");
 		fs.rmSync(root, { recursive: true, force: true });
+	});
+});
+
+describe("requestWrapperRestart", () => {
+	it("writes the restart-requested sentinel with a triage payload", () => {
+		const root = freshRoot();
+		requestWrapperRestart({ installRoot: root });
+		const sentinel = JSON.parse(fs.readFileSync(path.join(root, RESTART_REQUEST_FILE), "utf8"));
+		assert.equal(sentinel.pid, process.pid);
+		assert.ok(Date.parse(sentinel.at), "the payload carries a timestamp");
+		assert.equal(readUpdateState(root).status, "idle", "the sentinel leaves update state alone");
+		fs.rmSync(root, { recursive: true, force: true });
+	});
+
+	it("creates a missing install root", () => {
+		const root = path.join(freshRoot(), "nested", "install");
+		requestWrapperRestart({ installRoot: root });
+		assert.ok(fs.existsSync(path.join(root, RESTART_REQUEST_FILE)));
+		fs.rmSync(path.join(root, "..", ".."), { recursive: true, force: true });
+	});
+
+	it("throws fail-closed without an install root", () => {
+		assert.throws(() => requestWrapperRestart({}), /install root/);
+		assert.throws(() => requestWrapperRestart({ installRoot: "  " }), /install root/);
 	});
 });

@@ -507,6 +507,99 @@ test('adopt modal omits blank optional fields and shows a registration error inl
   expect(await screen.findByRole('alert')).toHaveTextContent(/does not exist/);
 });
 
+test('create project modal keeps the docs repo option under a collapsed Advanced section by default', () => {
+  const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'X' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+  expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
+  const toggle = screen.getByRole('button', { name: /advanced options/i });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
+});
+
+test('create project modal forwards the advanced docs repo URL', () => {
+  const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Stealth' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+  fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Stealth' } });
+  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }));
+  fireEvent.change(screen.getByLabelText('Docs Repository URL (optional)'), {
+    target: { value: 'git@github.com:me/stealth-docs.git' },
+  });
+  fireEvent.submit(screen.getByLabelText('Project Name').closest('form'));
+
+  expect(createProject).toHaveBeenCalledWith('Stealth', {
+    gitUrl: undefined,
+    docsRepo: { url: 'git@github.com:me/stealth-docs.git' },
+  });
+});
+
+test('adopt modal forwards docs repo URL and optional local path from the Advanced section', async () => {
+  const registerProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Adopted' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    registerProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ Add Existing Project…'));
+  fireEvent.change(screen.getByLabelText('Project Directory'), {
+    target: { value: '/repos/adopted' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /advanced options/i }));
+  fireEvent.change(screen.getByLabelText('Docs Repository URL (optional)'), {
+    target: { value: 'https://git.example.com/me/adopted-docs.git' },
+  });
+  fireEvent.change(screen.getByLabelText('Docs Repo Local Path (optional)'), {
+    target: { value: '/srv/kb/adopted' },
+  });
+  fireEvent.submit(screen.getByLabelText('Project Directory').closest('form'));
+
+  expect(registerProject).toHaveBeenCalledWith({
+    path: '/repos/adopted',
+    name: undefined,
+    kainbainDirName: undefined,
+    docsRepo: { url: 'https://git.example.com/me/adopted-docs.git', localPath: '/srv/kb/adopted' },
+  });
+});
+
+test('adopt modal omits docsRepo entirely when the advanced URL is blank', () => {
+  const registerProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Adopted' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    registerProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ Add Existing Project…'));
+  fireEvent.change(screen.getByLabelText('Project Directory'), {
+    target: { value: '/repos/plain' },
+  });
+  fireEvent.submit(screen.getByLabelText('Project Directory').closest('form'));
+
+  expect(registerProject).toHaveBeenCalledWith({
+    path: '/repos/plain',
+    name: undefined,
+    kainbainDirName: undefined,
+  });
+});
+
 test('renders the Go to App pill when the active project has an app link', () => {
   renderWithKainBain(<Header />, {
     projects: [

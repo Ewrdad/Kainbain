@@ -13,6 +13,8 @@
 # worktrees inherit the hook automatically).
 # Bypass only to land an intentional baseline entry (never for new damage):
 #   git commit --no-verify
+# Runner note: when this hook refuses a runner commit, the rejection now
+# surfaces as a "Commit Failed" callout on the task (hook, files, remedy).
 set -u
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || root=""

@@ -4,7 +4,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { commitAndPush } from "./gitOps.js";
+import { RunnerGitError } from "./project.js";
 
 function git(dir, args) {
 	execFileSync("git", args, { cwd: dir, stdio: "ignore" });
@@ -66,6 +68,27 @@ describe("commitAndPush", () => {
 		assert.match(out.sha, /^[0-9a-f]{40}$/);
 	});
 
+	it("still runs repo hooks on task-branch commits (no bypass outside recovery)", async () => {
+		// Scope pin: only kb-recovery/* snapshots bypass hooks. A failing
+		// repo hook must still reject task output — if the hook ever
+		// stopped firing, the rejects below (and the pinned HEAD) fail.
+		ctx = worktreeRepo(false);
+		const hooksDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-failhooks-"));
+		try {
+			fs.writeFileSync(path.join(hooksDir, "pre-commit"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+			git(ctx.dir, ["config", "core.hooksPath", hooksDir]);
+			const headBefore = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ctx.dir, encoding: "utf8" }).trim();
+			fs.writeFileSync(path.join(ctx.dir, "g.txt"), "y");
+			await assert.rejects(commitAndPush({ workdir: ctx.dir, branch: "kb/t1", message: "stage" }));
+			fs.writeFileSync(path.join(ctx.dir, "h.txt"), "y");
+			await assert.rejects(commitAndPush({ workdir: ctx.dir, branch: "kb/t1", message: "stage", author: "Agent" }));
+			const headAfter = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ctx.dir, encoding: "utf8" }).trim();
+			assert.equal(headAfter, headBefore, "hook rejection committed nothing");
+		} finally {
+			fs.rmSync(hooksDir, { recursive: true, force: true });
+		}
+	});
+
 	it("preserves a multi-line message body byte-for-byte in the commit", async () => {
 		// Characterization for stage attestation: the Runner carries its
 		// proof as trailers appended to the single -m message, so newlines
@@ -95,6 +118,63 @@ describe("commitAndPush", () => {
 			execFileSync("git", args, { cwd: ctx.dir, encoding: "utf8" }).trim();
 		assert.equal(show(["log", "-1", "--format=%an"]), "kainbain-runner/host-9");
 		assert.equal(show(["config", "user.name"]), "t");
+	});
+
+	it("commits and pushes the paired docs worktree FIRST (docs repo, same branch)", async () => {
+		// Code repo + separate docs repo, each with its own origin, both on
+		// kb/t1 — the docs-repo project layout the runner prepares.
+		ctx = worktreeRepo(true);
+		const docs = worktreeRepo(true);
+		try {
+			fs.writeFileSync(path.join(ctx.dir, "code.txt"), "c");
+			const docsTaskDir = path.join(docs.dir, "docs", "tasks", "t1");
+			fs.mkdirSync(docsTaskDir, { recursive: true });
+			fs.writeFileSync(path.join(docsTaskDir, "plan.md"), "# plan");
+			const out = await commitAndPush({
+				workdir: ctx.dir,
+				branch: "kb/t1",
+				message: "kb/t1 s1: stage output",
+				taskDocsPath: "docs/tasks/t1",
+				docsWorkdir: docs.dir,
+			});
+			assert.equal(out.pushed, true);
+			assert.equal(out.docsPushed, true);
+			// Docs commit carries the [docs] prefix; code commit does not.
+			const docsSubject = execFileSync("git", ["log", "-1", "--format=%s", "kb/t1"], { cwd: docs.origin, encoding: "utf8" }).trim();
+			assert.equal(docsSubject, "[docs] kb/t1 s1: stage output");
+			const codeSubject = execFileSync("git", ["log", "-1", "--format=%s", "kb/t1"], { cwd: ctx.origin, encoding: "utf8" }).trim();
+			assert.equal(codeSubject, "kb/t1 s1: stage output");
+			// The docs branch actually carries the task docs file.
+			const docsFile = execFileSync("git", ["show", "kb/t1:docs/tasks/t1/plan.md"], { cwd: docs.origin, encoding: "utf8" });
+			assert.equal(docsFile, "# plan");
+		} finally {
+			fs.rmSync(docs.dir, { recursive: true, force: true });
+			fs.rmSync(docs.origin, { recursive: true, force: true });
+		}
+	});
+
+	it("aborts before the code push when the docs worktree push fails", async () => {
+		ctx = worktreeRepo(true);
+		const docs = worktreeRepo(false); // no origin on the docs side
+		try {
+			fs.writeFileSync(path.join(ctx.dir, "code.txt"), "c");
+			fs.writeFileSync(path.join(docs.dir, "docs-note.txt"), "d");
+			await assert.rejects(
+				commitAndPush({
+					workdir: ctx.dir,
+					branch: "kb/t1",
+					message: "stage",
+					docsWorkdir: path.join(docs.dir, "does-not-exist"),
+				}),
+				(err) => /docs repo/.test(err.message),
+			);
+			// Code origin never received the branch tip with the new commit:
+			// the pre-existing kb/t1 is untouched (no new commit pushed).
+			const codeSubject = execFileSync("git", ["log", "-1", "--format=%s", "kb/t1"], { cwd: ctx.origin, encoding: "utf8" }).trim();
+			assert.equal(codeSubject, "init");
+		} finally {
+			fs.rmSync(docs.dir, { recursive: true, force: true });
+		}
 	});
 });
 
@@ -171,5 +251,98 @@ describe("commitAndPush task docs rescue", () => {
 			fs.rmSync(ctx2.dir, { recursive: true, force: true });
 			if (ctx2.origin) fs.rmSync(ctx2.origin, { recursive: true, force: true });
 		}
+	});
+});
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function wireRealBinaryGuard(dir) {
+	fs.mkdirSync(path.join(dir, "scripts", "githooks"), { recursive: true });
+	for (const name of ["githooks/pre-commit", "check-binary-guard.mjs", "check-proof-and-hygiene.mjs"]) {
+		fs.copyFileSync(path.join(REPO_ROOT, "scripts", name), path.join(dir, "scripts", name));
+	}
+	git(dir, ["config", "core.hooksPath", "scripts/githooks"]);
+}
+
+describe("commitAndPush hook failures", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("surfaces a hook-rejected stage commit with the structured envelope", async () => {
+		const { dir, origin } = worktreeRepo(false);
+		dirs.push(dir);
+		assert.equal(origin, null);
+		wireRealBinaryGuard(dir);
+		git(dir, ["add", "."]);
+		git(dir, ["commit", "-qm", "wire guard"]);
+		fs.writeFileSync(path.join(dir, "bad.png"), Buffer.from([0xef, 0xbf, 0xbd, 0x50, 0x4e, 0x47]));
+		await assert.rejects(commitAndPush({ workdir: dir, branch: "kb/t1", message: "stage" }), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "git-hook-rejected");
+			assert.equal(err.exitCode, 1);
+			assert.equal(err.gitFailure.kind, "hook-rejected");
+			assert.deepEqual(err.gitFailure.files, ["bad.png"]);
+			// The daemon fills the phase (stage-commit here); the git layer
+			// leaves it null.
+			assert.equal(err.gitFailure.phase, null);
+			return true;
+		});
+	});
+
+	it("carries merge conflicts as structured merge-conflict detail", async () => {
+		const { dir, origin } = worktreeRepo(true);
+		dirs.push(dir, origin);
+		// Local commit A on kb/t1…
+		fs.writeFileSync(path.join(dir, "f.txt"), "aaa\n");
+		git(dir, ["add", "."]);
+		git(dir, ["commit", "-qm", "a work"]);
+		// …diverges from a pushed commit B touching the same hunk.
+		const sibling = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-sib-"));
+		dirs.push(sibling);
+		execFileSync("git", ["clone", "-q", origin, sibling], { stdio: "ignore" });
+		git(sibling, ["config", "user.email", "t@t.t"]);
+		git(sibling, ["config", "user.name", "t"]);
+		git(sibling, ["checkout", "-q", "kb/t1"]);
+		fs.writeFileSync(path.join(sibling, "f.txt"), "bbb\n");
+		git(sibling, ["add", "."]);
+		git(sibling, ["commit", "-qm", "b work"]);
+		git(sibling, ["push", "-q", "origin", "kb/t1"]);
+		await assert.rejects(commitAndPush({ workdir: dir, branch: "kb/t1", message: "stage" }), (err) => {
+			assert.ok(err instanceof RunnerGitError);
+			assert.equal(err.code, "sync-conflict");
+			assert.equal(err.gitFailure.kind, "merge-conflict");
+			assert.deepEqual(err.gitFailure.files, ["f.txt"]);
+			assert.ok(err.gitFailure.remedy.includes("kb/t1"));
+			assert.ok(err.gitFailure.summary.includes("f.txt"));
+			return true;
+		});
+	});
+
+	it("keeps the structured failure when labelling a docs-repo error", async () => {
+		const code = worktreeRepo(false);
+		const docs = worktreeRepo(false);
+		dirs.push(code.dir, docs.dir);
+		wireRealBinaryGuard(docs.dir);
+		git(docs.dir, ["add", "."]);
+		git(docs.dir, ["commit", "-qm", "wire guard"]);
+		fs.writeFileSync(path.join(docs.dir, "bad.png"), Buffer.from([0xef, 0xbf, 0xbd, 0x50, 0x4e, 0x47]));
+		await assert.rejects(
+			commitAndPush({ workdir: code.dir, branch: "kb/t1", message: "stage", docsWorkdir: docs.dir }),
+			(err) => {
+				assert.ok(err instanceof RunnerGitError);
+				assert.equal(err.code, "git-hook-rejected");
+				assert.ok(err.message.startsWith(`docs repo (${path.basename(docs.dir)}):`));
+				assert.equal(err.exitCode, 1);
+				assert.equal(err.gitFailure.kind, "hook-rejected");
+				assert.deepEqual(err.gitFailure.files, ["bad.png"]);
+				assert.ok(err.gitFailure.summary.startsWith(`docs repo (${path.basename(docs.dir)}): Commit blocked`));
+				return true;
+			},
+		);
 	});
 });

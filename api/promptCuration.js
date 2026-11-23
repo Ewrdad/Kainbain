@@ -20,7 +20,7 @@ import {
 	formatMissingAssetWarning,
 } from "./work/taskAssets.js";
 import { listTaskDocsFiles } from "./work/taskDocsFiles.js";
-import { resolveDocsDirName } from "./docsPath.js";
+import { resolveDocsDirName, resolveTaskDocsDir } from "./docsPath.js";
 import {
 	DEFAULT_PROMPT_LAYOUT,
 	MANDATORY_LAYOUT_TOKENS,
@@ -381,10 +381,14 @@ export function interpolatePromptKeywords(template, context = {}) {
 	const resolvedGoal = task.goal || task.title || task.description || "";
 
 	const taskId = task.id || "unassigned";
+	// Route through the docs seam (resolveTaskDocsDir → resolveKainbainHome)
+	// instead of hand-building `<cwd>/<docsDir>/tasks/<id>`: for docs-repo
+	// projects the task docs live in the docs-repo checkout, not under the
+	// project cwd. Legacy projects resolve to the identical path as before.
 	const resolvedTaskDocs =
 		taskDocs ||
 		(projectCwd
-			? `${projectCwd.replace(/\/+$/, "")}/${resolveDocsDirName(project)}/tasks/${taskId}/`
+			? `${resolveTaskDocsDir(projectCwd, project, taskId) || `${projectCwd.replace(/\/+$/, "")}/${resolveDocsDirName(project)}/tasks/${taskId}`}/`
 			: `./${resolveDocsDirName(project)}/tasks/${taskId}/`);
 
 	const allReports = [

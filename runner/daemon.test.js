@@ -18,6 +18,8 @@ import {
 	findUnconfiguredHarnesses,
 	handlePendingCommands,
 	joinAndHeartbeat,
+	maybeSelfUpdate,
+	pinnedDesiredVersion,
 	probeHarnessVersions,
 	refreshDiscoveredModels,
 	resolveHarnessConfig,
@@ -47,6 +49,7 @@ import { isAdminCommitSubject } from "../shared/changelogHistory/isAdminCommitSu
 import { servingModelFor } from "../shared/servingModelFor.js";
 import { formatPosture } from "../shared/formatPosture.js";
 import { hashStageConfig, parseAttestationTrailers } from "../shared/stageAttestation.js";
+import { slugForRepo } from "./project.js";
 
 /***
  * MARK: waitFor
@@ -464,6 +467,298 @@ describe("runSingleAssignment", () => {
 			/still pending/,
 		);
 	});
+
+	it("releases with a reason and exits cleanly when the backend 502s mid-assignment", async () => {
+		// S4: a transient backend failure inside executeAssignment
+		// interrupts WITH the reason and returns; single-shot has no
+		// loop to continue, so it maps to a clean non-zero exit
+		// carrying the release reason — not the raw 502.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const interrupted = [];
+		const errors = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => {
+				throw Object.assign(new Error("Backend 502 on /tasks/t1/complete-execution"), {
+					statusCode: 502,
+					code: null,
+				});
+			},
+			interrupt: async (args) => {
+				interrupted.push(args);
+				return { interrupted: true };
+			},
+		});
+		const err = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (m) => errors.push(String(m)) },
+		}).then(
+			() => null,
+			(e) => e,
+		);
+		assert.ok(err, "single-shot still ends non-zero on a transient outage");
+		assert.match(err.message, /Backend unreachable mid-assignment/);
+		assert.equal(err.statusCode, undefined, "clean release reason, not the raw 502");
+		assert.equal(interrupted.length, 1);
+		assert.match(interrupted[0].reason, /Backend unreachable mid-assignment/);
+		assert.ok(errors.some((m) => m.includes("Backend unreachable mid-assignment")), "one-line ride-through note");
+	});
+
+	it("treats a dropped socket mid-assignment like a 502", async () => {
+		// Network-arm parity: fetch itself rejecting (refused/reset
+		// connection, destroyed socket) rides the same path as a
+		// gateway status.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const interrupted = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => {
+				throw Object.assign(new TypeError("fetch failed"), {
+					cause: Object.assign(new Error("connect ECONNRESET 10.0.0.2:3100"), { code: "ECONNRESET" }),
+				});
+			},
+			interrupt: async (args) => {
+				interrupted.push(args);
+				return { interrupted: true };
+			},
+		});
+		const err = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		}).then(
+			() => null,
+			(e) => e,
+		);
+		assert.ok(err, "single-shot still ends non-zero on a dropped socket");
+		assert.match(err.message, /Backend unreachable mid-assignment/);
+		assert.equal(interrupted.length, 1);
+		assert.match(interrupted[0].reason, /Backend unreachable mid-assignment/);
+		assert.match(interrupted[0].reason, /ECONNRESET/, "the stable system code travels on the reason, not bare 'fetch failed'");
+	});
+
+	it("still releases cleanly when the ride-through interrupt itself 502s", async () => {
+		// S4 fail-safe: the interrupt during an outage is best-effort
+		// (the backend may still be down) — its failure must not mask
+		// the release with the raw 502. The lease TTL bounds the rest.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		let interruptAttempts = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => {
+				throw Object.assign(new Error("Backend 502 on /tasks/t1/complete-execution"), {
+					statusCode: 502,
+					code: null,
+				});
+			},
+			interrupt: async () => {
+				interruptAttempts += 1;
+				throw Object.assign(new Error("Backend 502 on /tasks/t1/interrupt"), {
+					statusCode: 502,
+					code: null,
+				});
+			},
+		});
+		const err = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		}).then(
+			() => null,
+			(e) => e,
+		);
+		assert.ok(err, "single-shot still ends non-zero when the interrupt also fails");
+		assert.match(err.message, /Backend unreachable mid-assignment/);
+		assert.equal(err.statusCode, undefined, "clean release reason, not the interrupt's raw 502");
+		assert.equal(interruptAttempts, 1, "one best-effort interrupt attempt, then release");
+	});
+
+	it("still rethrows STALE_EPOCH mid-assignment (epoch fencing intact)", async () => {
+		// GUIDE-04 section 3, still-true side: rethrown === true. The
+		// stale check fires before any reporting branch, so no
+		// interrupt is sent — the lease is already someone else's.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => {
+				throw Object.assign(new Error("Stale epoch"), { statusCode: 409, code: "STALE_EPOCH" });
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const err = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		}).then(
+			() => null,
+			(e) => e,
+		);
+		assert.ok(err, "STALE_EPOCH still rethrows");
+		assert.equal(err.code, "STALE_EPOCH");
+		assert.equal(err.statusCode, 409);
+		assert.ok(!client.calls.includes("interrupt"), "a fenced-out lease is never interrupted");
+	});
+
+	it("still rethrows auth failures and unknown errors mid-assignment", async () => {
+		// The fatal set keeps the interrupt+rethrow path: the task is
+		// released WITH the reason, then the error stays loud.
+		for (const failure of [
+			{ name: "auth", error: Object.assign(new Error("Unknown credential"), { statusCode: 401, code: "INVALID_CREDENTIAL" }) },
+			{ name: "unknown", error: new Error("assignment-boom") },
+		]) {
+			const repo = localRepo();
+			const config = baseConfig();
+			dirs.push(config.workRoot, repo);
+			const interrupted = [];
+			const client = stubClient({
+				heartbeat: async () => ({ status: "active" }),
+				getProject: async () => ({ id: "p1", cwd: repo }),
+				getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+				claim: async () => ({ executionId: "e1", epoch: 1 }),
+				progress: async () => ({ recorded: true }),
+				logs: async () => ({ accepted: true }),
+				complete: async () => {
+					throw failure.error;
+				},
+				interrupt: async (args) => {
+					interrupted.push(args);
+					return { interrupted: true };
+				},
+			});
+			const err = await runSingleAssignment({
+				config,
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {} },
+			}).then(
+				() => null,
+				(e) => e,
+			);
+			assert.ok(err, `${failure.name} still rethrows`);
+			assert.equal(err, failure.error, `${failure.name} propagates untouched`);
+			assert.equal(interrupted.length, 1, `${failure.name} still releases the task with a reason`);
+		}
+	});
+
+	it("rides through transient register failures at join", async () => {
+		// S4: joining during a backend restart window retries the
+		// idempotent register instead of exiting into a restart storm.
+		const repo = localRepo();
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "kb-runner-home-"));
+		const config = baseConfig({ credential: "", home });
+		dirs.push(config.workRoot, repo, home);
+		let regs = 0;
+		const client = stubClient({
+			register: async () => {
+				regs += 1;
+				if (regs <= 2) {
+					throw Object.assign(new Error("Backend 502 on /runners/register"), { statusCode: 502, code: null });
+				}
+				return { status: "active", runnerId: "r1", credential: "cred-9" };
+			},
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.accepted, true);
+		assert.equal(regs, 3);
+	});
+
+	it("rides through a transient first heartbeat at join", async () => {
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		let beats = 0;
+		const client = stubClient({
+			heartbeat: async () => {
+				beats += 1;
+				if (beats === 1) {
+					throw Object.assign(new Error("Backend 503 on /runners/heartbeat"), { statusCode: 503, code: null });
+				}
+				return { status: "active" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.accepted, true);
+		assert.equal(beats, 2);
+	});
+
+	it("still throws when a join outage outlasts the retry budget", async () => {
+		// Bounded by construction: the retries buy ~1.75s of grace,
+		// then the outage stays loud instead of hanging boot forever.
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const client = stubClient({
+			heartbeat: async () => {
+				throw Object.assign(new Error("Backend 502 on /runners/heartbeat"), { statusCode: 502, code: null });
+			},
+		});
+		await assert.rejects(
+			runSingleAssignment({
+				config,
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {} },
+			}),
+			(err) => err?.statusCode === 502,
+		);
+	});
 });
 
 describe("runSingleAssignment agent verdict detection", () => {
@@ -838,6 +1133,36 @@ describe("applyBackendPrompt", () => {
 		assert.equal(applyBackendPrompt({ prompt: "", backendCwd: "/repo", workdir: "/w" }), "");
 		assert.equal(applyBackendPrompt({ prompt: "x /repo", backendCwd: "/repo", workdir: "/repo" }), "x /repo");
 		assert.equal(applyBackendPrompt({ prompt: "x", backendCwd: "", workdir: "/w" }), "x");
+	});
+	it("retargets the backend docs home into the paired docs worktree (docs repo)", () => {
+		const out = applyBackendPrompt({
+			prompt: "Read /srv/kb/app/docs/tasks/t1/plan.md and edit /repo/src",
+			backendCwd: "/repo",
+			workdir: "/w/kb-t1",
+			docsHome: "/srv/kb/app",
+			docsWorkdir: "/w/kb-t1-docs",
+		});
+		assert.equal(out, "Read /w/kb-t1-docs/docs/tasks/t1/plan.md and edit /w/kb-t1/src");
+	});
+	it("does not corrupt a docs home that starts with the cwd (default sibling checkout)", () => {
+		const out = applyBackendPrompt({
+			prompt: "See /repo-kainbain-docs/docs/tasks/t1 and /repo/src",
+			backendCwd: "/repo",
+			workdir: "/w/kb-t1",
+			docsHome: "/repo-kainbain-docs",
+			docsWorkdir: "/w/kb-t1-docs",
+		});
+		assert.equal(out, "See /w/kb-t1-docs/docs/tasks/t1 and /w/kb-t1/src");
+	});
+	it("skips the docs rewrite for legacy projects (docs home === cwd)", () => {
+		const out = applyBackendPrompt({
+			prompt: "See /repo/docs/tasks/t1",
+			backendCwd: "/repo",
+			workdir: "/w/kb-t1",
+			docsHome: "/repo",
+			docsWorkdir: null,
+		});
+		assert.equal(out, "See /w/kb-t1/docs/tasks/t1");
 	});
 });
 
@@ -1354,6 +1679,7 @@ describe("deliverSteers", () => {
 			backendApiVersion: "1.0.0",
 			desiredRunnerVersion: "0.2.0",
 			minimumRunnerVersion: "0.1.0",
+			desiredVersion: null,
 		});
 	});
 
@@ -1362,6 +1688,7 @@ describe("deliverSteers", () => {
 			backendApiVersion: null,
 			desiredRunnerVersion: null,
 			minimumRunnerVersion: null,
+			desiredVersion: null,
 		});
 		assert.deepEqual(updateDirectiveFromBeat(null).backendApiVersion, null);
 		assert.equal(updateDirectiveFromBeat({ update: { backendApiVersion: "  " } }).backendApiVersion, null);
@@ -1529,6 +1856,66 @@ describe("runDispatchLoop", () => {
 		assert.ok(!client.calls.includes("interrupt"));
 		assert.ok(!client.calls.includes("claim"), "dispatch lease is consumed, never re-claimed");
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
+	});
+
+	it("contains a failed assignment: releases the task and keeps polling", async () => {
+		// A worktree-setup throw (here: no repo at the project path — a
+		// generic, non-gitFailure error, since recovery snapshots bypass
+		// hooks and structured git failures report-and-return instead)
+		// must fail one task, not the runner: the loop logs, the task is
+		// released via interrupt, and the next assignment still runs.
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		const seen = [];
+		const completed = [];
+		const interrupted = [];
+		const errors = [];
+		let projects = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				seen.push(1);
+				if (seen.length === 1) {
+					return { assigned: true, projectId: "p1", taskId: "t-fail", executionId: "e1", epoch: 1 };
+				}
+				if (seen.length === 2) {
+					return { assigned: true, projectId: "p1", taskId: "t-ok", executionId: "e2", epoch: 1 };
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => {
+				projects += 1;
+				return projects === 1
+					? { id: "p1", cwd: path.join(config.workRoot, "no-such-repo") }
+					: { id: "p1", cwd: repo };
+			},
+			getTask: async (projectId, taskId) => ({ id: taskId, goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async (args) => {
+				interrupted.push(args);
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (m) => errors.push(String(m)) },
+		});
+		assert.equal(out.assignments, 2);
+		assert.equal(out.idle, true);
+		assert.equal(interrupted.length, 1);
+		assert.equal(interrupted[0].taskId, "t-fail");
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].taskId, "t-ok");
+		assert.ok(errors.some((m) => m.includes("t-fail")), "loop logs the failed task");
 	});
 
 	it("serves one impromptu job on an idle iteration, then idles out", async () => {
@@ -2049,6 +2436,294 @@ describe("runDispatchLoop", () => {
 		assert.equal(dispatches, 3);
 	});
 
+	it("backs off on transient dispatch outages without consuming idle budget", async () => {
+		// S4: a 502 on dispatchClaim retries with backoff and re-polls
+		// instead of exiting — the 366->367 crash-cycling path. The
+		// loop only idles out on genuinely empty polls.
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, repo);
+		let dispatches = 0;
+		const warnings = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				dispatches += 1;
+				if (dispatches <= 10) {
+					throw Object.assign(new Error("Backend 502 on /runners/dispatch"), { statusCode: 502, code: null });
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: (m) => warnings.push(String(m)) },
+		});
+		assert.equal(out.idle, true);
+		assert.equal(out.assignments, 0);
+		// Two full backoff rounds (1 outer + 4 helper calls each),
+		// then the empty poll that consumes the single idle budget.
+		assert.equal(dispatches, 11);
+		assert.equal(
+			warnings.filter((m) => m.includes("backend unreachable")).length,
+			2,
+			"one line per ride-through",
+		);
+		assert.ok(
+			warnings.some((m) => m.includes("Backend 502")),
+			"the ride-through line names the backend's answer",
+		);
+	});
+
+	it("processes the answer when a dispatch poll recovers mid-retry", async () => {
+		// A retry that lands on an assignment processes it normally —
+		// recovery is not treated as an empty poll.
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		let dispatches = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				dispatches += 1;
+				if (dispatches === 1) {
+					throw Object.assign(new Error("Backend 502 on /runners/dispatch"), { statusCode: 502, code: null });
+				}
+				if (dispatches === 2) {
+					return { assigned: true, projectId: "p1", taskId: "t1", executionId: "e1", epoch: 1 };
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => ({ accepted: true, shaState: "present" }),
+			interrupt: async () => ({ interrupted: true }),
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(out.idle, true);
+		assert.equal(dispatches, 4);
+		assert.ok(!client.calls.includes("interrupt"));
+	});
+
+	it("still throws when a dispatch retry surfaces a non-transient error", async () => {
+		// Only the classifier-positive set rides through: a fatal
+		// failure mid-retry stays loud.
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, repo);
+		let dispatches = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				dispatches += 1;
+				if (dispatches === 1) {
+					throw Object.assign(new Error("Backend 502 on /runners/dispatch"), { statusCode: 502, code: null });
+				}
+				throw new Error("dispatch-boom");
+			},
+		});
+		await assert.rejects(
+			runDispatchLoop({
+				config,
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {} },
+			}),
+			/dispatch-boom/,
+		);
+		assert.equal(dispatches, 2);
+	});
+
+	it("releases a transient-failed assignment and keeps polling without a failure log", async () => {
+		// GUIDE-04 section 3, flipped red: a 503 inside one assignment
+		// interrupts WITH the reason and RETURNS (rethrown === false),
+		// so the loop-level containment never fires and the next
+		// assignment still runs.
+		const repo = localRepo();
+		const config = loopConfig();
+		dirs.push(config.workRoot, repo);
+		const seen = [];
+		const completed = [];
+		const interrupted = [];
+		const errors = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				seen.push(1);
+				if (seen.length === 1) {
+					return { assigned: true, projectId: "p1", taskId: "t-blip", executionId: "e1", epoch: 1 };
+				}
+				if (seen.length === 2) {
+					return { assigned: true, projectId: "p1", taskId: "t-ok", executionId: "e2", epoch: 1 };
+				}
+				return { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async (projectId, taskId) => ({ id: taskId, goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				if (args.taskId === "t-blip") {
+					throw Object.assign(new Error("Backend 503 on /tasks/t-blip/complete-execution"), {
+						statusCode: 503,
+						code: null,
+					});
+				}
+				completed.push(args);
+				return { accepted: true, shaState: "present" };
+			},
+			interrupt: async (args) => {
+				interrupted.push(args);
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (m) => errors.push(String(m)) },
+		});
+		assert.equal(out.assignments, 2);
+		assert.equal(out.idle, true);
+		assert.equal(interrupted.length, 1);
+		assert.equal(interrupted[0].taskId, "t-blip");
+		assert.match(interrupted[0].reason, /Backend unreachable mid-assignment/);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].taskId, "t-ok");
+		// The only error-level line is the ride-through note — the
+		// db49 "failed (...); task released, continuing dispatch."
+		// containment never fired, proving return-not-throw.
+		assert.equal(errors.length, 1);
+		assert.match(errors[0], /Backend unreachable mid-assignment/);
+		assert.ok(!errors.some((m) => m.includes("continuing dispatch")));
+	});
+
+	it("still propagates STALE_EPOCH from an assignment (epoch fencing intact)", async () => {
+		// GUIDE-04 section 3, still-true side: rethrown === true — the
+		// S4 branch and the loop catch both let fencing through.
+		const repo = localRepo();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, repo);
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => ({ assigned: true, projectId: "p1", taskId: "t1", executionId: "e1", epoch: 1 }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => {
+				throw Object.assign(new Error("Stale epoch"), { statusCode: 409, code: "STALE_EPOCH" });
+			},
+			interrupt: async () => ({ interrupted: true }),
+		});
+		await assert.rejects(
+			runDispatchLoop({
+				config,
+				client,
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {} },
+			}),
+			(err) => err?.code === "STALE_EPOCH",
+		);
+	});
+
+	it("releases a transient-failed integrate job and keeps polling", async () => {
+		// Integration parity: a 502 on the landed report releases via
+		// interrupt WITH the reason and returns — the merge attempt is
+		// bounded by the integration lease TTL, not a process exit.
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-origin-"));
+		execFileSync("git", ["init", "-q", "--bare"], { cwd: origin, stdio: "ignore" });
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		execFileSync("git", ["config", "user.email", "t@t.t"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["config", "user.name", "t"], { cwd: seed, stdio: "ignore" });
+		fs.writeFileSync(path.join(seed, "base.txt"), "base");
+		execFileSync("git", ["add", "."], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["commit", "-qm", "init"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["branch", "-M", "main"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["push", "-q", "origin", "main"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["checkout", "-qb", "kb/t1"], { cwd: seed, stdio: "ignore" });
+		fs.writeFileSync(path.join(seed, "task.txt"), "task work");
+		execFileSync("git", ["add", "."], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["commit", "-qm", "task work"], { cwd: seed, stdio: "ignore" });
+		execFileSync("git", ["push", "-q", "origin", "kb/t1"], { cwd: seed, stdio: "ignore" });
+		const shaOf = (ref) => execFileSync("git", ["rev-parse", ref], { cwd: seed, encoding: "utf8" }).trim();
+		const config = loopConfig({ dispatchIdleLimit: 1 });
+		dirs.push(config.workRoot, origin, seed);
+		const interrupted = [];
+		const errors = [];
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? {
+							assigned: true,
+							projectId: "p1",
+							taskId: "t1",
+							executionId: "e1",
+							epoch: 1,
+							stageId: "merge-1",
+							kind: "integrate",
+							integration: {
+								taskBranch: "kb/t1",
+								expectedTaskSha: shaOf("kb/t1"),
+								targetBranch: "main",
+								expectedTargetSha: shaOf("main"),
+								mergeAttemptId: "merge-t1-1",
+								integrationExecutionId: "ie1",
+								integrationEpoch: 1,
+							},
+							requirements: { kind: "merge", harness: null, model: "", tier: "T0" },
+						}
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", cwd: seed, gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "merge-1" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			integrationHeartbeat: async () => ({ executionId: "ie1", epoch: 1 }),
+			integrationReport: async () => {
+				throw Object.assign(new Error("Backend 502 on /runners/integration/report"), { statusCode: 502, code: null });
+			},
+			verifySha: async () => ({ verified: true }),
+			complete: async () => ({ accepted: true }),
+			interrupt: async (args) => {
+				interrupted.push(args);
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (m) => errors.push(String(m)) },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(out.idle, true);
+		assert.equal(interrupted.length, 1);
+		assert.equal(interrupted[0].executionId, "e1");
+		assert.match(interrupted[0].reason, /Backend unreachable mid-assignment/);
+		assert.ok(!client.calls.includes("complete"), "no completion reported for the unreported merge");
+		assert.ok(!errors.some((m) => m.includes("continuing dispatch")), "loop-level containment never fired");
+		const leftovers = fs.readdirSync(config.workRoot).filter((n) => n.startsWith("kb-integrate-"));
+		assert.equal(leftovers.length, 0);
+	});
+
 	it("re-heartbeats once on STALE_RUNNER then retries", async () => {
 		const repo = localRepo();
 		const config = loopConfig({ dispatchIdleLimit: 1 });
@@ -2469,6 +3144,194 @@ describe("handlePendingCommands", () => {
 		});
 	});
 
+	it("restarts on the current version when idle (ack, confirm heartbeat, sentinel, exit 0)", async () => {
+		const heartbeats = [];
+		const state = {};
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
+					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
+					logger: quiet,
+					state,
+					pendingCommands: ["requestRestart"],
+					updateDeps: {
+						checkForUpdate: async () => { throw new Error("restart must not check for updates"); },
+					},
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+		assert.equal(exitCode, 0);
+		assert.equal(heartbeats.length, 1);
+		assert.deepEqual(heartbeats[0].facts.commandAck, {
+			command: "requestRestart",
+			ok: true,
+			detail: "restarting on current version",
+		});
+		assert.deepEqual(state.commandAcks, [
+			{ command: "requestRestart", ok: true, detail: "restarting on current version" },
+		]);
+	});
+
+	it("stages the wrapper reboot sentinel before exiting", async () => {
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		process.exit = () => { throw new Error("process.exit(0)"); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
+					client: {},
+					logger: quiet,
+					state: {},
+					pendingCommands: ["requestRestart"],
+				}),
+				/process\.exit\(0\)/,
+			);
+			const sentinel = JSON.parse(fs.readFileSync(path.join(installRoot, "restart-requested"), "utf8"));
+			assert.equal(sentinel.pid, process.pid);
+			assert.ok(Date.parse(sentinel.at), "the sentinel carries a timestamp for triage");
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("still exits when the sentinel cannot be written (unwrapped runner just stops)", async () => {
+		const warnings = [];
+		const blocker = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-")), "file-not-dir");
+		fs.writeFileSync(blocker, "occupied");
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot: path.join(blocker, "nested") }),
+					client: {},
+					logger: { ...quiet, warn: (msg) => warnings.push(String(msg)) },
+					state: {},
+					pendingCommands: ["requestRestart"],
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(path.dirname(blocker), { recursive: true, force: true });
+		}
+		assert.equal(exitCode, 0);
+		assert.ok(warnings.some((w) => w.includes("sentinel not written")), "the unsupervised exit is loud");
+	});
+
+	it("restarts at once when busy, stopping running work without an update check", async () => {
+		const heartbeats = [];
+		const state = { executionId: "exec-live" };
+		const installRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kb-restart-"));
+		const realExit = process.exit;
+		let exitCode = null;
+		process.exit = (code) => { exitCode = code; throw new Error(`process.exit(${code})`); };
+		try {
+			await assert.rejects(
+				handlePendingCommands({
+					config: claudeConfig({ installRoot }),
+					client: { heartbeat: async (args) => { heartbeats.push(args); return { status: "active" }; } },
+					logger: quiet,
+					state,
+					pendingCommands: ["requestRestart"],
+					updateDeps: {
+						checkForUpdate: async () => { throw new Error("restart must not check for updates"); },
+					},
+				}),
+				/process\.exit\(0\)/,
+			);
+		} finally {
+			process.exit = realExit;
+			fs.rmSync(installRoot, { recursive: true, force: true });
+		}
+		assert.equal(exitCode, 0);
+		assert.equal(heartbeats.length, 1);
+		assert.deepEqual(heartbeats[0].facts.commandAck, {
+			command: "requestRestart",
+			ok: true,
+			detail: "restarting now; running work stopped",
+		});
+	});
+
+	it("carries the operator desiredVersion through the update directive", () => {
+		assert.deepEqual(updateDirectiveFromBeat({ update: { backendApiVersion: "1.0.0", desiredVersion: "1.2.3" } }), {
+			backendApiVersion: "1.0.0",
+			desiredRunnerVersion: null,
+			minimumRunnerVersion: null,
+			desiredVersion: "1.2.3",
+		});
+		assert.equal(updateDirectiveFromBeat({ update: { desiredVersion: "latest" } }).desiredVersion, "latest");
+		assert.equal(updateDirectiveFromBeat({}).desiredVersion, null);
+	});
+
+	it("reads the pinned version off the directive, latest-or-junk reads unpinned", () => {
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "1.2.3" }), "1.2.3");
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "latest" }), null);
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "Latest" }), null);
+		assert.equal(pinnedDesiredVersion({}), null);
+		assert.equal(pinnedDesiredVersion(null), null);
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "bogus" }), null);
+		assert.equal(pinnedDesiredVersion({ desiredVersion: "" }), null);
+	});
+
+	it("skips automatic update checks for pinned runners, force installs the pin", async () => {
+		const calls = [];
+		const pinnedState = { updateDirective: { desiredVersion: "1.2.3", backendApiVersion: "1.0.0" } };
+		const skipped = await maybeSelfUpdate({
+			config: claudeConfig({ autoUpdate: true }),
+			logger: quiet,
+			updateState: pinnedState,
+			updateDeps: {
+				checkForUpdate: async (args) => { calls.push(args); return { ok: true, update: null, reason: "up to date" }; },
+			},
+		});
+		assert.equal(skipped.checked, false);
+		assert.match(skipped.reason, /manual update only/);
+		assert.equal(calls.length, 0);
+		const forced = await maybeSelfUpdate({
+			config: claudeConfig({ autoUpdate: true }),
+			logger: quiet,
+			updateState: pinnedState,
+			force: true,
+			updateDeps: {
+				checkForUpdate: async (args) => { calls.push(args); return { ok: true, update: null, reason: "up to date" }; },
+			},
+		});
+		assert.equal(forced.checked, true);
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0].targetVersion, "1.2.3");
+	});
+
+	it("routes a manual Update on a pinned runner at the pin, not latest", async () => {
+		const calls = [];
+		const state = { updateDirective: { desiredVersion: "0.2.0", backendApiVersion: "1.0.0" } };
+		await handlePendingCommands({
+			config: claudeConfig({ autoUpdate: true }),
+			client: {},
+			logger: quiet,
+			state,
+			pendingCommands: ["requestUpdate"],
+			updateDeps: {
+				checkForUpdate: async (args) => { calls.push(args); return { ok: true, update: null, reason: "up to date" }; },
+			},
+		});
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0].targetVersion, "0.2.0");
+		assert.deepEqual(state.commandAcks, [{ command: "requestUpdate", ok: true, detail: "up to date" }]);
+	});
+
 	it("ignores unknown commands", async () => {
 		const state = {};
 		await handlePendingCommands({
@@ -2476,7 +3339,7 @@ describe("handlePendingCommands", () => {
 			client: {},
 			logger: quiet,
 			state,
-			pendingCommands: ["requestRestart", null, undefined],
+			pendingCommands: ["requestReboot", null, undefined],
 		});
 		assert.deepEqual(state.commandAcks, []);
 	});
@@ -3241,5 +4104,528 @@ describe("factsFor build identity", () => {
 		} finally {
 			fs.rmSync(config.workRoot, { recursive: true, force: true });
 		}
+	});
+});
+
+const HOOK_REPLAY_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+
+function wireReplayBinaryGuard(dir) {
+	fs.mkdirSync(path.join(dir, "scripts", "githooks"), { recursive: true });
+	for (const name of ["githooks/pre-commit", "check-binary-guard.mjs", "check-proof-and-hygiene.mjs"]) {
+		fs.copyFileSync(path.join(HOOK_REPLAY_ROOT, "scripts", name), path.join(dir, "scripts", name));
+	}
+	git(dir, ["config", "core.hooksPath", "scripts/githooks"]);
+}
+
+function git(dir, args) {
+	execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+}
+
+function corruptReplayPng(dir, rel) {
+	const full = path.join(dir, rel);
+	fs.mkdirSync(path.dirname(full), { recursive: true });
+	fs.writeFileSync(full, Buffer.from([0xef, 0xbf, 0xbd, 0x50, 0x4e, 0x47, 0x0d, 0x0a]));
+	return rel;
+}
+
+function guardedReplayOrigin(dirs) {
+	// Bare origin with main + kb/t1, the production binary guard committed
+	// on main so every checkout carries it.
+	const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-replay-origin-"));
+	git(origin, ["init", "-q", "--bare"]);
+	const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-replay-seed-"));
+	execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+	git(seed, ["config", "user.email", "t@t.t"]);
+	git(seed, ["config", "user.name", "t"]);
+	wireReplayBinaryGuard(seed);
+	fs.writeFileSync(path.join(seed, "f.txt"), "x");
+	git(seed, ["add", "."]);
+	git(seed, ["commit", "-qm", "init with guard"]);
+	git(seed, ["branch", "-M", "main"]);
+	git(seed, ["push", "-q", "origin", "main"]);
+	git(seed, ["checkout", "-qb", "kb/t1"]);
+	git(seed, ["push", "-q", "origin", "kb/t1"]);
+	execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+	dirs.push(origin, seed);
+	return { origin, seed };
+}
+
+function replayClient({ origin, completed, interrupts, claimExtra = {} }) {
+	return stubClient({
+		heartbeat: async () => ({ status: "active" }),
+		getProject: async () => ({ id: "p1", gitUrl: origin }),
+		getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+		claim: async () => ({ executionId: "e1", epoch: 1, ...claimExtra }),
+		progress: async () => ({ recorded: true }),
+		logs: async () => ({ accepted: true }),
+		complete: async (args) => {
+			completed.push(args);
+			return { accepted: true };
+		},
+		interrupt: async (args) => {
+			interrupts.push(args || {});
+			return { interrupted: true };
+		},
+	});
+}
+
+function stageCorruptingHarness(workRoot, rel = "stage-shot.png") {
+	// A harness whose stage output trips the binary guard at the
+	// stage-end commit — the deterministic-failure driver now that
+	// recovery commits bypass hooks.
+	return () => ({
+		async createSession() {
+			return {
+				isStreaming: false,
+				messages: [],
+				getLastAssistantText: () => "done",
+				subscribe: () => () => {},
+				prompt: async () => {
+					corruptReplayPng(path.join(workRoot, "kb-t1"), rel);
+					return "done";
+				},
+				abort: () => {},
+				dispose: async () => {},
+			};
+		},
+	});
+}
+
+describe("runSingleAssignment commit/hook failures (incident replay)", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("parks a reused worktree holding corrupt PNGs past the guard, then runs the stage", async () => {
+		// The live incident shape, retargeted to the reconciled behavior:
+		// a reused worktree holds 3 corrupt PNGs that trip the production
+		// binary guard. The recovery snapshot bypasses hooks, so the
+		// residue parks on kb-recovery/* and the stage runs to its normal
+		// completion — no failed completion, no interrupt, no crash.
+		// (Hook rejections still surface as structured failed completions
+		// on task-branch commits; see the stage-commit test below.)
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		// Reused worktree from a previous run, holding unpushed residue.
+		const reused = path.join(config.workRoot, "kb-t1");
+		execFileSync("git", ["clone", "-q", origin, reused], { stdio: "ignore" });
+		git(reused, ["checkout", "-q", "kb/t1"]);
+		git(reused, ["config", "user.email", "t@t.t"]);
+		git(reused, ["config", "user.name", "t"]);
+		git(reused, ["config", "core.hooksPath", "scripts/githooks"]);
+		corruptReplayPng(reused, "a.png");
+		corruptReplayPng(reused, "b.png");
+		corruptReplayPng(reused, "c.png");
+		const completed = [];
+		const interrupts = [];
+		const errors = [];
+		const out = await runSingleAssignment({
+			config,
+			client: replayClient({ origin, completed, interrupts }),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: (line) => errors.push(String(line)) },
+		});
+		assert.equal(out.gitFailureReported, undefined);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "passed");
+		assert.equal(completed[0].gitFailure, undefined);
+		assert.equal(interrupts.length, 0);
+		assert.ok(!errors.some((line) => line.includes("commit failed")), "no commit-failure log line");
+		const branches = execFileSync("git", ["branch", "--list", "kb-recovery/t1/*"], { cwd: reused, encoding: "utf8" }).trim();
+		assert.ok(branches.length > 0, "residue parked on a kb-recovery/t1/* branch");
+		const parked = branches.split("\n")[0].trim().replace(/^\*\s*/, "");
+		const kept = execFileSync("git", ["ls-tree", "-r", "--name-only", parked], { cwd: reused, encoding: "utf8" });
+		for (const rel of ["a.png", "b.png", "c.png"]) {
+			assert.ok(kept.split("\n").includes(rel), `recovery branch preserves ${rel}`);
+		}
+	});
+
+	it("reports a hook-rejected stage commit with the stage-commit phase", async () => {
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		// The agent stage produces a corrupt PNG; the stage-end commit trips
+		// the guard in a freshly prepared worktree.
+		const writingHarness = () => ({
+			async createSession() {
+				return {
+					isStreaming: false,
+					messages: [],
+					getLastAssistantText: () => "done",
+					subscribe: () => () => {},
+					prompt: async () => {
+						corruptReplayPng(path.join(config.workRoot, "kb-t1"), "stage-shot.png");
+						return "done";
+					},
+					abort: () => {},
+					dispose: async () => {},
+				};
+			},
+		});
+		const out = await runSingleAssignment({
+			config,
+			client: replayClient({ origin, completed, interrupts }),
+			loadHarness: writingHarness,
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.gitFailureReported, true);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "commit-failed");
+		assert.equal(completed[0].gitFailure.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure.phase, "stage-commit");
+		assert.deepEqual(completed[0].gitFailure.files, ["stage-shot.png"]);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("proves the loop is dead: N deterministic failures report N times with no crash and no reason-less interrupt", async () => {
+		// Retargeted to the stage-commit path (recovery commits bypass
+		// hooks): each stage produces a corrupt PNG, each stage-end
+		// commit is hook-rejected, each assignment returns normally.
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const quiet = { log: () => {}, warn: () => {}, error: () => {} };
+		for (let i = 0; i < 3; i += 1) {
+			// Each assignment returns normally: zero process exits across
+			// three consecutive deterministic failures.
+			const out = await runSingleAssignment({
+				config,
+				client: replayClient({ origin, completed, interrupts }),
+				loadHarness: stageCorruptingHarness(config.workRoot),
+				logger: quiet,
+			});
+			assert.equal(out.gitFailureReported, true);
+		}
+		assert.equal(completed.length, 3);
+		assert.ok(
+			completed.every(
+				(report) =>
+					report.outcome === "failed" &&
+					report.gitFailure?.kind === "hook-rejected" &&
+					report.gitFailure?.phase === "stage-commit",
+			),
+		);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("keeps transient git faults on interrupt+rethrow, now with the reason", async () => {
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const missing = path.join(os.tmpdir(), `kb-no-such-origin-${Date.now()}`);
+		await assert.rejects(
+			runSingleAssignment({
+				config,
+				client: replayClient({ origin: missing, completed, interrupts }),
+				loadHarness: async () => fakeHarness(),
+				logger: { log: () => {}, warn: () => {}, error: () => {} },
+			}),
+		);
+		assert.equal(completed.length, 0);
+		assert.equal(interrupts.length, 1);
+		assert.ok(typeof interrupts[0].reason === "string" && interrupts[0].reason.length > 0);
+		assert.ok(interrupts[0].reason.includes("clone"));
+	});
+});
+
+describe("runDispatchLoop git-failure backoff", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	it("pauses one poll cycle after a deterministic git failure instead of re-claiming immediately", async () => {
+		// Retargeted to the stage-commit path (recovery commits bypass
+		// hooks): the stage produces a corrupt PNG, the stage-end commit
+		// is hook-rejected, and the loop backs off one poll cycle.
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		let polls = 0;
+		const logs = [];
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls === 1
+					? { assigned: true, projectId: "p1", taskId: "t1", executionId: "e1", epoch: 1 }
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: stageCorruptingHarness(config.workRoot),
+			logger: { log: (line) => logs.push(String(line)), warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.assignments, 1);
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].gitFailure?.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure?.phase, "stage-commit");
+		assert.equal(interrupts.length, 0);
+		assert.ok(logs.some((line) => line.includes("backing off one poll cycle")));
+	});
+
+	it("reports N consecutive deterministic git failures with 0 exits and 0 reason-less interrupts", async () => {
+		// The loop-dead proof: the same poisoned task re-claimed three
+		// times reports three failed completions and the process stays
+		// alive throughout — no throw (no systemd restart), no
+		// reason-less interrupt. (The backend parks the task after the
+		// third strike; the dispatch stub below keeps assigning so this
+		// test proves the runner side alone never spins.) Retargeted to
+		// the stage-commit path: each stage produces a corrupt PNG that
+		// the guard rejects at the stage-end commit.
+		const { origin } = guardedReplayOrigin(dirs);
+		const config = baseConfig({ dispatch: true, dispatchPollMs: 5, dispatchIdleLimit: 1, impromptu: false });
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		let polls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			dispatchClaim: async () => {
+				polls += 1;
+				return polls <= 3
+					? { assigned: true, projectId: "p1", taskId: "t1", executionId: `e${polls}`, epoch: polls }
+					: { assigned: false, code: "NO_CLAIMABLE_TASKS" };
+			},
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1", status: "in_stage" }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+		const out = await runDispatchLoop({
+			config,
+			client,
+			loadHarness: stageCorruptingHarness(config.workRoot),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.equal(out.assignments, 3);
+		assert.equal(completed.length, 3);
+		for (const report of completed) {
+			assert.equal(report.outcome, "failed");
+			assert.equal(report.failureKind, "commit-failed");
+			assert.equal(report.gitFailure?.kind, "hook-rejected");
+			assert.equal(report.gitFailure?.phase, "stage-commit");
+			assert.ok(report.gitFailure?.files?.includes("stage-shot.png"));
+		}
+		assert.equal(interrupts.length, 0);
+	});
+});
+
+describe("executeIntegrationAssignment git failures", () => {
+	let dirs;
+	beforeEach(() => {
+		dirs = [];
+	});
+	afterEach(() => {
+		for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+	});
+
+	function conflictingOrigin() {
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-origin-"));
+		git(origin, ["init", "-q", "--bare"]);
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		git(seed, ["config", "user.email", "t@t.t"]);
+		git(seed, ["config", "user.name", "t"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "base\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "init"]);
+		git(seed, ["branch", "-M", "main"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		git(seed, ["checkout", "-qb", "kb/t1"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "task side\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "task work"]);
+		git(seed, ["push", "-q", "origin", "kb/t1"]);
+		git(seed, ["checkout", "-q", "main"]);
+		fs.writeFileSync(path.join(seed, "base.txt"), "main side\n");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "main work"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		dirs.push(origin, seed);
+		return origin;
+	}
+
+	function integrationClient({ origin, completed, interrupts, reports, integration }) {
+		return stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", gitUrl: origin }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "merge-1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1, kind: "integrate", integration }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			integrationHeartbeat: async () => ({ executionId: "ie1", epoch: 1 }),
+			integrationReport: async (args) => {
+				reports.push(args);
+				return { accepted: true };
+			},
+			complete: async (args) => {
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+	}
+
+	function shasOf(origin, ...refs) {
+		const probe = fs.mkdtempSync(path.join(os.tmpdir(), "kb-int-probe-"));
+		dirs.push(probe);
+		execFileSync("git", ["clone", "-q", origin, probe], { stdio: "ignore" });
+		return refs.map((ref) => execFileSync("git", ["rev-parse", ref], { cwd: probe, encoding: "utf8" }).trim());
+	}
+
+	it("carries merge conflicts to the task as structured merge-conflict detail", async () => {
+		const origin = conflictingOrigin();
+		const [expectedTargetSha, expectedTaskSha] = shasOf(origin, "origin/main", "origin/kb/t1");
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		const completed = [];
+		const interrupts = [];
+		const reports = [];
+		const out = await runSingleAssignment({
+			config,
+			client: integrationClient({
+				origin,
+				completed,
+				interrupts,
+				reports,
+				integration: {
+					taskBranch: "kb/t1",
+					expectedTaskSha,
+					targetBranch: "main",
+					expectedTargetSha,
+					mergeAttemptId: "merge-t1-1",
+					integrationExecutionId: "ie1",
+					integrationEpoch: 1,
+				},
+			}),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.ok(out);
+		assert.equal(reports.length, 1);
+		assert.equal(reports[0].outcome, "conflict");
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].gitFailure.kind, "merge-conflict");
+		assert.equal(completed[0].gitFailure.phase, "merge");
+		assert.deepEqual(completed[0].gitFailure.files, ["base.txt"]);
+		assert.equal(interrupts.length, 0);
+	});
+
+	it("settles a hook-rejected merge commit as failed with detail instead of crashing", async () => {
+		// The merge itself is clean, but a repo hook refuses the merge
+		// commit: the lease settles as failed and the task carries the
+		// structured payload — no interrupt, no throw.
+		const origin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-inthook-origin-"));
+		git(origin, ["init", "-q", "--bare"]);
+		const seed = fs.mkdtempSync(path.join(os.tmpdir(), "kb-inthook-seed-"));
+		execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+		git(seed, ["config", "user.email", "t@t.t"]);
+		git(seed, ["config", "user.name", "t"]);
+		fs.mkdirSync(path.join(seed, "scripts", "githooks"), { recursive: true });
+		// `git merge` never runs `pre-commit` — it runs
+		// `prepare-commit-msg`/`commit-msg` — so the rejecting hook must
+		// be one of those for the merge commit to be refused.
+		fs.writeFileSync(path.join(seed, "scripts", "githooks", "prepare-commit-msg"), "#!/bin/sh\necho 'merge hook says no' >&2\nexit 1\n");
+		fs.chmodSync(path.join(seed, "scripts", "githooks", "prepare-commit-msg"), 0o755);
+		fs.writeFileSync(path.join(seed, "base.txt"), "base");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "init with hook"]);
+		git(seed, ["branch", "-M", "main"]);
+		git(seed, ["push", "-q", "origin", "main"]);
+		git(seed, ["checkout", "-qb", "kb/t1"]);
+		fs.writeFileSync(path.join(seed, "task.txt"), "task work");
+		git(seed, ["add", "."]);
+		git(seed, ["commit", "-qm", "task work"]);
+		git(seed, ["push", "-q", "origin", "kb/t1"]);
+		execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+		dirs.push(origin, seed);
+		const [expectedTargetSha, expectedTaskSha] = shasOf(origin, "origin/main", "origin/kb/t1");
+		const config = baseConfig();
+		dirs.push(config.workRoot);
+		// The mirror carries the hooks path (as ensureRepoHooksPath leaves
+		// it after a task checkout); the ephemeral merge worktree inherits it.
+		const mirror = path.join(config.workRoot, "mirrors", slugForRepo(origin));
+		fs.mkdirSync(path.dirname(mirror), { recursive: true });
+		execFileSync("git", ["clone", "-q", origin, mirror], { stdio: "ignore" });
+		git(mirror, ["config", "core.hooksPath", "scripts/githooks"]);
+		const completed = [];
+		const interrupts = [];
+		const reports = [];
+		const out = await runSingleAssignment({
+			config,
+			client: integrationClient({
+				origin,
+				completed,
+				interrupts,
+				reports,
+				integration: {
+					taskBranch: "kb/t1",
+					expectedTaskSha,
+					targetBranch: "main",
+					expectedTargetSha,
+					mergeAttemptId: "merge-t1-1",
+					integrationExecutionId: "ie1",
+					integrationEpoch: 1,
+				},
+			}),
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {}, error: () => {} },
+		});
+		assert.ok(out);
+		assert.equal(reports.length, 1);
+		assert.equal(reports[0].outcome, "failed");
+		assert.ok(reports[0].detail.includes("merge hook says no") || reports[0].detail.includes("blocked"));
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "commit-failed");
+		assert.equal(completed[0].gitFailure.kind, "hook-rejected");
+		assert.equal(completed[0].gitFailure.phase, "merge");
+		assert.equal(interrupts.length, 0);
+		// Nothing landed on the target.
+		const [tipAfter] = shasOf(origin, "origin/main");
+		assert.equal(tipAfter, expectedTargetSha);
 	});
 });

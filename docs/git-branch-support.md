@@ -24,6 +24,45 @@ Two further settings control workspace isolation and dirty-tree recovery
 - `dirtyTreeRecovery: "ladder"` (default) — run the sweep → stash → report
   ladder before parking; `"off"` restores the immediate refusal.
 
+## Per-Pipeline Base Branch
+
+Each named workflow (pipeline) can name its own **base branch** — the branch
+that pipeline treats as its main branch. Set it in the pipeline settings
+(Project Settings → Named Workflows tab, `#/settings/workflows`; `Base
+branch` field, blank = repo default) — the board's pipeline menu (Manage
+Workflows), the task detail page, the inline add-task form, and the
+create-task dialog all link there from the base branch they display, and
+settings search finds it under "base branch" — or via
+`POST/PATCH /projects/:id/workflows…` (`baseBranch`, stored in
+`.kainbain/project.json`). Every "default branch" step in this document then
+means the task's **effective base branch**: task branches are created off it,
+the merge stage merges back into it (and pushes it), post-stage finalise
+returns to it, CI `runOnBranch: "primary"` runs on it, and review/diff views
+compare the task branch against it.
+
+Resolution order per task: the task's pinned snapshot → the pipeline's live
+setting → the repo default. The snapshot is pinned at task creation (pure
+data, no git — the serialization gate below still holds), so re-pointing a
+pipeline only affects subsequently created tasks; in-flight tasks keep
+merging into the base they started with. One caveat when adopting
+this on a live install: tasks created before this feature have no snapshot,
+so they follow the pipeline's live setting — set the base before those tasks
+merge if you want them on the feature branch too. A configured base that
+does not exist yet is auto-created from the repo default tip (adopting
+`origin/<base>` when the remote already has it) and pushed best-effort, so a
+fresh feature branch just works. Remote runners adopt a pushed base the same
+way before `primary` CI runs (fetch, then track `origin/<base>` when the
+local branch is missing — never forked, never moved when it already exists),
+so a stage the backend prepared never fails for a branch the runner simply
+never fetched. An invalid git name refuses loudly (400 at the API, inline
+error in the UI) and is never silently replaced with `main`.
+
+One deliberate exception: the KainBain self-deploy continuity path
+(`deploy.sh --prod` stages) always tracks the repo default branch, never a
+pipeline base — a feature pipeline must never redirect a production deploy
+onto a feature branch. Merge-then-deploy pipelines that run on a custom base
+therefore deploy the repo default tip, not the just-merged feature work.
+
 ## Workspace Isolation
 
 ### Quarantine mode (default)

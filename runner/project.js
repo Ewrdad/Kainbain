@@ -14,6 +14,9 @@ import {
 // (productionSignals.js imports nothing) and recording never alters the
 // eviction decision below.
 import { recordWorktreeEviction } from "../api/watch/productionSignals.js";
+// Shared commit/hook-failure contract: hook-output parsing and the
+// transport envelope (same copy the backend executes).
+import { buildGitFailureDetails, parseHookFailure } from "../shared/gitFailure.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -34,14 +37,20 @@ export const WORKTREE_EVICT_STALE_MS = 30 * 60 * 1000;
  * MARK: RunnerGitError
  * @description Structured Runner-side git failure. `code` is one of
  *   `git-timeout` (command exceeded its budget), `git-lock` (index.lock
- *   held by a live process or a fresh lock we must not steal), or
- *   `git-failed` (anything git itself rejected, with git's message).
- *   Carries the argv and captured streams like the backend GitError, so
- *   the daemon can branch on `code` instead of parsing strings.
+ *   held by a live process or a fresh lock we must not steal),
+ *   `git-hook-rejected` (a repo hook such as the pre-commit binary guard
+ *   refused a commit/merge), or `git-failed` (anything git itself
+ *   rejected, with git's message). Carries the argv and captured streams
+ *   like the backend GitError, so the daemon can branch on `code`
+ *   instead of parsing strings. `exitCode` is git's numeric exit status
+ *   when known; `gitFailure` is the shared `GitFailureDetails` envelope
+ *   for commit/merge failures (phase filled in by the caller that knows
+ *   it — see `withGitFailurePhase`), so the daemon can report hook
+ *   rejections as structured failed completions instead of crashing.
  * @example new RunnerGitError('git-lock', 'git status', { cwd: '/w' })
  ***/
 export class RunnerGitError extends Error {
-	constructor(code, message, { args = [], stdout = "", stderr = "", cwd = "" } = {}) {
+	constructor(code, message, { args = [], stdout = "", stderr = "", cwd = "", exitCode = null, gitFailure = null } = {}) {
 		super(message);
 		this.name = "RunnerGitError";
 		this.code = code;
@@ -49,7 +58,32 @@ export class RunnerGitError extends Error {
 		this.stdout = stdout;
 		this.stderr = stderr;
 		this.cwd = cwd;
+		this.exitCode = Number.isInteger(exitCode) ? exitCode : null;
+		this.gitFailure = gitFailure && typeof gitFailure === "object" ? gitFailure : null;
 	}
+}
+
+/***
+ * MARK: withGitFailurePhase
+ * @description Tags a RunnerGitError's structured `gitFailure` with the
+ *   lifecycle phase that produced it (`worktree-setup`, `stage-commit`,
+ *   `merge` — `recovery` is accepted for wire compatibility but has no
+ *   producer since recovery snapshots bypass hooks) when the throw site
+ *   knows more than the git layer did. A phase already set wins (the
+ *   innermost site is the most precise); errors without a `gitFailure`
+ *   pass through untouched.
+ *   Returns the same error for `throw withGitFailurePhase({ error, phase })`.
+ * @example throw withGitFailurePhase({ error: err, phase: 'stage-commit' })
+ * @param {Object} [input] - Tagging context.
+ * @param {*} input.error - Error to tag (usually RunnerGitError).
+ * @param {string} input.phase - Lifecycle phase.
+ * @returns {*} The same error, tagged in place when applicable.
+ ***/
+export function withGitFailurePhase({ error = null, phase = null } = {}) {
+	if (error instanceof RunnerGitError && error.gitFailure && !error.gitFailure.phase) {
+		error.gitFailure = buildGitFailureDetails({ ...error.gitFailure, phase });
+	}
+	return error;
 }
 
 // Per-workdir serialization: the Runner daemon is one process, and two
@@ -163,6 +197,21 @@ export async function maybeRecoverWorkdirLock(cwd) {
 	return { recovered: true, lockPath, reason: "stale-cleared", ageMs };
 }
 
+function readGitSubcommand(args) {
+	if (!Array.isArray(args)) return "";
+	for (let i = 0; i < args.length; i += 1) {
+		const token = args[i];
+		// Global flags that consume the next argv slot (`git -c k=v …`).
+		if (token === "-c" || token === "-C" || token === "--config") {
+			i += 1;
+			continue;
+		}
+		if (typeof token !== "string" || token.startsWith("-")) continue;
+		return token;
+	}
+	return "";
+}
+
 function toRunnerGitError(args, cwd, err, stdout = "", stderr = "") {
 	const killed = err?.killed || err?.signal === "SIGTERM";
 	if (killed || /timed out|ETIMEDOUT/i.test(String(err?.message || "") + String(err?.code || ""))) {
@@ -171,7 +220,30 @@ function toRunnerGitError(args, cwd, err, stdout = "", stderr = "") {
 	if (/Unable to create '.*index\.lock'|index\.lock.*exists|Another git process/i.test(`${err?.message || ""}\n${stderr}\n${stdout}`)) {
 		return new RunnerGitError("git-lock", `git ${args.join(" ")} hit index.lock contention in '${cwd}': ${(stderr || err?.message || "").trim()}`, { args, stdout, stderr, cwd });
 	}
-	return new RunnerGitError("git-failed", `git ${args.join(" ")} failed in '${cwd}': ${(stderr || err?.message || "").trim() || "no output"}`, { args, stdout, stderr, cwd });
+	const exitCode = typeof err?.code === "number" ? err.code : null;
+	// Commit/merge failures carry structured hook detail: a hook rejection
+	// (the pre-commit binary guard, a foreign hook) becomes the distinct
+	// `git-hook-rejected` code, while hook-less commit failures keep
+	// `git-failed` and gain the exit code plus the envelope. `merge --abort`
+	// runs no hooks, so its failures stay plain. The envelope's phase is
+	// filled in by the caller that knows it (see `withGitFailurePhase`).
+	const subcommand = readGitSubcommand(args);
+	const parsed =
+		(subcommand === "commit" || subcommand === "merge") && !args.includes("--abort")
+			? parseHookFailure({ command: `git ${args.join(" ")}`, exitCode, stdout, stderr })
+			: null;
+	const gitFailure = parsed
+		? buildGitFailureDetails({ command: `git ${args.join(" ")}`, exitCode, ...parsed })
+		: null;
+	if (parsed?.kind === "hook-rejected") {
+		const hook = gitFailure.hookName && gitFailure.hookName !== "unknown" ? `the ${gitFailure.hookName} hook` : "a git hook";
+		return new RunnerGitError(
+			"git-hook-rejected",
+			`git ${args.join(" ")} rejected by ${hook} in '${cwd}': ${(stderr || err?.message || "").trim() || "no output"}`,
+			{ args, stdout, stderr, cwd, exitCode, gitFailure },
+		);
+	}
+	return new RunnerGitError("git-failed", `git ${args.join(" ")} failed in '${cwd}': ${(stderr || err?.message || "").trim() || "no output"}`, { args, stdout, stderr, cwd, exitCode, gitFailure });
 }
 
 /***
@@ -244,6 +316,80 @@ export function slugForRepo(repoUrl) {
 }
 
 /***
+ * MARK: docsWorkdirFor
+ * @description The docs-repo worktree paired with a code worktree:
+ *   `<workdir>-docs` (e.g. `/w/kb-<taskId>` → `/w/kb-<taskId>-docs`). Both
+ *   carry the same `kb/<taskId>` branch in their own mirrors, so docs
+ *   history tracks task history in the separate docs repo. Null when no
+ *   code workdir is known.
+ * @example docsWorkdirFor('/w/kb-t1') => '/w/kb-t1-docs'
+ * @param {string} workdir - Code worktree path.
+ * @returns {string|null}
+ ***/
+export function docsWorkdirFor(workdir) {
+	if (!workdir || typeof workdir !== "string" || !workdir.trim()) return null;
+	return `${workdir}-docs`;
+}
+
+/***
+ * MARK: resolveRunnerDocsRepoUrl
+ * @description The docs-repo remote URL carried on a project record (or a
+ *   claim payload), or null when the project keeps docs in the main repo.
+ *   The stored value is credential-redacted; like the main repo's URL the
+ *   Runner relies on ambient credentials (same login as the main repo).
+ *   Mirrors the backend's `docsRepoUrlFor` without importing backend code.
+ * @example resolveRunnerDocsRepoUrl({ docsRepo: { url: 'https://h/kb.git' } }) => 'https://h/kb.git'
+ * @param {*} project - Project record or claim payload.
+ * @returns {string|null}
+ ***/
+export function resolveRunnerDocsRepoUrl(project) {
+	const repo = project?.docsRepo;
+	if (!repo || typeof repo !== "object" || Array.isArray(repo)) return null;
+	const url = repo.url;
+	if (typeof url !== "string") return null;
+	const trimmed = url.trim();
+	return trimmed || null;
+}
+
+/***
+ * MARK: resolveRunnerKainbainHome
+ * @description Runner-side mirror of the backend's `resolveKainbainHome`:
+ *   the docs-repo checkout (`docsRepo.localPath`) when the project has one,
+ *   else the primary checkout cwd. Used as the SOURCE of task-docs syncs on
+ *   the backend host — with a docs repo the primary's docs live there, not
+ *   under `<cwd>/docs`.
+ * @example resolveRunnerKainbainHome('/repo', { docsRepo: { localPath: '/srv/kb' } }) => '/srv/kb'
+ * @param {string} cwd - Primary checkout path.
+ * @param {*} [project] - Project record.
+ * @returns {string|null}
+ ***/
+export function resolveRunnerKainbainHome(cwd, project) {
+	const repo = project?.docsRepo;
+	if (repo && typeof repo === "object" && !Array.isArray(repo) && typeof repo.localPath === "string" && repo.localPath.trim()) {
+		return path.resolve(repo.localPath.trim());
+	}
+	if (!cwd || typeof cwd !== "string" || !cwd.trim()) return null;
+	return path.resolve(cwd);
+}
+
+/***
+ * MARK: shouldSyncTaskDocs
+ * @description Whether the primary→worktree task-docs copy should run: with
+ *   a docs-repo project the task docs already live in the paired docs
+ *   worktree (synced through git, not copied), so the copy is skipped.
+ *   Legacy projects (no docs repo) always sync.
+ * @example shouldSyncTaskDocs({ project: { docsRepo: { url: 'https://h/kb.git' } }, docsWorkdir: '/w/kb-t1-docs' }) => false
+ * @param {Object} [opts]
+ * @param {*} [opts.project] - Project record.
+ * @param {string|null} [opts.docsWorkdir] - Paired docs worktree, when prepared.
+ * @returns {boolean}
+ ***/
+export function shouldSyncTaskDocs({ project = null, docsWorkdir = null } = {}) {
+	if (docsWorkdir) return false;
+	return !resolveRunnerDocsRepoUrl(project);
+}
+
+/***
  * MARK: refreshMirror
  * @description Self-healing mirror refresh (G6, D14): fetches the origin
  *   and hard-resets the mirror checkout to its upstream so a diverged
@@ -283,8 +429,19 @@ export function listOrphanWorkdirs(workRoot, currentTaskId) {
 	} catch {
 		return [];
 	}
+	const names = new Set(entries.map((e) => e.name));
 	return entries
-		.filter((e) => e.isDirectory() && e.name.startsWith("kb-") && e.name !== keep)
+		.filter((e) => {
+			if (!e.isDirectory() || !e.name.startsWith("kb-") || e.name === keep) return false;
+			// A docs worktree (`kb-<id>-docs`) is part of its code worktree's
+			// pair and counts as the same slot: it is only an orphan on its
+			// own when the base `kb-<id>` is gone (or is the current task).
+			if (e.name.endsWith("-docs")) {
+				const base = e.name.slice(0, -"-docs".length);
+				if (base === keep || names.has(base)) return false;
+			}
+			return true;
+		})
 		.map((e) => path.join(workRoot, e.name));
 }
 
@@ -329,11 +486,66 @@ export function workdirMtimeMs(dir) {
 }
 
 /***
+ * MARK: commitRecoverySnapshot
+ * @description Commits the staged residue as one internal snapshot on a
+ *   `kb-recovery/*` branch. Single home for the recovery-commit argv (the
+ *   reuse path and the eviction path both call here): repo-local identity
+ *   plus `--no-verify`, so the two paths cannot drift apart. Recovery
+ *   snapshots are local forensic parking, never task output — a failing
+ *   repo hook (binary guard, linters) must never block preserving unpushed
+ *   work, so hooks are bypassed by design and the bypass is warn-logged
+ *   with the recovery branch for discoverability.
+ *   Fails safe, never loud, when there is nothing to park: a file can
+ *   vanish between the caller's dirty check and `git add`, leaving an
+ *   empty index — that resolves with a "nothing staged" warn instead of
+ *   throwing, so a benign race cannot fail the eviction or reuse. Any
+ *   other git rejection (not a repo, lock held, timeout) still throws
+ *   RunnerGitError, and a blank workdir or message throws immediately —
+ *   those are caller bugs, not missing work.
+ * @example await commitRecoverySnapshot('/w/kb-t1', 'recovery: …', { recoveryBranch: 'kb-recovery/t1/…' })
+ * @param {string} workdir - Workdir whose staged residue to commit.
+ * @param {string} message - Snapshot commit message.
+ * @param {Object} [opts] - `{ recoveryBranch, log }`.
+ * @param {string|null} [opts.recoveryBranch] - Recovery branch named in the warn log.
+ * @param {*} [opts.log] - Warn sink (`{ warn }`, defaults to console).
+ * @returns {Promise<void>}
+ ***/
+export async function commitRecoverySnapshot(workdir, message, { recoveryBranch = null, log = console } = {}) {
+	if (typeof workdir !== "string" || !workdir.trim()) {
+		throw new Error("commitRecoverySnapshot needs a workdir path to commit in.");
+	}
+	if (typeof message !== "string" || !message.trim()) {
+		throw new Error("commitRecoverySnapshot needs a non-empty snapshot message.");
+	}
+	const warn = typeof log?.warn === "function" ? log.warn.bind(log) : console.warn.bind(console);
+	const where = recoveryBranch ? ` on ${recoveryBranch}` : "";
+	try {
+		await runGit(workdir, [
+			"-c", "user.name=KainBain Runner",
+			"-c", "user.email=kainbain-runner@local",
+			"commit", "--no-verify", "-m", message,
+		]);
+	} catch (err) {
+		// Benign race: the caller saw a dirty tree, but by commit time the
+		// index held nothing stageable. Skipping keeps a nothing-to-park
+		// moment from failing the eviction or reuse it was called from.
+		const output = `${err?.message || ""}\n${err?.stderr || ""}\n${err?.stdout || ""}`;
+		if (err?.code === "git-failed" && /nothing to commit/i.test(output)) {
+			warn(`Recovery snapshot${where} skipped: nothing staged to park (${message})`);
+			return;
+		}
+		throw err;
+	}
+	warn(`Recovery snapshot${where} bypassed git hooks (--no-verify): ${message}`);
+}
+
+/***
  * MARK: preserveEvictedWorkdir
  * @description Parks a workdir's unpushed residue on a `kb-recovery/*`
- *   branch before the workdir is removed: dirty files are committed (with a
- *   repo-local identity, like the reuse path) and unpushed commits already
- *   live on the branch, so `git worktree remove` afterwards loses nothing.
+ *   branch before the workdir is removed: dirty files are committed (via
+ *   `commitRecoverySnapshot`, shared with the reuse path) and unpushed
+ *   commits already live on the branch, so `git worktree remove` afterwards
+ *   loses nothing.
  *   The residue is committed on the CURRENT checkout and the recovery branch
  *   is pointed at that commit — never `git checkout` the recovery branch
  *   first: a dirty index makes that fail with "you need to resolve your
@@ -375,11 +587,9 @@ export async function preserveEvictedWorkdir(workdir) {
 	}
 	const headBefore = (await runGit(workdir, ["rev-parse", "HEAD"])).stdout.trim();
 	await runGit(workdir, ["add", "-A"]);
-	await runGit(workdir, [
-		"-c", "user.name=KainBain Runner",
-		"-c", "user.email=kainbain-runner@local",
-		"commit", "-m", `recovery: unpushed work parked before eviction (${path.basename(workdir)})`,
-	]);
+	await commitRecoverySnapshot(workdir, `recovery: unpushed work parked before eviction (${path.basename(workdir)})`, {
+		recoveryBranch: recoveredTo,
+	});
 	// Recovery branch captures the residue commit; then put the task branch
 	// back where it was (soft reset keeps the index/worktree untouched).
 	await runGit(workdir, ["branch", recoveredTo]);
@@ -447,6 +657,30 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
 		} catch {
 			// A racing remover may own it; the exists check below decides.
 		}
+		// Pair-atomic removal: a docs-repo task's docs worktree
+		// (`<dir>-docs`) goes away with its code worktree, never alone.
+		const docsTwin = docsWorkdirFor(dir);
+		if (docsTwin && docsTwin !== dir) {
+			for (const owner of owners) {
+				try {
+					const list = (await runGit(owner, ["worktree", "list", "--porcelain"])).stdout;
+					if (list.split("\n").some((line) => line.trim() === `worktree ${docsTwin}`)) {
+						await runGit(owner, ["worktree", "remove", "--force", docsTwin]).catch(() => {});
+						// Prune this owner too: the docs mirror usually differs
+						// from the code repo, so its admin entries need their
+						// own prune to avoid stale registrations.
+						await runGit(owner, ["worktree", "prune"]).catch(() => {});
+					}
+				} catch {
+					// Try the next owner.
+				}
+			}
+			try {
+				if (fs.existsSync(docsTwin)) fs.rmSync(docsTwin, { recursive: true, force: true });
+			} catch {
+				// Inert leftover; reaped later.
+			}
+		}
 		return !fs.existsSync(dir);
 	} catch {
 		try {
@@ -454,6 +688,24 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
 		} catch {
 			return false;
 		}
+	}
+}
+
+function reportHookBlock({ logger = null, context = "", failure = null } = {}) {
+	// Eviction-time preserve failures are swallowed by design (the next
+	// candidate is tried instead) — but a structured failure rejecting
+	// every candidate used to be invisible. Recovery snapshots bypass
+	// repo hooks, so a hook rejection can no longer be the cause here;
+	// this stays as the loud line for any other structured preserve
+	// failure. One loud line keeps the degrade-to-cap behaviour while
+	// naming the cause. Best-effort: logging must never break eviction.
+	if (!logger || !failure?.gitFailure) return;
+	try {
+		const line = `${context}: ${failure.gitFailure.summary} — residue left in place, trying the next candidate.`;
+		if (typeof logger.error === "function") logger.error(line);
+		else if (typeof logger.log === "function") logger.log(line);
+	} catch {
+		// Logging must never break eviction.
 	}
 }
 
@@ -474,9 +726,12 @@ export async function removeTaskWorkdir({ workRoot, repoDir = null, localPath = 
  * @param {number} [opts.staleMs] - Staleness threshold (default WORKTREE_EVICT_STALE_MS).
  * @param {string} [opts.repoDir] - Mode repo dir for worktree removal.
  * @param {string} [opts.localPath] - Backend checkout for worktree removal.
+ * @param {Object} [opts.logger] - Logger for swallowed structured
+ *   preserve failures (a candidate's failing preserve commit is logged
+ *   loudly, then the next candidate is tried — never thrown).
  * @returns {Promise<{evicted: string, parkedTo: string|null}|null>} Eviction record, or null.
  ***/
-export async function evictOldestWorkdir({ workRoot, currentTaskId = null, staleMs = WORKTREE_EVICT_STALE_MS, repoDir = null, localPath = null } = {}) {
+export async function evictOldestWorkdir({ workRoot, currentTaskId = null, staleMs = WORKTREE_EVICT_STALE_MS, repoDir = null, localPath = null, logger = null } = {}) {
 	const orphans = listOrphanWorkdirs(workRoot, currentTaskId);
 	if (!orphans.length) return null;
 	const now = Date.now();
@@ -493,7 +748,8 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
 				recordWorktreeEviction();
 				return { evicted: dir, parkedTo };
 			}
-		} catch {
+		} catch (err) {
+			reportHookBlock({ logger, context: `Worktree eviction preserve failed for ${dir}`, failure: err });
 			// Try the next-oldest candidate instead of failing the deploy.
 		}
 	}
@@ -515,9 +771,11 @@ export async function evictOldestWorkdir({ workRoot, currentTaskId = null, stale
  * @param {string} opts.taskId - Task id.
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} [opts.localPath] - Backend checkout (adopt-mode owner).
+ * @param {Object} [opts.logger] - Logger for swallowed structured
+ *   preserve failures (logged loudly, never thrown).
  * @returns {Promise<string>} "reaped"|"kept"|"absent"|"skipped".
  ***/
-export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, workRoot, localPath = null } = {}) {
+export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, workRoot, localPath = null, logger = null } = {}) {
 	try {
 		const dir = path.join(workRoot, `kb-${taskId}`);
 		if (!fs.existsSync(dir)) return "absent";
@@ -541,7 +799,8 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
 		}
 		try {
 			await preserveEvictedWorkdir(dir);
-		} catch {
+		} catch (err) {
+			reportHookBlock({ logger, context: `Workdir reap preserve failed for ${dir}`, failure: err });
 			// Preservation is best-effort; removal still reclaims the slot.
 		}
 		const gone = await removeTaskWorkdir({ workRoot, localPath: ownerPath, dir });
@@ -566,9 +825,11 @@ export async function reapTaskWorkdirIfTerminal({ client, projectId, taskId, wor
  * @param {Object} opts
  * @param {Object} opts.client - Runner backend client (`listProjects`, `getTask`).
  * @param {string} opts.workRoot - Runner work root.
+ * @param {Object} [opts.logger] - Logger for swallowed structured
+ *   preserve failures (logged loudly, never thrown).
  * @returns {Promise<string[]>} Reaped workdir paths.
  ***/
-export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
+export async function reapTerminalOrphanWorkdirs({ client, workRoot, logger = null } = {}) {
 	const reaped = [];
 	try {
 		const orphans = listOrphanWorkdirs(workRoot, null);
@@ -602,7 +863,8 @@ export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
 				if (!found || terminal) {
 					try {
 						await preserveEvictedWorkdir(dir);
-					} catch {
+					} catch (err) {
+						reportHookBlock({ logger, context: `Workdir sweep preserve failed for ${dir}`, failure: err });
 						// Preservation is best-effort; removal still reclaims the slot.
 					}
 					const gone = await removeTaskWorkdir({ workRoot, dir });
@@ -625,8 +887,9 @@ export async function reapTerminalOrphanWorkdirs({ client, workRoot } = {}) {
  *   a rerun never executes stale code left behind by a dead run. Nothing
  *   is ever discarded: a dirty tree or commits ahead of the remote are
  *   first parked on `kb-recovery/<task>/<timestamp>` (dirty files committed
- *   there with a repo-local identity), and the recovery branch name is
- *   returned so the daemon can report it. When the remote branch does not
+ *   there via `commitRecoverySnapshot`, shared with the eviction path),
+ *   and the recovery branch name is returned so the daemon can report it.
+ *   When the remote branch does not
  *   exist yet (nothing pushed), the local branch is simply checked out
  *   as-is.
  * @example await refreshWorktreeToRemote('/w/kb-t1', 'kb/t1') => { recoveredTo: null }
@@ -674,11 +937,9 @@ export async function refreshWorktreeToRemote(workdir, branch) {
 		if (dirty) {
 			await runGit(workdir, ["checkout", recoveredTo]);
 			await runGit(workdir, ["add", "-A"]);
-			await runGit(workdir, [
-				"-c", "user.name=KainBain Runner",
-				"-c", "user.email=kainbain-runner@local",
-				"commit", "-m", `recovery: unpushed work from reused worktree (${branch})`,
-			]);
+			await commitRecoverySnapshot(workdir, `recovery: unpushed work from reused worktree (${branch})`, {
+				recoveryBranch: recoveredTo,
+			});
 		}
 	}
 	await runGit(workdir, ["checkout", "-f", "-B", branch, `origin/${branch}`]);
@@ -724,19 +985,20 @@ export function resolveRunnerDocsDirName(value) {
  *   failures (a5228675) — the Runner commits it on the task branch while the
  *   backend holds an untracked copy on main.
  * @example await syncTaskDocs({ primaryCwd: '/repo', workdir: '/w/kb-t', taskId: 't1' }) => 3
- * @param {Object} opts - `{ primaryCwd, workdir, taskId, docsDirName, project, stats }` (last three optional; a valid custom docs folder name wins; `stats` is filled with `{ assets }` when provided).
+ * @param {Object} opts - `{ primaryCwd, workdir, taskId, docsDirName, project, stats, primaryHome, destWorkdir }` (`docsDirName`/`project`/`stats` optional; a valid custom docs folder name wins; `stats` is filled with `{ assets }` when provided). `primaryHome` overrides the sync SOURCE root (with a docs repo the primary's docs live in its docs checkout — see `resolveRunnerKainbainHome`); `destWorkdir` overrides the copy DESTINATION (the paired docs worktree for docs-repo projects). Both default to today's behaviour.
  * @returns {Promise<number>} Number of files copied (0 when nothing to copy).
  ***/
-export async function syncTaskDocs({ primaryCwd, workdir, taskId, docsDirName = null, project = null, stats = null } = {}) {
+export async function syncTaskDocs({ primaryCwd, primaryHome = null, workdir, destWorkdir = null, taskId, docsDirName = null, project = null, stats = null } = {}) {
 	const tally = { assets: 0 };
 	const finish = (copied) => {
 		if (stats && typeof stats === "object") stats.assets = tally.assets;
 		return copied;
 	};
-	if (!primaryCwd || !workdir || !taskId) return finish(0);
+	const home = primaryHome || primaryCwd;
+	if (!home || !workdir || !taskId) return finish(0);
 	const resolvedDocsDirName = resolveRunnerDocsDirName(docsDirName ?? project);
-	const src = path.join(primaryCwd, resolvedDocsDirName, "tasks", taskId);
-	const dest = path.join(workdir, resolvedDocsDirName, "tasks", taskId);
+	const src = path.join(home, resolvedDocsDirName, "tasks", taskId);
+	const dest = path.join(destWorkdir || workdir, resolvedDocsDirName, "tasks", taskId);
 	let entries;
 	try {
 		entries = fs.readdirSync(src, { withFileTypes: true });
@@ -792,13 +1054,13 @@ export const RUNNER_TASK_ASSET_MAX_BYTES = 10 * 1024 * 1024;
  *   writes, and existing worktree files are never overwritten (a local
  *   sync or the agent wins). Never throws: every entry is best-effort.
  * @example await writeClaimTaskAssets({ workdir: '/w/kb-t', taskId: 't1', assets: [{ name: 'a.png', contentBase64: '...' }] }) => 1
- * @param {Object} opts - `{ workdir, taskId, assets, docsDirName, project }` (last two optional; a valid custom docs folder name wins).
+ * @param {Object} opts - `{ workdir, taskId, assets, docsDirName, project, destWorkdir }` (`docsDirName`/`project` optional; a valid custom docs folder name wins; `destWorkdir` overrides the target worktree — the paired docs worktree for docs-repo projects).
  * @returns {Promise<number>} Number of files written.
  ***/
-export async function writeClaimTaskAssets({ workdir, taskId, assets, docsDirName = null, project = null } = {}) {
+export async function writeClaimTaskAssets({ workdir, taskId, assets, docsDirName = null, project = null, destWorkdir = null } = {}) {
 	if (!workdir || !taskId || !Array.isArray(assets) || assets.length === 0) return 0;
 	const resolvedDocsDirName = resolveRunnerDocsDirName(docsDirName ?? project);
-	const dir = path.join(workdir, resolvedDocsDirName, "tasks", taskId, "assets");
+	const dir = path.join(destWorkdir || workdir, resolvedDocsDirName, "tasks", taskId, "assets");
 	let written = 0;
 	for (const entry of assets) {
 		const name = typeof entry?.name === "string" ? entry.name : "";
@@ -885,18 +1147,35 @@ export async function ensureRepoHooksPath(repoDir) {
  *   never deleted); only when nothing stale is evictable does it refuse
  *   with WORKTREE_CAP_REACHED so the refusal reports instead of crashing.
  * @example await prepareWorkdir({ repoUrl: 'https://...', workRoot: '/w', taskId: 't1' }) => { workdir: '/w/kb-t1', ... }
- * @returns {Promise<Object>} `{ workdir, branch, mode, reused, recoveredTo, baseSha, evicted }`: `recoveredTo` names the recovery branch when a reused worktree's unpushed residue was parked, `baseSha` is the `origin/<branch>` tip the worktree is based on (null when unpushed), `evicted` names the LRU workdir removed to free the slot (null when none).
+ * @returns {Promise<Object>} `{ workdir, branch, mode, reused, recoveredTo, baseSha, evicted, docsWorkdir, docsRecoveredTo, docsBaseSha }`: `recoveredTo` names the recovery branch when a reused worktree's unpushed residue was parked, `baseSha` is the `origin/<branch>` tip the worktree is based on (null when unpushed), `evicted` names the LRU workdir removed to free the slot (null when none). With a docs repo the `docs*` fields carry the paired docs worktree (`<workdir>-docs`, same `kb/<taskId>` branch in its own mirror/adopted checkout); they are all null for legacy projects.
  * @param {Object} opts - Options.
  * @param {string} [opts.repoUrl] - Origin to clone (remote-backed mode).
  * @param {string} [opts.localPath] - Repo path to adopt (local-only mode).
+ * @param {string} [opts.docsRepoUrl] - Docs-repo origin to clone (paired docs worktree; synced `kb/<taskId>` branch).
+ * @param {string} [opts.docsLocalPath] - Docs-repo path to adopt (adopt mode).
  * @param {string} opts.workRoot - Runner work root.
  * @param {string} opts.taskId - Task id.
  * @param {number} [opts.evictStaleMs] - Staleness threshold for LRU eviction (default WORKTREE_EVICT_STALE_MS).
+ * @param {Object} [opts.logger] - Logger for swallowed eviction-time
+ *   structured preserve failures (logged loudly, never thrown).
  * @returns {Promise<Object>} `{ workdir, branch, mode, reused }`.
  ***/
-export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS }) {
+export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evictStaleMs = WORKTREE_EVICT_STALE_MS, docsRepoUrl = null, docsLocalPath = null, logger = null }) {
 	if (!repoUrl && !localPath) {
 		throw new Error("prepareWorkdir needs repoUrl (clone) or localPath (adopt).");
+	}
+	// Stealth guard (defense in depth — the backend 400s this at write time):
+	// the docs repo URL must differ from the main repo URL, otherwise the
+	// paired docs worktree would push `kb/<taskId>` docs branches to the
+	// shared MAIN remote. Compared loosely (.git suffix / trailing slash
+	// ignored) so spelling variants cannot sneak through.
+	if (docsRepoUrl && repoUrl) {
+		const normalize = (u) => String(u).trim().replace(/\.git$/i, "").replace(/\/+$/, "");
+		if (normalize(docsRepoUrl) === normalize(repoUrl)) {
+			throw new Error(
+				`docsRepoUrl must differ from the main repoUrl ('${repoUrl}') — the same remote would receive KainBain docs branches`,
+			);
+		}
 	}
 	fs.mkdirSync(workRoot, { recursive: true });
 	const branch = `kb/${taskId}`;
@@ -909,6 +1188,7 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 			currentTaskId: taskId,
 			staleMs: evictStaleMs,
 			localPath: localPath || null,
+			logger,
 		});
 		if (!outcome) {
 			const err = new Error(
@@ -941,6 +1221,63 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 	// a failure here must never block task preparation.
 	await ensureRepoHooksPath(repoDir);
 
+	// Separate docs repo: the paired docs worktree mirrors the code worktree
+	// one-for-one — own mirror (clone mode) or adopted docs checkout, same
+	// `kb/<taskId>` branch — so task docs live in the docs repo on a synced
+	// task branch. The pair counts as ONE worktree slot (listOrphanWorkdirs
+	// hides the `-docs` twin) and is evicted/reaped atomically.
+	const hasDocsRepo = Boolean(docsRepoUrl || docsLocalPath);
+	const docsWorkdir = hasDocsRepo ? docsWorkdirFor(workdir) : null;
+	let docsRepoDir = null;
+	let docsMode = null;
+	if (hasDocsRepo) {
+		if (docsRepoUrl) {
+			docsMode = "clone";
+			let docsSlug = slugForRepo(docsRepoUrl);
+			if (repoUrl && docsSlug === slugForRepo(repoUrl)) docsSlug = `${docsSlug}-docs`;
+			docsRepoDir = path.join(workRoot, "mirrors", docsSlug);
+			if (!fs.existsSync(path.join(docsRepoDir, ".git"))) {
+				fs.mkdirSync(path.dirname(docsRepoDir), { recursive: true });
+				await runGit(workRoot, ["clone", docsRepoUrl, docsRepoDir]);
+			} else {
+				await refreshMirror(docsRepoDir);
+			}
+		} else {
+			docsMode = "adopt";
+			docsRepoDir = docsLocalPath;
+		}
+		await ensureRepoHooksPath(docsRepoDir);
+	}
+	const ensureDocsWorktree = async () => {
+		if (!docsWorkdir) return { docsRecoveredTo: null, docsBaseSha: null };
+		if (fs.existsSync(docsWorkdir)) {
+			let docsRecoveredTo = null;
+			if (docsMode === "clone") {
+				({ recoveredTo: docsRecoveredTo } = await refreshWorktreeToRemote(docsWorkdir, branch));
+			}
+			const docsBaseSha = await runGit(docsWorkdir, ["rev-parse", "--verify", `origin/${branch}`])
+				.then((r) => r.stdout.trim())
+				.catch(() => null);
+			touchWorkdir(docsWorkdir);
+			return { docsRecoveredTo, docsBaseSha };
+		}
+		try {
+			await runGit(docsRepoDir, ["worktree", "add", docsWorkdir, "-b", branch]);
+		} catch (err) {
+			const msg = String(err?.stderr || err?.message || "");
+			if (msg.includes("already exists") || msg.includes("already used")) {
+				await runGit(docsRepoDir, ["worktree", "add", docsWorkdir, branch]);
+			} else {
+				throw err;
+			}
+		}
+		const docsBaseSha = await runGit(docsWorkdir, ["rev-parse", "--verify", `origin/${branch}`])
+			.then((r) => r.stdout.trim())
+			.catch(() => null);
+		touchWorkdir(docsWorkdir);
+		return { docsRecoveredTo: null, docsBaseSha };
+	};
+
 	if (fs.existsSync(workdir)) {
 		let recoveredTo = null;
 		if (mode === "clone") {
@@ -949,8 +1286,9 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 		const baseSha = await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`])
 			.then((r) => r.stdout.trim())
 			.catch(() => null);
+		const docs = await ensureDocsWorktree();
 		touchWorkdir(workdir);
-		return { workdir, branch, mode, reused: true, orphans, recoveredTo, baseSha, evicted };
+		return { workdir, branch, mode, reused: true, orphans, recoveredTo, baseSha, evicted, docsWorkdir, docsRepoDir, ...docs };
 	}
 	try {
 		await runGit(repoDir, ["worktree", "add", workdir, "-b", branch]);
@@ -965,8 +1303,9 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 	const baseSha = await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`])
 		.then((r) => r.stdout.trim())
 		.catch(() => null);
+	const docs = await ensureDocsWorktree();
 	touchWorkdir(workdir);
-	return { workdir, branch, mode, reused: false, orphans, recoveredTo: null, baseSha, evicted };
+	return { workdir, branch, mode, reused: false, orphans, recoveredTo: null, baseSha, evicted, docsWorkdir, docsRepoDir, ...docs };
 }
 
 /***

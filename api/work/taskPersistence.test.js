@@ -82,6 +82,72 @@ function liveTask(id = "t-live") {
 	};
 }
 
+describe("The Work: gitFailureStreak persistence", () => {
+	it("round-trips the streak through task.md frontmatter", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-streak-persist-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-streak-1",
+			projectId: "proj-1",
+			title: "Streak persistence task",
+			status: "in_stage",
+			createdAt: "2026-11-21T00:00:00.000Z",
+			updatedAt: "2026-11-21T00:00:00.000Z",
+			history: [],
+			reports: [],
+			gitFailureStreak: {
+				stageId: "build",
+				signature: "hook-rejected|pre-commit|stage-commit|a.png",
+				count: 3,
+				updatedAt: "2026-11-21T06:00:00.000Z",
+			},
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-streak-1", "task.md"),
+			"utf8",
+		);
+		expect(content).toContain("gitFailureStreak:");
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-streak-1", "proj-1");
+		expect(rehydrated.gitFailureStreak).toEqual({
+			stageId: "build",
+			signature: "hook-rejected|pre-commit|stage-commit|a.png",
+			count: 3,
+			updatedAt: "2026-11-21T06:00:00.000Z",
+		});
+	});
+
+	it("omits the streak line when absent and tolerates corrupt values", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-streak-absent-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-streak-2",
+			projectId: "proj-1",
+			title: "No streak task",
+			status: "in_stage",
+			createdAt: "2026-11-21T00:00:00.000Z",
+			updatedAt: "2026-11-21T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-streak-2", "task.md"),
+			"utf8",
+		);
+		expect(content).not.toContain("gitFailureStreak:");
+		expect(parseTaskMarkdown(store, content, "task-streak-2", "proj-1").gitFailureStreak).toBeUndefined();
+
+		const corrupt = content.replace("---", "---\ngitFailureStreak: \"{oops\"");
+		expect(
+			parseTaskMarkdown(store, corrupt, "task-streak-2", "proj-1").gitFailureStreak,
+		).toBeUndefined();
+	});
+});
+
 describe("The Work: reliability-sample persistence", () => {
 	it("round-trips reliabilitySamples through task.md frontmatter", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-reliability-persist-"));
@@ -137,6 +203,61 @@ describe("The Work: reliability-sample persistence", () => {
 			harnessId: "antigravity",
 			failureKind: "infrastructure",
 		});
+	});
+
+	it("round-trips the pinned base branch through task.md frontmatter", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-basebranch-persist-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-base-1",
+			projectId: "proj-1",
+			workflowId: "wf-x",
+			branch: "kb/task-base-1",
+			baseBranch: "feature/x",
+			title: "Based task",
+			status: "in_stage",
+			createdAt: "2026-11-19T00:00:00.000Z",
+			updatedAt: "2026-11-19T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-base-1", "task.md"),
+			"utf8",
+		);
+		expect(content).toContain('baseBranch: "feature/x"');
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-base-1", "proj-1");
+		expect(rehydrated.baseBranch).toBe("feature/x");
+		expect(rehydrated.branch).toBe("kb/task-base-1");
+	});
+
+	it("omits the baseBranch line for tasks on the repo default", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-basebranch-plain-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-base-2",
+			projectId: "proj-1",
+			branch: "kb/task-base-2",
+			title: "Plain task",
+			status: "in_stage",
+			createdAt: "2026-11-19T00:00:00.000Z",
+			updatedAt: "2026-11-19T00:00:00.000Z",
+			history: [],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-base-2", "task.md"),
+			"utf8",
+		);
+		expect(content).not.toContain("baseBranch");
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-base-2", "proj-1");
+		expect(rehydrated.baseBranch).toBeUndefined();
 	});
 
 	it("keeps an empty sample list for tasks with no samples (no fake history)", () => {
@@ -1100,6 +1221,32 @@ describe("The Work: timeline diff-stat persistence", () => {
 				baseDeletions: 4,
 			});
 			expect(onSave).toHaveBeenCalledWith("/repo", task);
+		});
+
+		it("badges a legacy task against the pipeline's live base (agreeing with the review view)", async () => {
+			const task = { id: "t-legacy", projectId: "p1", branch: "kb/t-legacy", workflowId: "wf-feature" };
+			const store = stubStore({ cwd: "/repo" });
+			store.projectStore = {
+				getWorkflow: () => ({ id: "wf-feature", baseBranch: "feature/live" }),
+			};
+			let base = null;
+			recordTimelineWithDiffStat(
+				store,
+				task,
+				{ stage: "Plan", status: "Advanced", duration: "2s" },
+				"/repo",
+				{
+					useBranches: true,
+					defaultBranchFn: async () => "main",
+					branchExistsFn: async (cwd, ref) => ref === "feature/live",
+					diffFilesFn: async (cwd, b) => {
+						base = b;
+						return [{ path: "a.js", additions: 5, deletions: 1, binary: false }];
+					},
+				},
+			);
+			await flushAsyncCapture();
+			expect(base).toBe("feature/live");
 		});
 
 		it("keeps a plain entry when git fails", async () => {

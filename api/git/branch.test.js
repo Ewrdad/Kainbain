@@ -528,6 +528,29 @@ describe("returnToDefaultBranch", () => {
 		expect(res).toEqual({ switched: true, branch: "main" });
 		expect(calls).toContainEqual(["checkout", "main"]);
 	});
+
+	it("returns to an explicit pipeline base instead of the repo default", async () => {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args.includes("refs/remotes/origin/HEAD")) {
+				return fakeChildFromResponse({ code: 128, stderr: "fatal" });
+			}
+			if (args.includes("refs/heads/main")) {
+				return fakeChildFromResponse({ stdout: "abc" });
+			}
+			if (args.includes("--abbrev-ref")) {
+				return fakeChildFromResponse({ stdout: "kb/task-1" });
+			}
+			if (args[0] === "status") return fakeChildFromResponse({ stdout: "" });
+			if (args[0] === "checkout") return fakeChildFromResponse({ stdout: "" });
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		const res = await returnToDefaultBranch("/repo", { targetBranch: "feature/x" });
+		expect(res).toEqual({ switched: true, branch: "feature/x" });
+		expect(calls).toContainEqual(["checkout", "feature/x"]);
+		expect(calls).not.toContainEqual(["checkout", "main"]);
+	});
 });
 
 describe("withCheckedOutBranch", () => {
@@ -629,5 +652,36 @@ describe("withCheckedOutBranch", () => {
 			}),
 		).rejects.toBeInstanceOf(GitError);
 		expect(ran).toBe(false);
+	});
+
+	it("restores an explicit pipeline base instead of the repo default", async () => {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args.includes("refs/remotes/origin/HEAD")) {
+				return fakeChildFromResponse({ code: 128, stderr: "fatal" });
+			}
+			if (args.includes("refs/heads/main")) {
+				return fakeChildFromResponse({ stdout: "abc" });
+			}
+			if (args.includes("--abbrev-ref")) {
+				const seenCheckout = calls.some(
+					(a) => a[0] === "checkout" && a[1] === "kb/task-1",
+				);
+				return fakeChildFromResponse({
+					stdout: seenCheckout ? "kb/task-1" : "feature/x",
+				});
+			}
+			if (args[0] === "status") return fakeChildFromResponse({ stdout: "" });
+			if (args[0] === "checkout") return fakeChildFromResponse({ stdout: "" });
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		const res = await withCheckedOutBranch("/repo", "kb/task-1", async () => "done", {
+			restoreBranch: "feature/x",
+		});
+		expect(res).toBe("done");
+		expect(calls).toContainEqual(["checkout", "kb/task-1"]);
+		expect(calls).toContainEqual(["checkout", "feature/x"]);
+		expect(calls).not.toContainEqual(["checkout", "main"]);
 	});
 });

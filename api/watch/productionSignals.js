@@ -28,7 +28,8 @@ export const FENCING_REASONS = ["PROJECT_SCOPE", "STALE_EPOCH", "CLAIM_CONFLICT"
 /***
  * MARK: CLAIM_EXCLUDED_REASONS
  * @description Intentional skips excluded from the claim success rate, so a
- *   paused fleet or a version floor never reads as unhealthy dispatch.
+ *   paused fleet, a version floor, or a git-failure-parked task never reads
+ *   as unhealthy dispatch.
  * @example CLAIM_EXCLUDED_REASONS => ["RUNNER_PAUSED", ...]
  ***/
 export const CLAIM_EXCLUDED_REASONS = [
@@ -36,6 +37,7 @@ export const CLAIM_EXCLUDED_REASONS = [
 	"CIRCUIT_TRIPPED",
 	"BELOW_MINIMUM_VERSION",
 	"FLEET_CONCURRENCY_EXHAUSTED",
+	"GIT_FAILURE_PARKED",
 ];
 
 /***
@@ -272,9 +274,9 @@ export const recordClaimError = (storeOrSignals) => {
 /***
  * MARK: recordClaimExcluded
  * @description Counts one intentional skip that must NOT touch the success
- *   rate: operator pauses, circuit trips, version-floor refusals, and fleet
- *   cap backoff. Unknown reasons are ignored so a typo can never pollute
- *   the exclusion ledger.
+ *   rate: operator pauses, circuit trips, version-floor refusals, fleet
+ *   cap backoff, and git-failure parking refusals. Unknown reasons are
+ *   ignored so a typo can never pollute the exclusion ledger.
  * @example recordClaimExcluded(store, "RUNNER_PAUSED") => true
  ***/
 export const recordClaimExcluded = (storeOrSignals, reason) => {

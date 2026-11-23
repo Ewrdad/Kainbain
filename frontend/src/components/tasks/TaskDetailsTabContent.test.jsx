@@ -110,3 +110,71 @@ test('steering helper reads larger than before without changing meaning', () => 
   expect(helper.className).toContain('text-xs');
   expect(helper.className).not.toContain('text-[11px]');
 });
+
+const commitFailureTask = {
+  id: 't1',
+  status: 'failed',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  failureReason: 'Commit blocked by pre-commit hook: 2 corrupt files',
+  lastError: {
+    message: 'Commit blocked by pre-commit hook: 2 corrupt files',
+    stageId: 'stage-1',
+    stageName: 'Build',
+    failureKind: 'commit-failed',
+    gitDiagnostics: {
+      kind: 'hook-rejected',
+      phase: 'stage-commit',
+      command: 'git commit -m kb/t1 stage output',
+      exitCode: 1,
+      hookName: 'pre-commit',
+      files: ['docs/tasks/t1/assets/a.png', 'shot.png'],
+      hookOutput: 'binary-guard check FAILED (2 corrupt binaries)',
+      remedy: 'Re-capture each corrupt file, then retry the stage.',
+      summary: 'Commit blocked by pre-commit hook: 2 corrupt files',
+    },
+  },
+};
+
+test('commit failure banner names the commit and shows the structured callout', () => {
+  renderWithKainBain(
+    <TaskDetailsTab
+      {...makeProps({
+        isFailed: true,
+        failureMessage: 'Commit blocked by pre-commit hook: 2 corrupt files',
+        task: commitFailureTask,
+      })}
+    />,
+  );
+  expect(screen.getByText('⚠️ Commit Failed')).toBeInTheDocument();
+  expect(screen.queryByText(/Stage Execution Failed/)).not.toBeInTheDocument();
+  expect(screen.getByTestId('git-failure-details')).toBeInTheDocument();
+  expect(screen.getByTestId('git-failure-title')).toHaveTextContent(
+    'Commit blocked by pre-commit hook',
+  );
+  expect(screen.getByTestId('git-failure-files')).toHaveTextContent('shot.png');
+  expect(screen.getByTestId('git-failure-remedy')).toHaveTextContent('Re-capture');
+});
+
+test('backend-shaped diagnostics keep the generic banner with no callout', () => {
+  const backendDiagnosticsTask = {
+    ...commitFailureTask,
+    failureReason: 'Merge conflicts in: a.txt',
+    lastError: {
+      message: 'Merge conflicts in: a.txt',
+      stageId: 'stage-1',
+      stageName: 'Merge',
+      gitDiagnostics: { kind: 'merge-conflict', conflictedFiles: ['a.txt'] },
+    },
+  };
+  renderWithKainBain(
+    <TaskDetailsTab
+      {...makeProps({
+        isFailed: true,
+        failureMessage: 'Merge conflicts in: a.txt',
+        task: backendDiagnosticsTask,
+      })}
+    />,
+  );
+  expect(screen.getByText(/Stage Execution Failed/)).toBeInTheDocument();
+  expect(screen.queryByTestId('git-failure-details')).not.toBeInTheDocument();
+});

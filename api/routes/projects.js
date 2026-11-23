@@ -186,6 +186,7 @@ export default async function projectsRoutes(app, { deps }) {
 						docsDirName: { type: ["string", "null"] },
 						centralizedDocs: { type: ["boolean", "null"] },
 						kainbainDirName: { type: ["string", "null"] },
+						docsRepo: { type: ["object", "null"], additionalProperties: true },
 					},
 				},
 				response: {
@@ -219,6 +220,7 @@ export default async function projectsRoutes(app, { deps }) {
 							docsDirName: { type: "string" },
 							centralizedDocs: { type: "boolean" },
 							kainbainDirName: { type: "string" },
+							docsRepo: { type: ["object", "null"], additionalProperties: true },
 							stages: {
 								type: "array",
 								items: { type: "object", additionalProperties: true },
@@ -262,6 +264,7 @@ export default async function projectsRoutes(app, { deps }) {
 				docsDirName,
 				centralizedDocs,
 				kainbainDirName,
+				docsRepo,
 			} = request.body || {};
 			if (!name || typeof name !== "string" || !name.trim()) {
 				return reply.status(400).send({ error: "Project name is required" });
@@ -342,11 +345,15 @@ export default async function projectsRoutes(app, { deps }) {
 					docsDirName,
 					centralizedDocs,
 					kainbainDirName,
+					docsRepo,
 				});
 				return reply.status(201).send(
 					saveWarnings.length > 0 ? { ...project, warnings: saveWarnings } : project,
 				);
 			} catch (err) {
+				if (err.statusCode === 409) {
+					return reply.status(409).send({ error: err.message });
+				}
 				return reply.status(400).send({ error: err.message });
 			}
 		},
@@ -370,12 +377,13 @@ export default async function projectsRoutes(app, { deps }) {
 						path: { type: "string" },
 						name: { type: "string" },
 						kainbainDirName: { type: ["string", "null"] },
+						docsRepo: { type: ["object", "null"], additionalProperties: true },
 					},
 				},
 			},
 		},
 		async (request, reply) => {
-			const { path: dirPath, name, kainbainDirName } = request.body || {};
+			const { path: dirPath, name, kainbainDirName, docsRepo } = request.body || {};
 			if (!dirPath || typeof dirPath !== "string" || !dirPath.trim()) {
 				return reply.status(400).send({ error: "Project path is required" });
 			}
@@ -391,9 +399,13 @@ export default async function projectsRoutes(app, { deps }) {
 					path: dirPath,
 					name,
 					kainbainDirName,
+					docsRepo,
 				});
 				return reply.status(alreadyKnown ? 200 : 201).send(project);
 			} catch (err) {
+				if (err.statusCode === 409) {
+					return reply.status(409).send({ error: err.message });
+				}
 				return reply.status(400).send({ error: err.message });
 			}
 		},
@@ -438,6 +450,7 @@ export default async function projectsRoutes(app, { deps }) {
 							docsDirName: { type: "string" },
 							centralizedDocs: { type: "boolean" },
 							kainbainDirName: { type: "string" },
+							docsRepo: { type: ["object", "null"], additionalProperties: true },
 							stages: {
 								type: "array",
 								items: { type: "object", additionalProperties: true },
@@ -474,6 +487,7 @@ export default async function projectsRoutes(app, { deps }) {
 						docsDirName: { type: ["string", "null"] },
 						centralizedDocs: { type: ["boolean", "null"] },
 						kainbainDirName: { type: ["string", "null"] },
+						docsRepo: { type: ["object", "null"], additionalProperties: true },
 						modelAliases: {
 							type: "array",
 							items: { type: "object", additionalProperties: true },
@@ -752,7 +766,7 @@ export default async function projectsRoutes(app, { deps }) {
 		const project = projectStore.getProject(request.params.id);
 		if (!project) return reply.status(404).send({ error: "Project not found" });
 
-		const { name, stages, isDefault } = request.body || {};
+		const { name, stages, isDefault, baseBranch } = request.body || {};
 		if (!name || typeof name !== "string" || !name.trim()) {
 			return reply.status(400).send({ error: "Workflow name is required" });
 		}
@@ -767,6 +781,7 @@ export default async function projectsRoutes(app, { deps }) {
 				name,
 				stages,
 				isDefault,
+				baseBranch,
 			});
 			return reply.status(201).send(workflow);
 		} catch (err) {
@@ -806,11 +821,16 @@ export default async function projectsRoutes(app, { deps }) {
 		const patchAutoApproveError = assertValidStageAutoApproves((request.body || {}).stages);
 		if (patchAutoApproveError) return reply.status(400).send(patchAutoApproveError);
 
-		const updated = projectStore.updateWorkflow(
-			request.params.id,
-			request.params.workflowId,
-			request.body || {},
-		);
+		let updated;
+		try {
+			updated = projectStore.updateWorkflow(
+				request.params.id,
+				request.params.workflowId,
+				request.body || {},
+			);
+		} catch (err) {
+			return reply.status(400).send({ error: err.message });
+		}
 		if (!updated) {
 			return reply.status(404).send({ error: "Workflow not found" });
 		}

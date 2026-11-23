@@ -288,6 +288,22 @@ describe("reviewAssembly preserved diff after merge", () => {
 		await expect(resolveReviewBase(dir, "kb/task-1")).resolves.toBe("main");
 		await expect(resolveReviewBase(dir, "main")).resolves.not.toBe("main");
 	});
+
+	it("prefers a pinned pipeline base over the repo default", async () => {
+		git(dir, "branch", "feature/pinned", "main");
+		await expect(
+			resolveReviewBase(dir, "kb/task-1", { baseBranch: "feature/pinned" }),
+		).resolves.toBe("feature/pinned");
+	});
+
+	it("falls back to the repo default when the pinned base is gone", async () => {
+		await expect(
+			resolveReviewBase(dir, "kb/task-1", { baseBranch: "feature/gone" }),
+		).resolves.toBe("main");
+		await expect(
+			resolveReviewBase(dir, "kb/task-1", { baseBranch: "kb/task-1" }),
+		).resolves.toBe("main");
+	});
 });
 
 describe("reviewAssembly task-file filtering after merge", () => {

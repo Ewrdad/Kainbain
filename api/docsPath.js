@@ -5,6 +5,7 @@
 // (e.g. `kainbain-docs`); a project with `centralizedDocs === false` skips the
 // link entirely and stores tasks in a plain local directory.
 import path from "node:path";
+import { resolveKainbainHome } from "./project/docsRepo.js";
 
 /***
  * MARK: DEFAULT_DOCS_DIR_NAME
@@ -156,17 +157,22 @@ export function assertValidDocsDirNameForWrite(value) {
 
 /***
  * MARK: resolveDocsPath
- * @description The absolute docs link path for a working directory: 
- *   `<cwd>/<docsDirName>`, honouring the project's custom name. Null when
- *   no working directory is known.
+ * @description The absolute docs link path for a working directory:
+ *   `<kainbainHome>/<docsDirName>`, honouring the project's custom name.
+ *   `kainbainHome` is the docs-repo checkout when the project has a
+ *   `docsRepo.localPath` (see `resolveKainbainHome`), else the cwd itself —
+ *   so docs-repo projects keep the identical layout inside their separate
+ *   repo and leave nothing in the main repo. Null when no home is known.
  * @example resolveDocsPath('/repo', { docsDirName: 'k-docs' }) => '/repo/k-docs'
+ * @example resolveDocsPath('/repo', { docsRepo: { localPath: '/srv/kb/repo' } }) => '/srv/kb/repo/docs'
  * @param {string} cwd
  * @param {Object} [project]
  * @returns {string|null}
  ***/
 export function resolveDocsPath(cwd, project) {
-	if (!cwd || typeof cwd !== "string" || !cwd.trim()) return null;
-	return path.join(path.resolve(cwd), resolveDocsDirName(project));
+	const home = resolveKainbainHome(cwd, project);
+	if (!home) return null;
+	return path.join(home, resolveDocsDirName(project));
 }
 
 /***

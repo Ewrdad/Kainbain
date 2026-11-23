@@ -1,0 +1,772 @@
+(node:1022789) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/ciBranchWorkdir.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ resolveCiWorkdir
+  ✔ maps task mode to the worktree and primary mode to the primary checkout (69.693134ms)
+  ✔ custom mode prepares a detached worktree at the named branch and cleans it up (229.674046ms)
+  ✔ primary checks out a backend-passed pipeline base (129.36902ms)
+  ✔ primary without a passed base leaves the checkout untouched (old-backend compatible) (108.623976ms)
+  ✔ primary fails loudly when the passed base is missing (127.738781ms)
+  ✔ primary refuses a suspicious passed base without touching git refs (69.272876ms)
+  ✔ custom mode fails loudly on a blank or missing branch (66.919096ms)
+✔ resolveCiWorkdir (803.15401ms)
+▶ dispatch loop honours runOnBranch for ci stages
+  ✔ primary runs in the primary checkout (120.903399ms)
+  ✔ primary with a passed pipeline base runs the command on that branch (182.201614ms)
+  ✔ task (default) runs in the task worktree (98.782539ms)
+  ✔ custom runs at the custom branch tip in an ephemeral worktree that is cleaned up (142.739195ms)
+  ✔ custom with a missing branch fails the stage loudly (147.324352ms)
+✔ dispatch loop honours runOnBranch for ci stages (697.809904ms)
+(node:1022792) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/client.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ createRunnerClient
+  ✔ sends the credential header and parses success (8.378107ms)
+  ✔ throws the backend error shape with status and code (3.969517ms)
+  ✔ forwards the execution outcome and output on complete (0.477858ms)
+  ✔ complete passes a structured gitFailure through verbatim (1.005205ms)
+  ✔ complete omits gitFailure when none was reported (7.460098ms)
+  ✔ complete sends the attestation hash and committed flag (0.368162ms)
+  ✔ complete sends committed:false explicitly but omits blank attestation (2.177723ms)
+  ✔ posts the dispatch poll with and without an allowlist (4.234484ms)
+  ✔ omits empty optional claim fields (0.370206ms)
+  ✔ progress sends harness/model when real and omits model when null or blank (CI contract) (3.434176ms)
+  ✔ posts structured event batches to log-events with seq (3.941677ms)
+  ✔ complete forwards posture verbatim, including model-less CI postures (0.243708ms)
+  ✔ complete sends the served model when real and omits it when null or blank (2.574268ms)
+✔ createRunnerClient (48.274361ms)
+▶ impromptu channel
+  ✔ polls with an empty body and returns the assignment (0.224568ms)
+  ✔ streams progress seqs and settles completions on the job URLs (0.331132ms)
+  ✔ omits unset completion fields and encodes job ids (0.165195ms)
+✔ impromptu channel (0.883287ms)
+(node:1022798) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/config.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ loadRunnerConfig
+  ✔ fills defaults and reports no errors when complete (4.935837ms)
+  ✔ lists every missing required key (harness defaults to auto-detect) (2.500391ms)
+  ✔ drops the explicit-assignment requirement in dispatch mode (0.27578ms)
+  ✔ keeps dispatchIdleLimit 0 as persistent service mode (5.345385ms)
+  ✔ advertises a csv MODELS list, singular MODEL seeds it, empty stays unpinned (0.527671ms)
+  ✔ never advertises the default sentinel or duplicate models (1.947743ms)
+  ✔ drops malformed model pins with a warning instead of advertising them (2.534604ms)
+  ✔ defaults the discovery staleness threshold to 24h, honours overrides, clamps garbage (2.10869ms)
+  ✔ reads a csv HARNESSES list, singular HARNESS seeds it (1.744725ms)
+  ✔ defaults the update channel to the GitHub releases pointer with auto-update on (2.170882ms)
+  ✔ honours the air-gapped mirror override and update opt-out (2.493676ms)
+  ✔ auto-detects by default and honours explicit manual pins (0.2019ms)
+  ✔ falls back on invalid numbers and customizes tiers (0.163293ms)
+  ✔ polls impromptu jobs by default, =0 opts out (1.657422ms)
+  ✔ defaults model discovery to 12h, honours 0/off, clamps garbage (0.814942ms)
+  ✔ keeps pin-wins by default, =1 opts in to discovery-wins (0.197378ms)
+✔ loadRunnerConfig (35.199774ms)
+▶ runner credential file (one-click approval)
+  ✔ names the file like startRunner.sh names the env file (local- stripped) (0.271705ms)
+  ✔ round-trips a credential at mode 0600 (4.482351ms)
+  ✔ reads nothing when no file was stored (1.177361ms)
+  ✔ prefers the env credential, falls back to the stored file (0.482979ms)
+✔ runner credential file (one-click approval) (6.675142ms)
+(node:1022899) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/daemon.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ integrationMergeSubject
+  ✔ carries the task title and survives the changelog admin filter (5.315703ms)
+  ✔ collapses multiline titles and falls back to the branch pair (1.226901ms)
+✔ integrationMergeSubject (11.23886ms)
+▶ ciWorkdirFor
+  ✔ runs primary stages in the primary checkout, task stages in the worktree (4.379865ms)
+✔ ciWorkdirFor (4.839298ms)
+▶ RUNNER_API_VERSION
+  ✔ equals runner/version.json apiVersion (0.277549ms)
+✔ RUNNER_API_VERSION (0.483696ms)
+▶ RUNNER_VERSION
+  ✔ equals runner/version.json runnerVersion (the update channel + fleet matrix compare this) (0.779946ms)
+  ✔ is a semver product version independent of the api version (1.724502ms)
+✔ RUNNER_VERSION (6.218011ms)
+▶ defaultLoadHarness
+  ✔ wires mock, pi, muse, antigravity, and vibe harnesses with createSession (279.858368ms)
+  ✔ fails fast naming supported harnesses (0.538224ms)
+✔ defaultLoadHarness (280.618412ms)
+▶ runSingleAssignment
+  ✔ runs claim/load/execute/report to completion on a local-only repo (238.000105ms)
+  ✔ writes claim-shipped task images into the worktree when the primary checkout has none (100.765005ms)
+  ✔ reports a worktree-cap refusal as an interrupt instead of crashing (40.98447ms)
+  ✔ runs the harness session in the prepared worktree, not the backend checkout (293.846932ms)
+  ✔ reports harness failure through the failed outcome, not interrupt (115.645179ms)
+  ✔ reports no model for a CI claim in single-assignment mode, even with a pinned default (173.272991ms)
+  ✔ asks for the pasted credential once the join is approved (5.587342ms)
+  ✔ times out visibly while the join stays pending (33.993619ms)
+✔ runSingleAssignment (1003.113995ms)
+▶ runSingleAssignment agent verdict detection
+  ✔ R1: a fail_stage tool call alone (no verdict block) fails with rejected (135.19283ms)
+  ✔ R2: a FAIL block with reason and fix fails with the Fix guidance: reason (162.265984ms)
+  ✔ R3: a reasonless FAIL still passes open with a warning (144.719167ms)
+  ✔ R4: malformed blocks and prose verdicts pass silently (492.612342ms)
+  ✔ R5: the CI branch never consults a verdict block in command output (142.842947ms)
+  ✔ R6: a fail_stage call wins over a PASS text block (Skill name + message fallback) (149.879218ms)
+  ✔ R7: a latched fail_stage call wins over a later prompt exception (155.455929ms)
+  ✔ R8: the watcher reads the same event fallbacks as the embedded path (157.031768ms)
+✔ runSingleAssignment agent verdict detection (1541.574432ms)
+▶ runSingleAssignment stage attestation
+  ✔ attests the wrap-up commit with the dispatched hash and reports it (189.782824ms)
+  ✔ computes the hash locally when the backend predates attestation (142.57969ms)
+  ✔ reports without attestation when the stage cannot be resolved (142.855854ms)
+  ✔ reports the dispatched hash with committed:false for CI stages (108.927245ms)
+  ✔ ignores a malformed dispatched hash and computes locally (134.97217ms)
+✔ runSingleAssignment stage attestation (721.824366ms)
+▶ startClaimRenewal
+  ✔ renews on a cadence with the lease ids and stops on demand (85.598973ms)
+  ✔ stops renewing after a STAGE_TIMEOUT so a timed-out run is not propped up (61.660667ms)
+  ✔ warns instead of throwing when a renewal fails (11.281504ms)
+✔ startClaimRenewal (163.958239ms)
+▶ applyBackendPrompt
+  ✔ retargets the backend cwd prefix into the runner worktree (0.405711ms)
+  ✔ leaves empty or same-cwd prompts untouched (0.09598ms)
+  ✔ retargets the backend docs home into the paired docs worktree (docs repo) (0.095575ms)
+  ✔ does not corrupt a docs home that starts with the cwd (default sibling checkout) (0.096516ms)
+  ✔ skips the docs rewrite for legacy projects (docs home === cwd) (0.087291ms)
+✔ applyBackendPrompt (0.98173ms)
+▶ runner facts (G4/G5)
+  ✔ probes mock without spawning and unknown ids stay unknown (0.943612ms)
+  ✔ caches the version probe per process (0.237328ms)
+  ✔ measures disk headroom on an existing work root (2.643412ms)
+✔ runner facts (G4/G5) (3.973617ms)
+▶ model auto-discovery refresh
+  ✔ caches discovered ids when nothing is pinned (1.29053ms)
+  ✔ scans even when the operator pinned models — the pin unions with discovery (survey q2) (0.658571ms)
+  ✔ scans for a singular model pin too (0.741317ms)
+  ✔ scans with the discovery-wins opt-in as well (replaces the pin at advertisement) (0.773035ms)
+  ✔ skips scanning when discovery is disabled (interval 0), keeping the cache for the pin fallback (0.134483ms)
+  ✔ skips harnesses without a discovery leg (0.118723ms)
+  ✔ scans every configured harness leg and combines the ids (0.446456ms)
+  ✔ keeps the previous cache when a later round fails (2.388724ms)
+  ✔ validates overridden ids before advertisement (garbage never ships) (0.388215ms)
+  ✔ warns with the leg error code when a leg fails, keeping the old list (0.349923ms)
+  ✔ warns the stale-pin hint when detection sees unconfigured harnesses (0.385243ms)
+  ✔ stays silent on the stale pin when detection matches the config or is omitted (0.305612ms)
+  ✔ scans with a canonical pin and advertises pin ∪ discovered (0.341904ms)
+  ✔ records ROUND_FAILED on every configured harness when the round itself throws (0.789654ms)
+✔ model auto-discovery refresh (9.588686ms)
+▶ harness auto-detect (default)
+  ✔ advertises only loadable harnesses in stable order (0.214034ms)
+  ✔ detects pi and antigravity via either binary name (1.643687ms)
+  ✔ returns empty when no CLI is on PATH (0.47727ms)
+  ✔ never probes the real ~/.pi snapshot in synthetic mode (0.17748ms)
+  ✔ detects binaries in standard install dirs off PATH (~/.local/bin) (0.158174ms)
+  ✔ detects pi via its own install dir (~/.pi/agent/bin) (0.120371ms)
+  ✔ detects pi from the models.json snapshot when no binary exists (SDK-only install) (0.128786ms)
+  ✔ detects pi via $PI_AGENT_DIR snapshot (0.189667ms)
+  ✔ honours a KAINBAIN_*_BIN override as a direct path (0.14893ms)
+  ✔ searches a bare KAINBAIN_*_BIN name across PATH and standard dirs (0.174925ms)
+  ✔ treats a set-but-missing override as not installed (fail-closed, backend parity) (0.130185ms)
+  ✔ detects antigravity on agy only (the binary the harness spawns) (0.138361ms)
+  ✔ detects a real executable on the filesystem (POSIX, no seams) (0.616379ms)
+  ✔ detects Windows executables via PATHEXT (no execute bit needed) (2.8849ms)
+  ✔ finds detected-but-unconfigured harnesses (pure set difference, total) (0.155526ms)
+  ✔ describes the stale-pin hint in one actionable line (0.080906ms)
+  ✔ builds the stale-pin hint from a runner config, skipped when detection is omitted (0.103387ms)
+  ✔ leaves manual configs untouched (0.084576ms)
+  ✔ resolves auto configs from injected detection and drops the harness error (0.158038ms)
+  ✔ fail-fasts when auto-detect finds nothing (0.165417ms)
+✔ harness auto-detect (default) (8.545206ms)
+▶ deliverSteers
+  ✔ delivers the current execution's steers and acks each once (0.663988ms)
+  ✔ stores the backend update directive from each heartbeat (0.18926ms)
+  ✔ reads a null directive from old backends without the advertisement (0.117391ms)
+  ✔ ignores steers for other executions and NACKs unsupported harnesses (0.221334ms)
+✔ deliverSteers (1.345612ms)
+▶ runDispatchLoop
+  ✔ runs a leased integrate job: merge, CAS-push, verify, cleanup (542.024606ms)
+  ✔ runs one dispatched assignment then idles out (139.561352ms)
+  ✔ serves one impromptu job on an idle iteration, then idles out (50.574395ms)
+  ✔ keeps polling dispatch when impromptu polling is refused or fails (54.021046ms)
+  ✔ logs a failed impromptu job and continues with dispatch (98.124651ms)
+  ✔ serves the dispatch answer's required model, never a substitution (191.095533ms)
+  ✔ runs the harness on the reported model when the dispatch model is the default sentinel (166.751423ms)
+  ✔ reports the served model accurately: dispatch model on agent stages, none on CI stages (183.298277ms)
+  ✔ forwards the dispatch answer env to the CI command (130.749809ms)
+  ✔ serves the dispatch answer's required harness per assignment (3947.421872ms)
+  ✔ falls back to the primary harness when requirements name an unloaded one (245.653135ms)
+  ✔ backs off on 429 without consuming idle budget or crashing (71.130486ms)
+  ✔ backs off on RUNNER_PAUSED without consuming idle budget or crashing (79.418008ms)
+  ✔ re-heartbeats once on STALE_RUNNER then retries (64.278904ms)
+  ✔ never idles out with dispatchIdleLimit 0 (persistent service mode) (89.479504ms)
+✔ runDispatchLoop (6054.689155ms)
+▶ runCiCommand
+  ✔ runs a command in the workdir and reports exit codes (27.49809ms)
+✔ runCiCommand (29.067977ms)
+▶ servingModelFor
+  ✔ returns dispatch model for agent (0.231475ms)
+  ✔ falls back for agent without dispatch model (0.086644ms)
+  ✔ returns null for agent with neither (0.071848ms)
+  ✔ returns null for ci even if model present (0.077425ms)
+  ✔ returns null for merge/integrate (3.592326ms)
+  ✔ returns null for every non-LLM stage kind, even with a model attached (0.124244ms)
+  ✔ matches kind case-insensitively and trimmed (0.117983ms)
+  ✔ treats non-string model/fallback as absent, never the literal "default" (0.104065ms)
+  ✔ trims whitespace model (0.085462ms)
+✔ servingModelFor (4.773662ms)
+▶ formatPosture
+  ✔ includes model when real (7.243933ms)
+  ✔ omits model segment when null, blank, non-string, or the default sentinel (0.14019ms)
+  ✔ never emits stray segments for missing tiers or harness (0.112908ms)
+  ✔ accepts tiers as a plain string (0.082744ms)
+✔ formatPosture (7.711319ms)
+▶ handlePendingCommands
+  ✔ re-runs discovery promptly and stages a success ack (1.179763ms)
+  ✔ re-detect scans even when models are pinned (pin unions with discovery) (0.471914ms)
+  ✔ re-detects despite the pin with the discovery-wins opt-in (survey q4) (0.374429ms)
+  ✔ acks re-detection across legs with per-harness counts (14.662735ms)
+  ✔ acks without scanning when discovery is disabled (interval 0) (0.313397ms)
+  ✔ acks plainly when no configured harness has a discovery leg (0.339153ms)
+  ✔ re-probes on every re-detection (no stale cache between commands) (0.555386ms)
+  ✔ acks with the first leg error code when a leg fails, cache kept (0.466969ms)
+  ✔ appends the stale-pin hint to re-detection acks when detection sees more (0.39122ms)
+  ✔ appends the stale-pin hint to pinned re-detect acks too (8.170392ms)
+  ✔ parks requestUpdate while an execution is live (never interrupts) (0.329493ms)
+  ✔ runs requestUpdate immediately when idle and acks the outcome (0.388755ms)
+  ✔ acks update failures without throwing (0.754889ms)
+  ✔ acks a failed skip when the host opted out of self-updates (0.290596ms)
+  ✔ confirms the ack over a final heartbeat before exiting into a staged update (8.159679ms)
+  ✔ restarts on the current version when idle (ack, confirm heartbeat, sentinel, exit 0) (1.159555ms)
+  ✔ stages the wrapper reboot sentinel before exiting (0.648434ms)
+  ✔ still exits when the sentinel cannot be written (unwrapped runner just stops) (0.77411ms)
+  ✔ restarts at once when busy, stopping running work without an update check (1.185825ms)
+  ✔ carries the operator desiredVersion through the update directive (0.278718ms)
+  ✔ reads the pinned version off the directive, latest-or-junk reads unpinned (0.362781ms)
+  ✔ skips automatic update checks for pinned runners, force installs the pin (0.459954ms)
+  ✔ routes a manual Update on a pinned runner at the pin, not latest (0.351427ms)
+  ✔ ignores unknown commands (0.240613ms)
+  ✔ skips repeats already staged or in flight (at-least-once redelivery) (0.478418ms)
+  ✔ stages both acks FIFO when two commands arrive together (0.488145ms)
+✔ handlePendingCommands (81.408646ms)
+▶ deliverSteers command channel
+  ✔ acts on delivered commands and sends the staged ack on the next heartbeat (0.660459ms)
+  ✔ forwards explicit detection so heartbeat re-detection acks name stale harnesses (0.42267ms)
+✔ deliverSteers command channel (1.228296ms)
+▶ joinAndHeartbeat command channel
+  ✔ first-heartbeat facts name every configured harness and surface pin warnings (7.841042ms)
+  ✔ acts on commands queued while the runner was down (boot delivery) (13.602832ms)
+✔ joinAndHeartbeat command channel (21.577191ms)
+▶ collectTaskFiles docsDirName
+  ✔ reads files from a custom docs folder (0.834192ms)
+✔ collectTaskFiles docsDirName (0.915997ms)
+▶ joinAndHeartbeat one-click credential handover
+  ✔ collects the handed-over credential, stores it, and keeps booting (72.514545ms)
+  ✔ falls back to the paste instruction when no credential is handed over (6.811479ms)
+  ✔ never logs the join nonce (39.208094ms)
+✔ joinAndHeartbeat one-click credential handover (118.835423ms)
+▶ runner build identity
+  ✔ loads runner/api versions plus the stamped build block from a version.json dir (0.505607ms)
+  ✔ falls back to pinned versions and a null build when version.json is missing or malformed (0.439781ms)
+  ✔ prefers the stamped package build over the git checkout (0.35251ms)
+  ✔ falls back to the git checkout (rev-parse + status) when no stamp exists (0.31449ms)
+  ✔ reports nulls (never throws) outside a git checkout (0.299698ms)
+  ✔ exposes the module build identity and boot time with a stable shape (13.477541ms)
+✔ runner build identity (15.654275ms)
+▶ runner stale-code detection
+  ✔ snapshots a code tree and stays quiet when nothing changed (0.458289ms)
+  ✔ flips to true after a file touch under the tree (1.717173ms)
+  ✔ flips to true when a file is added or removed (0.566623ms)
+  ✔ skips node_modules and .git so dependency installs never flag the tree (0.41958ms)
+  ✔ never throws on an unreadable tree (fail quiet, warn-only feature) (7.846954ms)
+  ✔ stays quiet when the boot scan saw zero files (no baseline, nothing provable) (0.355457ms)
+✔ runner stale-code detection (11.655748ms)
+▶ factsFor build identity
+  ✔ reports build identity, bootedAtMs, and codeChangedSinceBoot in versions (0.788726ms)
+  ✔ reports codeChangedSinceBoot=true after a file touch under a temp-dir tree (0.53134ms)
+  ✔ hands each heartbeat its own build copy (a mutated facts object never corrupts the next) (12.226249ms)
+  ✔ reports this process's WP2 signal totals in facts.signals for the backend bridge (1.083281ms)
+✔ factsFor build identity (14.84701ms)
+▶ runSingleAssignment commit/hook failures (incident replay)
+  ✔ reports a hook-rejected recovery commit as a failed completion instead of crashing (976.108186ms)
+  ✔ reports a hook-rejected stage commit with the stage-commit phase (1177.406981ms)
+  ✔ proves the loop is dead: N deterministic failures report N times with no crash and no reason-less interrupt (1430.014673ms)
+  ✔ keeps transient git faults on interrupt+rethrow, now with the reason (19.1279ms)
+✔ runSingleAssignment commit/hook failures (incident replay) (3603.077177ms)
+▶ runDispatchLoop git-failure backoff
+  ✔ pauses one poll cycle after a deterministic git failure instead of re-claiming immediately (753.494224ms)
+✔ runDispatchLoop git-failure backoff (753.727133ms)
+▶ executeIntegrationAssignment git failures
+  ✔ carries merge conflicts to the task as structured merge-conflict detail (570.856799ms)
+  ✖ settles a hook-rejected merge commit as failed with detail instead of crashing (756.755713ms)
+✖ executeIntegrationAssignment git failures (1336.991703ms)
+(node:1022900) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/gitOps.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ commitAndPush
+  ✔ commits and pushes when an origin exists (394.491232ms)
+  ✔ skips push with no-remote on local-only repos (150.024319ms)
+  ✔ skips the commit on a clean tree but still reports the SHA (128.980856ms)
+  ✔ preserves a multi-line message body byte-for-byte in the commit (107.704881ms)
+  ✔ records per-Runner commit identity without touching repo config (121.511225ms)
+  ✔ commits and pushes the paired docs worktree FIRST (docs repo, same branch) (586.92999ms)
+  ✔ aborts before the code push when the docs worktree push fails (220.771485ms)
+✔ commitAndPush (1713.669229ms)
+▶ commitAndPush task docs rescue
+  ✔ force-adds gitignored task docs so the backend can see plans (266.637881ms)
+  ✔ integrates a sibling stage push before publishing (no silent divergence) (600.579698ms)
+  ✔ never commits the backend-owned task.md snapshot (a5228675) (346.319199ms)
+✔ commitAndPush task docs rescue (1226.080047ms)
+▶ commitAndPush hook failures
+  ✔ surfaces a hook-rejected stage commit with the structured envelope (437.311856ms)
+  ✔ carries merge conflicts as structured merge-conflict detail (415.018777ms)
+  ✔ keeps the structured failure when labelling a docs-repo error (457.193354ms)
+✔ commitAndPush hook failures (1310.022633ms)
+(node:1023741) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/harness.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ runHarnessStage
+  ✔ runs a prompt, forwards log frames in order, returns output (3.246685ms)
+  ✔ fails fast without a conforming harness or prompt (0.977812ms)
+  ✔ hands the live session to onSession for steering delivery (0.370885ms)
+  ✔ forwards every normalized event to onEvent in order (1.086573ms)
+  ✔ keeps onLog byte-identical with and without onEvent (2.704723ms)
+  ✔ survives a throwing onEvent observer (0.621285ms)
+  ✔ disposes the session even when prompting throws (2.737103ms)
+✔ runHarnessStage (13.991315ms)
+(node:1023826) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/harnessModelDiscovery.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ provenanceForIds attributes advertised ids to their detecting leg + time (8.406831ms)
+✔ registry includes all supported harness legs (0.202164ms)
+✔ runDiscoveryLeg times out a hanging leg to [] with a classified error (33.196187ms)
+✔ runDiscoveryLeg treats a missing or non-positive timeout as the default budget (63.125142ms)
+✔ runDiscoveryLeg maps a throw to [] and preserves classified codes (0.61467ms)
+✔ runDiscoveryLeg maps a synchronous leg throw to [] without throwing (0.239455ms)
+✔ runDiscoveryLeg dedupes, validates grammar, and rejects other-harness ids (0.253851ms)
+✔ runDiscoveryLeg keeps the previous slice when a later round fails or empties (3.241635ms)
+✔ runDiscoveryLeg reports NO_DISCOVERY_LEG for unknown harnesses (1.155256ms)
+✔ runDiscoveryLeg flags an all-malformed round as unparseable (0.617985ms)
+✔ runDiscoveryLeg flags a non-list leg result as unparseable and keeps the old slice (0.368253ms)
+✔ runDiscoveryRound combines per-leg ids and reports per-harness outcomes (0.448645ms)
+✔ runDiscoveryRound skips blanks and harness ids without a leg (0.47149ms)
+✔ runDiscoveryRound hands every leg a fresh copy of the shared seams (2.262636ms)
+✔ getDiscoveryStatus filters to the requested harness ids (1.136969ms)
+✔ summarizeDiscoverySlices renders counts and the first leg error in order (0.584968ms)
+✔ pi leg serves single-colon ids verbatim (no stricter filter) (2.769261ms)
+✔ pi leg maps harness keys and reports an empty catalogue as PI_MODELS_EMPTY (1.82659ms)
+✔ pi empty catalogue keeps the old slice with its code through the registry (0.303722ms)
+✔ antigravity leg maps keys and surfaces the retained classified error on empty (3.64179ms)
+✔ antigravity leg parses real catalogue output on the default loader path (20.729898ms)
+✔ antigravity classified error survives the registry wrapper with its code (0.632649ms)
+✔ vibe leg maps keys and surfaces the retained classified error on empty (0.50524ms)
+✔ vibe leg serves injected loader rows on the default catalogue path (5.525351ms)
+✔ muse leg honors the discoverFn seam and the spawn seam (0.600988ms)
+✔ muse leg probes with --provider like the backend MSP catalogue (host parity) (0.254034ms)
+✔ muse leg throws MUSE_MSP_MODELS_EMPTY when the CLI answers with zero rows (0.230441ms)
+✔ muse leg surfaces strict probe failures (unparsable output, missing CLI) (1.17905ms)
+✔ new-model fixture rows flow from the muse leg into the fleet catalogue (chain gate) (1.489468ms)
+✔ muse leg keeps the old slice with MUSE_MSP_MODELS_EMPTY through the registry (0.33012ms)
+✔ opencode leg maps server rows to harness-scoped keys and skips malformed rows (7.193116ms)
+✔ opencode leg reports honest-empty with a reason when no server is configured (0.44794ms)
+✔ codex leg is honest-empty with a stable reason (0.397857ms)
+✔ LEG_MODULE_SPECIFIERS names every lazy leg import (N3 table) (0.165287ms)
+✔ verifyDiscoveryLegModules records LEG_MODULE_MISSING on an unshippable leg import (0.511224ms)
+✔ verifyDiscoveryLegModules with the real importer stays silent on a healthy tree (22.966514ms)
+✔ verifyDiscoveryLegModules never hands bare packages to the importer (0.348838ms)
+✔ recordRoundFailure stamps untouched harnesses and keeps fresh slices (1.304302ms)
+✔ verifyDiscoveryLegModules keeps the old slice ids and never throws (0.331618ms)
+✔ getDiscoveryStatus names never-scanned harnesses instead of returning {} (0.156135ms)
+✔ getDiscoveryStatus marks stale slices without evicting ids (0.166908ms)
+✔ clearDiscoveryCache resets slices and status (0.14534ms)
+✔ a leg whose import is missing reports LEG_MODULE_MISSING, not a bare module error (2.164494ms)
+✔ boot self-check and seed round agree on LEG_MODULE_MISSING (0.302935ms)
+✔ a pinned runner whose leg import throws still names the failure (never {}) (1.356678ms)
+✔ entry points accept a single harness id string (never a silent empty scan) (0.352578ms)
+✔ runDiscoveryRound tolerates a null opts object (0.119188ms)
+(node:1024141) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/impromptu.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ runImpromptuJob module is importable (3.153533ms)
+✔ completes a read-only job and streams first-stream deltas with seqs (22.466913ms)
+✔ falls back to the streamed tail when the settle value is empty (5.235531ms)
+✔ reports failure and returns (never throws) when the model fails (5.756467ms)
+✔ reports failure and returns when session creation fails (0.56888ms)
+✔ serves with the fallback harness and fails loud with none loaded (3.240644ms)
+✔ skips jobs with no prompt without completing (2.86379ms)
+✔ bounds a hung model by the job timeout and reports failure (30.706669ms)
+✔ removes the per-job scratch dir afterwards so turns never leak disk (3.173952ms)
+✔ passes the requested model through to the session (3.443129ms)
+(node:1024860) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/logEvents.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ sanitizeStructuredEvent
+  ✔ passes clean events through and drops typeless ones (9.525258ms)
+  ✔ redacts secrets before transport (0.499772ms)
+  ✔ truncates oversized payloads with a marker instead of dropping (26.17997ms)
+  ✔ truncates oversized object-shaped results instead of dropping the event (20.911284ms)
+✔ sanitizeStructuredEvent (58.438025ms)
+▶ textForStructuredEvent
+  ✔ derives legacy text only for the two pre-structured shapes (0.377818ms)
+✔ textForStructuredEvent (0.988811ms)
+▶ createStructuredEventSender
+  ✔ ships sequenced batches on close (2.084054ms)
+  ✔ flushes immediately on run-closing events (2.879978ms)
+  ✔ falls back to text on send failure and converts the failed batch (2.162321ms)
+  ✔ redacts secrets in queued batches (1.611022ms)
+  ✔ close() drains events queued while a batch is in flight (25.821419ms)
+  ✔ fallback converts events queued during the failed batch too (5.629178ms)
+✔ createStructuredEventSender (41.025868ms)
+(node:1024932) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/modelDiscovery.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ maps model/list rows to composite fleet ids, deduped, malformed skipped (3.221492ms)
+✔ serves single-colon ids exactly like the shared grammar (new-model chain) (0.279917ms)
+✔ still skips rows whose segments contain the :: separator (0.275497ms)
+✔ sends initialize, initialized, then model/list over serve stdio (0.416907ms)
+✔ provider and argv are overridable (leg seams) (0.34118ms)
+✔ spawn failure, timeout error, and unparsable output resolve to [] (0.315774ms)
+✔ strict mode throws MUSE_MSP_BIN_MISSING for a missing CLI (1.353614ms)
+✔ strict mode throws MUSE_MSP_TIMEOUT for a killed/timed-out child (4.231468ms)
+✔ strict mode throws MUSE_MSP_DISCOVERY_FAILED when model/list is never answered (0.437713ms)
+✔ strict mode still resolves [] when the CLI answers with zero rows (the leg reports MODELS_EMPTY) (0.681762ms)
+✔ default is pin ∪ discovered: the pin never drops, new ids join (survey q2) (2.541886ms)
+✔ discovery wins (replaces the pin) only with the explicit opt-in (modelDiscoveryWins) (0.98304ms)
+✔ resolveAdvertisedModelSource names the winning list branch-for-branch (0.286382ms)
+(node:1024978) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/project.docsRepo.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ docs-repo runner helpers
+  ✔ docsWorkdirFor derives the paired docs worktree name (1.023313ms)
+  ✔ resolveRunnerDocsRepoUrl reads the redacted URL or null (0.275488ms)
+  ✔ resolveRunnerKainbainHome prefers the docs checkout, else cwd (0.680065ms)
+  ✔ shouldSyncTaskDocs skips the copy for docs-repo projects, keeps it for legacy (0.203207ms)
+✔ docs-repo runner helpers (3.774711ms)
+▶ prepareWorkdir with a separate docs repo (clone mode)
+  ✔ prepares a paired docs worktree on the same kb/<taskId> branch in its own mirror (720.461772ms)
+  ✔ legacy projects (no docs repo) get no docs worktree (293.133156ms)
+  ✔ refuses a docsRepoUrl that is the main repoUrl (would push docs branches to the shared remote) (454.854717ms)
+  ✔ commitAndPush pushes BOTH worktrees docs-first and reports both shas (801.878429ms)
+  ✔ a docs push failure aborts before the code push and is labelled 'docs repo' (592.108634ms)
+✔ prepareWorkdir with a separate docs repo (clone mode) (2864.725245ms)
+▶ prepareWorkdir with a separate docs repo (adopt mode)
+  ✔ adopts the docs checkout and creates the paired worktree on the synced branch (331.909971ms)
+✔ prepareWorkdir with a separate docs repo (adopt mode) (332.164443ms)
+▶ collectTaskFiles reads task docs from the paired docs worktree
+  ✔ uses docsWorkdir as the base when provided, else the code workdir (154.902475ms)
+✔ collectTaskFiles reads task docs from the paired docs worktree (155.014117ms)
+(node:1025704) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/project.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ syncTaskDocs
+  ✔ mirrors idea files and assets into the worktree, keeps agent files, no-ops when absent (14.676328ms)
+  ▶ worktree recovery and stale locks
+    ✔ parks dirty residue on a recovery branch instead of discarding it (415.471796ms)
+    ✔ refuses a fresh index.lock instead of piling on (72.672643ms)
+    ✔ recovers a provably-stale index.lock and still runs the command (140.073674ms)
+  ✔ worktree recovery and stale locks (631.206983ms)
+  ▶ prepareIntegrationWorkdir
+    ✔ opens a detached worktree at the expected target when refs match (366.712141ms)
+    ✔ refuses with stale-head when the target moved mid-lease (430.39226ms)
+  ✔ prepareIntegrationWorkdir (798.614852ms)
+  ✔ never copies the backend-owned task.md snapshot (a5228675) (0.794448ms)
+  ✔ delivers every task screenshot into the worktree before the first stage runs (0.860841ms)
+  ✔ reports the synced asset count through the optional stats collector (3.58822ms)
+✔ syncTaskDocs (1456.219334ms)
+▶ writeClaimTaskAssets
+  ✔ writes claim-shipped images the worktree lacks, byte-identical (4.159468ms)
+  ✔ never overwrites files already in the worktree (0.557807ms)
+  ✔ rejects traversal, non-image, and oversized entries without throwing (0.349691ms)
+  ✔ skips malformed base64 instead of writing garbage that hides the warning (10.136671ms)
+  ✔ honours a custom docs folder name (0.607171ms)
+✔ writeClaimTaskAssets (16.105909ms)
+▶ runner project prep
+  ✔ adopts a local-only repo into a task worktree (194.209755ms)
+  ✔ activates the committed pre-commit hook path so kb-* worktrees inherit the binary guard (112.985186ms)
+  ✔ ensureRepoHooksPath sets, idempotently skips, never clobbers a foreign hooksPath, and never throws outside a repo (139.301297ms)
+  ✔ clones a remote-backed repo and pulls on revisit (325.644747ms)
+  ✔ resets a reused clone-mode worktree to the remote branch (504.080252ms)
+  ✔ checks out the local branch when the remote branch is missing (322.675934ms)
+  ✔ refuses past the worktree cap and names orphans (330.808257ms)
+  ✔ evicts the least-recently-used stale workdir instead of refusing (629.467993ms)
+  ✔ parks unpushed dirt on a recovery branch when evicting (699.812928ms)
+  ✔ refuses with WORKTREE_CAP_REACHED when every orphan is freshly used (294.505839ms)
+  ✔ evicts through the mirror in clone mode without stale admin entries (736.669985ms)
+  ✔ requires a repo source (40.629661ms)
+  ▶ reapTaskWorkdirIfTerminal
+    ✔ removes the workdir once the task completed and keeps live ones (193.86173ms)
+    ✔ reaps workdirs whose task is gone and never throws (227.622362ms)
+  ✔ reapTaskWorkdirIfTerminal (421.75682ms)
+  ✔ self-heals a diverged mirror with a hard reset (G6) (411.346835ms)
+  ✔ parks STAGED residue without checkout (dirty-index eviction regression) (294.548618ms)
+  ✔ evicts a dirty-index stale workdir instead of refusing (cap regression) (438.208268ms)
+  ▶ reapTerminalOrphanWorkdirs
+    ✔ reaps completed and gone tasks, keeps live ones (222.852901ms)
+    ✔ deletes nothing when the backend is unreadable (75.902043ms)
+  ✔ reapTerminalOrphanWorkdirs (299.098797ms)
+✔ runner project prep (6198.901789ms)
+▶ resolveRunnerDocsDirName
+  ✔ accepts simple custom names from strings, records, and wrappers (3.969505ms)
+  ✔ degrades reserved names to docs, case-insensitively (0.206211ms)
+  ✔ degrades separators, blanks, garbage, and overlong names to docs (1.015525ms)
+✔ resolveRunnerDocsDirName (5.360227ms)
+▶ syncTaskDocs custom docsDirName
+  ✔ mirrors from and into a custom docs folder, falls back to docs otherwise (0.790469ms)
+✔ syncTaskDocs custom docsDirName (0.883542ms)
+▶ git hook-failure classification
+  ✔ classifies a binary-guard hook rejection with files and remedy (513.964552ms)
+  ✔ degrades gracefully on a foreign hook with arbitrary stderr (62.641917ms)
+  ✔ keeps hook-less commit failures as git-failed with the exit code (61.294444ms)
+  ✔ leaves non-commit failures unstructured (45.679325ms)
+  ✔ leaves merge --abort failures unstructured (no hooks run on abort) (49.353011ms)
+✔ git hook-failure classification (734.58932ms)
+▶ withGitFailurePhase
+  ✔ tags an untagged envelope, keeps an existing phase, passes other errors through (0.407066ms)
+✔ withGitFailurePhase (0.501285ms)
+▶ recovery commit hook tagging
+  ✔ tags a hook-rejected recovery commit with the recovery phase (792.505921ms)
+✔ recovery commit hook tagging (796.190593ms)
+▶ eviction hook-block logging
+  ✔ logs a swallowed hook block loudly, then evicts the next candidate (715.320452ms)
+✔ eviction hook-block logging (715.604697ms)
+▶ runner never bypasses hooks
+  ✔ contains no --no-verify in runner production code (q6: bypass is a manual escape hatch only) (2.688843ms)
+✔ runner never bypasses hooks (2.824323ms)
+(node:1025888) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-check.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ checkForUpdate (mirror base)
+  ✔ rejects the test-signed manifest against the pinned release key (R05) (26.383566ms)
+  ✔ finds a newer version and picks the platform asset (5.370664ms)
+  ✔ reports up-to-date when versions match (12.025673ms)
+  ✔ reports no-op when no asset matches the platform (7.907026ms)
+  ✔ skips pre-release manifests after verifying them (3.041369ms)
+✔ checkForUpdate (mirror base) (60.623038ms)
+▶ checkForUpdate (GitHub pointer)
+  ✔ skips when the latest release is a pre-release (0.892763ms)
+  ✔ fails closed on an empty update URL instead of throwing a TypeError (0.236507ms)
+  ✔ times out a hung mirror instead of wedging the idle loop (60.412887ms)
+  ✔ fails closed (no throw) when the mirror is unreachable (0.48359ms)
+  ✔ fails closed when the release has no manifest assets (0.347748ms)
+✔ checkForUpdate (GitHub pointer) (62.913667ms)
+▶ applyUpdate
+  ✔ aborts on sha mismatch and leaves the install untouched (7.06865ms)
+  ✔ cleans the .part file when the streamed asset fails sha (no leftovers) (13.644092ms)
+  ✔ carries host-installed api/node_modules over to the new tree (4.368633ms)
+  ✔ stages a verified update and flips current/previous (1.757614ms)
+✔ applyUpdate (27.155504ms)
+▶ checkForUpdate with a pinned targetVersion (mirror index)
+  ✔ installs exactly the pin, never a newer substitute (4.666137ms)
+  ✔ is a no-op when the pin equals the running version (0.621881ms)
+  ✔ refuses a pin older than running (never downgrades) (0.180519ms)
+  ✔ fails loud when the pin is not listed (0.242498ms)
+  ✔ rejects a pin that is not a version (0.129698ms)
+  ✔ fails loud when the pinned release cannot run here (1.097622ms)
+✔ checkForUpdate with a pinned targetVersion (mirror index) (7.306809ms)
+▶ checkForUpdate with a pinned targetVersion (GitHub pointer)
+  ✔ installs the pin straight off the latest pointer when it matches (2.619097ms)
+  ✔ walks the releases list for a pin older than latest (3.710367ms)
+✔ checkForUpdate with a pinned targetVersion (GitHub pointer) (6.509544ms)
+(node:1025965) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-compat.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ checkForUpdate compatibility selection (GitHub)
+  ✔ takes a compatible latest through the fast path without listing releases (33.534087ms)
+  ✔ walks older releases when latest is incompatible and picks the newest compatible one (19.028527ms)
+  ✔ reports no update (with the reason) when nothing compatible is newer (13.368554ms)
+  ✔ fails closed when the releases list cannot be fetched (10.759236ms)
+  ✔ skips gating entirely when the backend version is unknown (1.094418ms)
+  ✔ aborts (never skips past) a list entry whose manifest signature fails (7.809599ms)
+  ✔ filters by the manifest version, not a lying tag (6.236935ms)
+✔ checkForUpdate compatibility selection (GitHub) (95.680544ms)
+▶ checkForUpdate compatibility selection (mirror)
+  ✔ walks the releases.json index for the newest compatible release (7.703725ms)
+  ✔ falls back to the single manifest when the index is absent (legacy mirror) (5.015042ms)
+  ✔ compat-filters the fallback manifest too (1.971844ms)
+  ✔ fails loudly on a present-but-invalid index (0.26634ms)
+  ✔ reports no releases on an empty index (0.310396ms)
+  ✔ treats a full manifest.json URL as an explicit pin (still compat-filtered, never a walk) (2.180333ms)
+✔ checkForUpdate compatibility selection (mirror) (22.521442ms)
+(node:1026055) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-daemon.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ installRootFor
+  ✔ prefers the explicit install root (10.235623ms)
+  ✔ defaults to a runner-install sibling of the work root (0.365022ms)
+✔ installRootFor (13.679134ms)
+▶ maybeSelfUpdate
+  ✔ skips when auto-update is off (7.865488ms)
+  ✔ throttles repeat checks inside the interval (0.297735ms)
+  ✔ reports up-to-date without touching the install (0.415558ms)
+  ✔ records failed checks on the loop state for heartbeat facts (0.670242ms)
+  ✔ contains an apply failure: no throw, old version keeps running, fleet is told (0.490908ms)
+  ✔ force bypasses the interval gate (the 409 path updates immediately) (0.328519ms)
+  ✔ applies a verified update and marks it staged (17.351312ms)
+  ✔ never claims to be newer than itself (sanity on RUNNER_VERSION) (0.253758ms)
+  ✔ passes the heartbeat-learned backend version into the check (compat gating) (0.254628ms)
+  ✔ passes null when no heartbeat arrived yet (ungated, today's behaviour) (0.235806ms)
+✔ maybeSelfUpdate (28.90589ms)
+(node:1026175) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-fixture.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ update channel fixture (local HTTP mirror)
+  ✔ updates end-to-end: check, verify, stage, flip, boot, success (246.106632ms)
+  ✔ tampered asset aborts with the install untouched (A3) (106.033401ms)
+  ✔ index mode end-to-end: newest compatible wins, asset resolves beside its manifest (118.774757ms)
+  ✔ tampered manifest aborts before any download (A3) (27.586137ms)
+✔ update channel fixture (local HTTP mirror) (500.016423ms)
+(node:1026359) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-manifest.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ compareVersions
+  ✔ orders releases numerically, not lexically (1.038824ms)
+  ✔ ranks a release above its own prerelease (0.232667ms)
+  ✔ returns null for non-semver input (0.191034ms)
+✔ compareVersions (11.589411ms)
+▶ isNewerVersion / isPrereleaseVersion
+  ✔ detects newer versions only (0.204394ms)
+  ✔ flags prereleases (0.14964ms)
+✔ isNewerVersion / isPrereleaseVersion (0.562515ms)
+▶ validateManifest
+  ✔ accepts a well-formed manifest (3.709282ms)
+  ✔ rejects wrong schema, component, version, and assets (1.275685ms)
+  ✔ rejects assets with malformed sha256 or size (1.304733ms)
+✔ validateManifest (8.679706ms)
+▶ assetForPlatform / resolveUpdateUrls
+  ✔ picks the matching asset (1.117957ms)
+  ✔ treats a manifest.json URL as the direct pointer (1.003376ms)
+  ✔ treats other URLs as a mirror base (1.720487ms)
+✔ assetForPlatform / resolveUpdateUrls (4.078093ms)
+▶ validateManifest requires
+  ✔ accepts legacy manifests without requires (0.234263ms)
+  ✔ accepts a well-formed requires.backendApi range (0.112194ms)
+  ✔ rejects a malformed requires shape (0.133294ms)
+✔ validateManifest requires (0.622814ms)
+▶ versionSatisfiesRange
+  ✔ evaluates the repo's own range vocabulary (5.596191ms)
+  ✔ supports || alternation (0.154055ms)
+  ✔ reads unsupported or malformed ranges as unsatisfied (fail closed) (1.675184ms)
+✔ versionSatisfiesRange (7.602597ms)
+▶ checkBackendCompat
+  ✔ treats legacy manifests and unknown backends as compatible (0.677255ms)
+  ✔ gates on the range when both sides are known (0.248149ms)
+  ✔ fails closed on unparseable ranges and versions (0.111552ms)
+✔ checkBackendCompat (1.210467ms)
+▶ filterReleaseCandidate
+  ✔ selects a newer compatible release with a platform asset (5.46331ms)
+  ✔ never downgrades and skips pre-releases (0.175431ms)
+  ✔ skips incompatible releases and missing assets (0.151108ms)
+✔ filterReleaseCandidate (8.459268ms)
+▶ githubReleasesListUrl / tagVersionFor
+  ✔ derives the bounded list URL from the default pointer (0.373336ms)
+  ✔ reads versions off runner tags, null when unreadable (0.307472ms)
+✔ githubReleasesListUrl / tagVersionFor (0.836941ms)
+▶ validateReleasesIndex
+  ✔ accepts a well-formed index and an empty one (0.321901ms)
+  ✔ rejects malformed indexes and entries (1.789018ms)
+✔ validateReleasesIndex (2.329228ms)
+(node:1026491) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-platform.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ detectUpdatePlatform
+  ✔ accepts the four v1 targets (3.600272ms)
+  ✔ rejects Windows and unknown arches (0.215933ms)
+✔ detectUpdatePlatform (9.849636ms)
+▶ assetNameFor
+  ✔ builds the canonical filename and strips a v prefix (7.273322ms)
+  ✔ throws UNSUPPORTED_PLATFORM for Windows (0.506554ms)
+✔ assetNameFor (8.028923ms)
+(node:1026572) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-state.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ readUpdateState / writeUpdateState
+  ✔ starts idle and round-trips (5.38061ms)
+✔ readUpdateState / writeUpdateState (17.927007ms)
+▶ acquireUpdateLock
+  ✔ grants one holder and releases (3.883775ms)
+  ✔ recovers a stale lock left by a dead process instead of bricking updates (0.60703ms)
+  ✔ recovers the legacy bare-pid lock format when its holder is gone (0.470633ms)
+  ✔ recovers by timestamp when the holder pid is alive but the lock is ancient (10.66043ms)
+  ✔ keeps a live holder's lock (same-process contention still loses) (0.512854ms)
+✔ acquireUpdateLock (25.993514ms)
+▶ pruneOldReleases
+  ✔ keeps current + previous and drops older versions (1.334052ms)
+  ✔ keeps everything when no link resolves inside releases/ (fail-safe) (11.021041ms)
+  ✔ prunes superseded versions on markUpdateSuccess, keeps current + previous (0.792661ms)
+✔ pruneOldReleases (13.495616ms)
+▶ bootstrapUpdateState
+  ✔ passes through when idle (0.521662ms)
+  ✔ counts pending-boot attempts without rolling back early (0.572515ms)
+  ✔ rolls back to previous on the third crashed boot (16.523578ms)
+  ✔ marks success after a good boot (0.437889ms)
+✔ bootstrapUpdateState (18.296879ms)
+▶ requestWrapperRestart
+  ✔ writes the restart-requested sentinel with a triage payload (0.518943ms)
+  ✔ creates a missing install root (0.310282ms)
+  ✔ throws fail-closed without an install root (0.531273ms)
+✔ requestWrapperRestart (11.062486ms)
+(node:1026709) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-verify.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ verifyManifestSignature
+  ✔ accepts a manifest signed by the test key (27.755448ms)
+  ✔ rejects a tampered manifest (version bumped after signing) (8.579334ms)
+  ✔ rejects a tampered signature (3.558614ms)
+  ✔ rejects a signature from a different key (0.561387ms)
+  ✔ rejects against the pinned release key (test sig is not a release sig) (6.827977ms)
+✔ verifyManifestSignature (55.722627ms)
+▶ verifyAssetBytes / verifyAssetFile
+  ✔ accepts matching bytes and rejects flipped bytes (6.763899ms)
+  ✔ verifies a file on disk by streaming (42.847648ms)
+✔ verifyAssetBytes / verifyAssetFile (50.72836ms)
+(node:1026875) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/updates-wrapper.test.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+▶ kainbain-runner wrapper restart gate
+  ✔ stops after a normal completion instead of re-running finished work (146.525269ms)
+  ✔ restarts exactly once into a staged update, then stops (2388.148018ms)
+  ✔ propagates a daemon failure without restarting (153.135003ms)
+  ✔ reboots the same tree once on a restart-requested sentinel, then stops (2334.776601ms)
+  ✔ consumes a stale sentinel with exactly one extra boot (2317.308964ms)
+✔ kainbain-runner wrapper restart gate (7343.500726ms)
+▶ kainbain-runner doctor
+  ✔ reports a healthy wrapper install as ok with the backend record (595.316374ms)
+  ✔ flags a direct node main.js entrypoint with exit 1 (595.900714ms)
+  ✔ flags a missing current symlink with exit 1 (505.404218ms)
+  ✔ reports an unreachable backend but keeps exit 0 (network state, not install damage) (760.875301ms)
+  ✔ writes nothing: the tree is byte-identical before and after (751.984151ms)
+  ✔ supports --verify-install and --unit filtering (2013.449214ms)
+✔ kainbain-runner doctor (5223.823801ms)
+ℹ tests 486
+ℹ suites 91
+ℹ pass 485
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25333.260912
+
+✖ failing tests:
+
+test at runner/daemon.test.js:3673:2
+✖ settles a hook-rejected merge commit as failed with detail instead of crashing (756.755713ms)
+  TypeError: client.verifySha is not a function
+      at executeIntegrationAssignment (file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/daemon.js:2597:18)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async runSingleAssignment (file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/daemon.js:2709:18)
+      at async TestContext.<anonymous> (file:///home/server/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd/runner/daemon.test.js:3710:15)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7)

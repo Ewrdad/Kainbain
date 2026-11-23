@@ -15,17 +15,27 @@ import semver from "semver";
  *   shows unknown) so introducing the knobs cannot lock the fleet out.
  * @example runnerVersionAtLeast('0.2.0', '0.1.0') => true
  ***/
+// A bare hex run of 7+ chars is a commit sha, not a version: semver.coerce
+// would happily mangle `f8044e37` into `8044.0.0`, which then leaks into the
+// fleet version list and the dropdown as a phantom "newest release". Reject
+// those outright so hashes never compare as versions. Version-tagged builds
+// like `1.0.0-28aac94` keep their dotted core and still coerce to `1.0.0`.
+const SHA_LIKE_RE = /^[0-9a-f]{7,40}$/i;
+
 /***
  * MARK: coerceRunnerVersion
  * @description Normalizes a reported product version to `major.minor.patch`
- *   (tolerates a `v` prefix, coerces partial input). Null when absent or
- *   unparseable — callers treat that as permissive, never a block.
+ *   (tolerates a `v` prefix, coerces partial input). Null when absent,
+ *   unparseable, or sha-like (a bare 7+ hex run is a commit hash, never a
+ *   version — `semver.coerce` would invent a bogus one) — callers treat null
+ *   as permissive, never a block.
  * @example coerceRunnerVersion('v1.2.3') => '1.2.3'
+ * @example coerceRunnerVersion('f8044e37') => null
  ***/
 export const coerceRunnerVersion = (version) => {
 	if (typeof version !== "string") return null;
 	const cleaned = version.trim().replace(/^v/, "");
-	if (!cleaned) return null;
+	if (!cleaned || SHA_LIKE_RE.test(cleaned)) return null;
 	try {
 		const coerced = semver.coerce(cleaned);
 		return coerced ? coerced.version : null;
@@ -159,6 +169,81 @@ export const loadBackendApiVersion = () => {
 export const BACKEND_API_VERSION = loadBackendApiVersion();
 
 /***
+ * MARK: DESIRED_VERSION_LATEST
+ * @description Sentinel for the per-runner version setting meaning "track
+ *   the newest release" (the default for every runner). Any other value is
+ *   an exact pinned product version the runner should run instead.
+ * @example DESIRED_VERSION_LATEST => 'latest'
+ ***/
+export const DESIRED_VERSION_LATEST = "latest";
+
+/***
+ * MARK: normalizeDesiredVersion
+ * @description Lenient normalization for STORED per-runner version
+ *   settings: null/undefined/blank/`latest` (any case) read as `latest`;
+ *   anything version-like coerces to canonical `major.minor.patch`;
+ *   anything else falls back to `latest` (old or hand-edited state can
+ *   never strand a runner on an undeployable setting). PATCH validation
+ *   is strict instead — see the registry's INVALID_DESIRED_VERSION path.
+ * @example normalizeDesiredVersion(null) => 'latest'
+ * @example normalizeDesiredVersion('v1.2.3') => '1.2.3'
+ ***/
+export const normalizeDesiredVersion = (value) => {
+	if (value === null || value === undefined) return DESIRED_VERSION_LATEST;
+	const trimmed = String(value).trim();
+	if (!trimmed || trimmed.toLowerCase() === DESIRED_VERSION_LATEST) return DESIRED_VERSION_LATEST;
+	return coerceRunnerVersion(trimmed) || DESIRED_VERSION_LATEST;
+};
+
+/***
+ * MARK: isPinnedDesiredVersion
+ * @description Whether a per-runner version setting names one exact
+ *   release instead of tracking `latest`. Only pinned runners skip
+ *   automatic updates (manual Update only); only `latest` runners ever
+ *   auto-update, and only when idle.
+ * @example isPinnedDesiredVersion('1.2.3') => true
+ * @example isPinnedDesiredVersion('latest') => false
+ ***/
+export const isPinnedDesiredVersion = (value) => normalizeDesiredVersion(value) !== DESIRED_VERSION_LATEST;
+
+/***
+ * MARK: fleetKnownVersions
+ * @description Newest-first list of product versions the fleet knows
+ *   about: every runner-reported version plus the operator's recommended
+ *   and minimum knobs, deduplicated and capped. Feeds the per-runner
+ *   version dropdown (`Latest` + this list) and the red-vs-soft warning
+ *   tier — offline-safe, no release catalogue fetch needed.
+ * @example fleetKnownVersions({ runners: [{ facts: { versions: { runner: '0.1.0' } } }], recommendedVersion: '0.2.0' }) => ['0.2.0', '0.1.0']
+ * @param {Object} [opts] - Labelled inputs.
+ * @param {Object[]} [opts.runners=[]] - Raw runner records.
+ * @param {string|null} [opts.recommendedVersion=null] - Fleet recommended version.
+ * @param {string|null} [opts.minimumVersion=null] - Fleet minimum version.
+ * @param {number} [opts.limit=30] - Maximum entries (same bound as the runner update client).
+ * @returns {string[]} Canonical versions, newest first.
+ ***/
+export const fleetKnownVersions = ({ runners = [], recommendedVersion = null, minimumVersion = null, limit = 30 } = {}) => {
+	const seen = new Set();
+	for (const record of Array.isArray(runners) ? runners : []) {
+		const raw = record?.facts?.versions?.runner ?? record?.runnerVersion ?? null;
+		const coerced = coerceRunnerVersion(raw);
+		if (coerced) seen.add(coerced);
+	}
+	for (const knob of [recommendedVersion, minimumVersion]) {
+		const coerced = coerceRunnerVersion(knob);
+		if (coerced) seen.add(coerced);
+	}
+	const sorted = [...seen].sort((a, b) => {
+		try {
+			return semver.rcompare(a, b);
+		} catch {
+			return 0;
+		}
+	});
+	const safeLimit = Number.isInteger(limit) && limit > 0 ? limit : 30;
+	return sorted.slice(0, safeLimit);
+};
+
+/***
  * MARK: RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS
  * @description Minimum gap between backend-initiated `requestUpdate`
  *   nudges for one runner (survey q2: the backend commands updates for
@@ -172,13 +257,15 @@ export const RUNNER_AUTO_UPDATE_COMMAND_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 /***
  * MARK: shouldAutoRequestUpdate
  * @description Whether this heartbeat should queue a `requestUpdate`
- *   nudge for an out-of-date runner: active runners that advertise the
- *   command and trail the recommended version, with none already pending
- *   and no nudge result inside the cooldown. Pure (the registry passes
- *   the record slices) so the nudging policy is unit-testable.
+ *   nudge for an out-of-date runner: `latest`-tracked runners that
+ *   advertise the command and trail the recommended version, with none
+ *   already pending and no nudge result inside the cooldown. Pinned
+ *   runners never auto-update (manual Update only). Pure (the registry
+ *   passes the record slices) so the nudging policy is unit-testable.
  * @example shouldAutoRequestUpdate({ facts: { versions: { runner: '0.1.0' }, commands: ['requestUpdate'] }, pendingCommands: [], commandResults: {}, recommendedVersion: '0.2.0' }) => true
  ***/
-export const shouldAutoRequestUpdate = ({ facts, pendingCommands = [], commandResults = {}, recommendedVersion, now = Date.now() } = {}) => {
+export const shouldAutoRequestUpdate = ({ facts, pendingCommands = [], commandResults = {}, recommendedVersion, desiredVersion, now = Date.now() } = {}) => {
+	if (isPinnedDesiredVersion(desiredVersion ?? DESIRED_VERSION_LATEST)) return false;
 	const runnerVersion = facts?.versions?.runner ?? null;
 	if (!updateAvailableForRunner(runnerVersion, recommendedVersion)) return false;
 	if (!Array.isArray(facts?.commands) || !facts.commands.includes("requestUpdate")) return false;

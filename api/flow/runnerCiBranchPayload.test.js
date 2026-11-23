@@ -126,6 +126,47 @@ describe("CI branch payload on runner assignment channels", () => {
 		expect(out.customBranch).toBe("release/next");
 	});
 
+	it("dispatch answer names the pipeline base for primary mode (omitted when unconfigured)", async () => {
+		await setStage({ id: "s-pub", name: "Publish", type: "ci", command: "./deploy.sh --prod", runOnBranch: "primary" });
+		const workflows = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${project.id}/workflows` })).payload,
+		).workflows;
+		const patch = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}/workflows/${workflows[0].id}`,
+			payload: { baseBranch: "feature/dispatched" },
+		});
+		expect(patch.statusCode).toBe(200);
+		await newTask("primary base task");
+		const credential = await onboard("ci-primary-base");
+		await heartbeat(credential, "ci-primary-base");
+		const out = await dispatchAs(credential);
+		expect(out.assigned).toBe(true);
+		expect(out.kind).toBe("ci");
+		expect(out.runOnBranch).toBe("primary");
+		expect(out.primaryBranch).toBe("feature/dispatched");
+	});
+
+	it("dispatch answer omits primaryBranch for primary mode on the repo default", async () => {
+		await setStage({ id: "s-pub", name: "Publish", type: "ci", command: "./deploy.sh --prod", runOnBranch: "primary" });
+		const workflows = JSON.parse(
+			(await app.inject({ method: "GET", url: `/projects/${project.id}/workflows` })).payload,
+		).workflows;
+		const patch = await app.inject({
+			method: "PATCH",
+			url: `/projects/${project.id}/workflows/${workflows[0].id}`,
+			payload: { baseBranch: "" },
+		});
+		expect(patch.statusCode).toBe(200);
+		await newTask("primary default task");
+		const credential = await onboard("ci-primary-default");
+		await heartbeat(credential, "ci-primary-default");
+		const out = await dispatchAs(credential);
+		expect(out.assigned).toBe(true);
+		expect(out.runOnBranch).toBe("primary");
+		expect(out.primaryBranch).toBeUndefined();
+	});
+
 	it("dispatch answer defaults runOnBranch to 'task' when the stage has no mode", async () => {
 		await setStage({ id: "s-pub", name: "Tests", type: "ci", command: "npm test" });
 		await newTask("task mode task");

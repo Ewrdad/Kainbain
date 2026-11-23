@@ -782,6 +782,70 @@ describe('TaskDetailPage full-page route component', () => {
     ).toBeInTheDocument();
   });
 
+  test('shows the Commit Failed banner with the structured callout for hook failures', () => {
+    const hookFailureTask = {
+      ...sampleTask,
+      status: 'failed',
+      failureReason: 'Commit blocked by pre-commit hook: 2 corrupt files',
+      lastError: {
+        message: 'Commit blocked by pre-commit hook: 2 corrupt files',
+        stageId: 's1',
+        stageName: 'Planning',
+        failureKind: 'commit-failed',
+        gitDiagnostics: {
+          kind: 'hook-rejected',
+          phase: 'stage-commit',
+          command: 'git commit -m kb/task-101 stage output',
+          exitCode: 1,
+          hookName: 'pre-commit',
+          files: ['docs/tasks/task-101/assets/a.png', 'shot.png'],
+          hookOutput: 'binary-guard check FAILED (2 corrupt binaries)',
+          remedy: 'Re-capture each corrupt file, then retry the stage.',
+          summary: 'Commit blocked by pre-commit hook: 2 corrupt files',
+        },
+      },
+    };
+
+    renderWithKainBain(<TaskDetailPage task={hookFailureTask} />, {
+      stages: sampleStages,
+      projects: sampleProjects,
+    });
+
+    expect(screen.getByText('⚠️ Commit Failed')).toBeInTheDocument();
+    expect(screen.queryByText(/Stage Execution Failed/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Commit blocked by pre-commit hook: 2 corrupt files'),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('git-failure-details')).toBeInTheDocument();
+    expect(screen.getByTestId('git-failure-files')).toHaveTextContent('shot.png');
+    expect(screen.getByTestId('git-failure-remedy')).toHaveTextContent('Re-capture');
+    expect(
+      screen.getByRole('button', { name: 'Retry failed stage on task #KB-TASK' }),
+    ).toBeInTheDocument();
+  });
+
+  test('keeps the generic banner with no callout for backend-shaped diagnostics', () => {
+    const backendDiagnosticsTask = {
+      ...sampleTask,
+      status: 'failed',
+      failureReason: 'Merge conflicts in: a.txt',
+      lastError: {
+        message: 'Merge conflicts in: a.txt',
+        stageId: 's1',
+        stageName: 'Planning',
+        gitDiagnostics: { kind: 'merge-conflict', conflictedFiles: ['a.txt'] },
+      },
+    };
+
+    renderWithKainBain(<TaskDetailPage task={backendDiagnosticsTask} />, {
+      stages: sampleStages,
+      projects: sampleProjects,
+    });
+
+    expect(screen.getByText(/Stage Execution Failed/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('git-failure-details')).not.toBeInTheDocument();
+  });
+
   test('keeps the rejection banner while an auto-retry is queued', () => {
     // In-place retry: the task still sits in the stage that failed (s2), so
     // RETRYING is the honest label.
@@ -1246,6 +1310,65 @@ describe('TaskDetailPage Copy Checkout buttons', () => {
       projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
     });
     expect(screen.getByText('Works on kb/task-101 · quarantine')).toBeInTheDocument();
+  });
+
+  test('base-branch line prefers the task-pinned base over the pipeline live value', () => {
+    renderWithKainBain(
+      <TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1', baseBranch: 'feature/pinned' }} />,
+      {
+        stages: sampleStages,
+        projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+        projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+      },
+    );
+    expect(
+      screen.getByText('Base branch: feature/pinned (pinned to this task)'),
+    ).toBeInTheDocument();
+  });
+
+  test('base-branch line falls back to the pipeline live base', () => {
+    renderWithKainBain(<TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1' }} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+      projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+    });
+    expect(screen.getByText('Base branch: feature/live (from pipeline)')).toBeInTheDocument();
+  });
+
+  test('base-branch line falls back to the repo default when nothing is pinned', () => {
+    renderWithKainBain(<TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1' }} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+      projectWorkflows: [{ id: 'wf-1', name: 'Feature' }],
+    });
+    expect(screen.getByText('Base branch: repo default')).toBeInTheDocument();
+  });
+
+  test('pinned base-branch line links to the pipeline settings tab', () => {
+    const setView = vi.fn();
+    renderWithKainBain(
+      <TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1', baseBranch: 'feature/pinned' }} />,
+      {
+        stages: sampleStages,
+        projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+        projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+        setView,
+      },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change pipeline base' }));
+    expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
+  });
+
+  test('pipeline base-branch line links to the pipeline settings tab', () => {
+    const setView = vi.fn();
+    renderWithKainBain(<TaskDetailPage task={{ ...sampleTask, workflowId: 'wf-1' }} />, {
+      stages: sampleStages,
+      projects: [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain', useBranches: true }],
+      projectWorkflows: [{ id: 'wf-1', name: 'Feature', baseBranch: 'feature/live' }],
+      setView,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Edit in pipeline settings' }));
+    expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
   });
 });
 

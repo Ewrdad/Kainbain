@@ -116,3 +116,16 @@ test('loading skeleton and error banner with retry', () => {
   fireEvent.click(screen.getByText('Retry'));
   expect(retryTasks).toHaveBeenCalledWith('p1');
 });
+
+test('Manage Workflows deep-links the workflows settings tab', () => {
+  // Bare 'settings' lands on the Project tab; the pipeline editor (incl.
+  // each pipeline's base branch) must be one click away, not two.
+  const setView = vi.fn();
+  renderToolbar({
+    setView,
+    projectWorkflows: [{ id: 'wf-1', name: 'Main' }],
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Select pipeline workflow' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '⚙️ Manage Workflows' }));
+  expect(setView).toHaveBeenCalledWith('settings', { section: 'workflows' });
+});

@@ -32,6 +32,7 @@ export function CreateTaskFromFileModal({ filePath, onClose }) {
     createTask,
     executeTaskStage,
     setSelectedTask,
+    setView,
     switchWorkflow,
   } = useKainBain();
 
@@ -61,6 +62,13 @@ export function CreateTaskFromFileModal({ filePath, onClose }) {
   const [error, setError] = useState(null);
 
   const selectedStage = availableStages.find((s) => String(s?.id) === String(selectedStageId));
+  const selectedWorkflow = (projectWorkflows || []).find(
+    (workflow) => String(workflow?.id) === String(selectedWorkflowId),
+  );
+  const selectedBaseBranch =
+    typeof selectedWorkflow?.baseBranch === 'string' && selectedWorkflow.baseBranch.trim()
+      ? selectedWorkflow.baseBranch.trim()
+      : null;
   const stageAutoStarts = selectedStage ? !isCheckpoint(selectedStage?.type || 'agent') : false;
   const switchesPipeline =
     Boolean(activeWorkflowId) && String(selectedWorkflowId) !== String(activeWorkflowId);
@@ -165,6 +173,24 @@ export function CreateTaskFromFileModal({ filePath, onClose }) {
                 size="sm"
                 className="w-full"
               />
+              <p className="mt-1 text-[10px] text-text-muted font-mono">
+                <span>
+                  {selectedBaseBranch
+                    ? `New task will branch off ${selectedBaseBranch}`
+                    : 'New task will branch off the repo default branch'}
+                </span>{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose?.();
+                    setView?.('settings', { section: 'workflows' });
+                  }}
+                  title="Change this pipeline's base branch in pipeline settings"
+                  className="underline underline-offset-2 hover:text-on-surface cursor-pointer"
+                >
+                  Change in pipeline settings
+                </button>
+              </p>
             </div>
             <div>
               <label

@@ -2,7 +2,8 @@ import { config } from "../config.js";
 import { applyRunnerReport } from "./execution/applyRunnerReport.js";
 import { applyIntegrationReport } from "./execution/applyIntegrationReport.js";
 import { normalizeStageType } from "../projectStore.js";
-import { git, defaultBranch } from "../git.js";
+import { git } from "../git.js";
+import { ensureBaseBranchExists, resolveTaskBaseBranch } from "../work/taskBaseBranch.js";
 import { circuitSnapshot, isTripped } from "./circuitBreaker.js";
 import { scanClaimableTasks } from "./dispatch/scanClaimableTasks.js";
 import {
@@ -28,7 +29,11 @@ import { stageRunnerPolicyVerdict } from "../../shared/stageRunnerPolicy.js";
 import { taskRequirements } from "./dispatch/taskRequirements.js";
 import { curateRunnerPrompt } from "./curateRunnerPrompt.js";
 import { collectTaskAssetPayload } from "../work/taskAssets.js";
+import { docsRepoUrlFor } from "../project/docsRepo.js";
 import { materializeRunnerTaskDocs } from "./execution/materializeRunnerTaskDocs.js";
+import { sanitizeGitFailure } from "./execution/sanitizeGitFailure.js";
+import { isGitFailureParked } from "./scheduler/isGitFailureParked.js";
+import { GIT_FAILURE_PARK_AFTER } from "../../shared/gitFailure.js";
 import { buildCommandKeywordContext, expandStageCommand } from "./commandStages.js";
 import { resolveStagesForTask, resolveCandidateStage } from "./stageResolution.js";
 import { buildRunnerAssignmentSummary } from "./runnerAssignmentSummary.js";
@@ -195,11 +200,16 @@ export const prepareIntegrationAttempt = async ({ taskStore, projectStore, proje
 	const cwd = project?.cwd;
 	if (!cwd) unprepared("project has no checkout");
 	const taskBranch = taskStore.resolveTaskBranch(task);
-	let targetBranch;
-	try {
-		targetBranch = await defaultBranch(cwd);
-	} catch {
+	// The integration target is the task's pipeline base branch (the repo
+	// default when unconfigured), auto-created and pushed when missing so
+	// the remote refs below exist.
+	const resolvedBase = await resolveTaskBaseBranch({ task, projectStore, projectId, cwd });
+	const targetBranch = resolvedBase.branch;
+	if (!targetBranch) {
 		unprepared("cannot resolve the target branch");
+	}
+	if (resolvedBase.source !== "repo") {
+		await ensureBaseBranchExists(cwd, targetBranch);
 	}
 	try {
 		// Prune: a deleted remote task branch must vanish from the
@@ -303,8 +313,30 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		// the task worktree (which is exactly how publish stages used to fail:
 		// deploy.sh refuses to run from a kb/* worktree).
 		const runOnBranch = typeof resolved.runOnBranch === "string" ? resolved.runOnBranch : "task";
+		// A primary-mode stage on a pipeline with its own base branch names
+		// that base explicitly so the Runner checks out the right branch.
+		// Sent ONLY when a pipeline base is configured: unconfigured
+		// pipelines (and old Runners, which ignore the unknown field) keep
+		// today's behaviour byte-identically.
+		let primaryBranch = null;
+		if (runOnBranch === "primary") {
+			try {
+				const resolvedBase = await resolveTaskBaseBranch({
+					task,
+					projectStore,
+					projectId,
+					cwd: project?.cwd || null,
+				});
+				if (resolvedBase.source !== "repo") {
+					primaryBranch = resolvedBase.branch;
+				}
+			} catch {
+				primaryBranch = null;
+			}
+		}
 		const branchPayload = {
 			runOnBranch,
+			...(primaryBranch ? { primaryBranch } : {}),
 			...(runOnBranch === "custom" && typeof resolved.customBranch === "string" && resolved.customBranch.trim()
 				? { customBranch: resolved.customBranch.trim() }
 				: {}),
@@ -987,6 +1019,18 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				kind: normalizeStageType(currentStage.type),
 				model: request.body?.model ?? null,
 			});
+			// Structured commit/hook failure (additive): sanitized (redacted +
+			// capped) at the boundary; a malformed payload is dropped with a
+			// warning, never a 400 — a reporting failure must not mask the
+			// stage failure it describes. Old runners omit the field entirely.
+			const rawGitFailure = request.body?.gitFailure;
+			const gitFailure = sanitizeGitFailure(rawGitFailure);
+			if (rawGitFailure !== undefined && rawGitFailure !== null && !gitFailure) {
+				request.log?.warn?.(
+					{ taskId: request.params.id },
+					"Dropping malformed runner gitFailure payload (stage failure still records)",
+				);
+			}
 			const finish = await applyRunnerReport({
 				store: taskStore,
 				projectStore,
@@ -1001,6 +1045,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					modelRef: reportedModelRef,
 					failureKind: request.body?.failureKind ?? null,
 					failureReason: request.body?.failureReason ?? null,
+					gitFailure,
 					duration: request.body?.durationMs
 						? String(Number(request.body.durationMs) / 1000)
 						: "0.0",
@@ -1115,6 +1160,20 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 				code: claimPolicyVerdict.reason,
 			});
 		}
+		// Git-failure parking binds this direct claim like the dispatch
+		// scan: a task parked after consecutive deterministic commit/hook
+		// failures must not be claimable by asking for it directly. Fail
+		// loud (the Runner moves on to other work) until an operator
+		// retries, resumes, or moves the task.
+		if (isGitFailureParked(task)) {
+			// WP2 signal: a parking refusal is an intentional skip.
+			recordClaimExcluded(taskStore, "GIT_FAILURE_PARKED");
+			const strikes = task.gitFailureStreak?.count ?? GIT_FAILURE_PARK_AFTER;
+			return reply.status(409).send({
+				error: `Task ${request.params.id} is parked after ${strikes} consecutive git failures — an operator retry, resume, or move unparks it.`,
+				code: "GIT_FAILURE_PARKED",
+			});
+		}
 		// WP2 signal: this claim() try enters the success-rate denominator.
 		recordClaimAttempt(taskStore);
 		try {
@@ -1135,7 +1194,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 			const stage = resolveCandidateStage(stages, task.currentStageId);
 			stampDispatchRunAttribution({ taskStore, project, task, stage, stages, req, runnerId: runner.runnerId });
 			const dispatchConfigHash = dispatchStageConfigHash(project, task, stage);
-			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
+			return { taskId: request.params.id, runnerId: runner.runnerId, executionId, epoch, ...await ciPayloadFor(projectId, task, null), prompt: curateRunnerPrompt({ project, task, stageId: task.currentStageId }), taskAssets: taskAssetsFor(project, request.params.id), ...(docsRepoUrlFor(project) ? { docsRepoUrl: docsRepoUrlFor(project) } : {}), ...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}) };
 		} catch (err) {
 			// WP2 signals: conflicts feed the fencing breakdown; other
 			// claim failures debit the success rate.
@@ -1532,6 +1591,7 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 					stageId: cand.stage?.id ?? null,
 					prompt: curateRunnerPrompt({ project: candProject, task: cand.task, stageId: cand.stage?.id }),
 					taskAssets: taskAssetsFor(candProject, cand.taskId),
+					...(docsRepoUrlFor(candProject) ? { docsRepoUrl: docsRepoUrlFor(candProject) } : {}),
 					...await ciPayloadFor(cand.projectId, cand.task, cand.stage),
 					requirements: req,
 					...(dispatchConfigHash ? { configHash: dispatchConfigHash } : {}),

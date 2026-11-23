@@ -124,6 +124,7 @@ export const domainRegistry = [
       'getRunners',
       'pauseRunner',
       'requestModelRediscovery',
+      'requestRunnerRestart',
       'requestRunnerUpdate',
       'resumeRunner',
       'revokeRunner',
