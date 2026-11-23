@@ -31,6 +31,11 @@ export function useOnboarding({ enabled = true } = {}) {
       return undefined;
     }
     let isMounted = true;
+    // `loading` must be true for the whole fetch, including the
+    // enabled false -> true flip (the initial state only covers mount):
+    // otherwise callers observing `loading === false` right after the flip
+    // can read a stale `summary` before the request resolves.
+    setLoading(true);
     api
       .getOnboarding()
       .then((res) => {

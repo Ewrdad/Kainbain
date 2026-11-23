@@ -24,6 +24,18 @@
     ]
   },
   {
+    "task": "3b82f6ae-8c54-44bf-b283-0ffab76e7ab7",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-23T08:25:23.803Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 82,
+        "prev_progress_event": "Runner server2-alpha stage stage-1792362077711: finished"
+      }
+    ]
+  },
+  {
     "task": "3c12ffcd-16a2-4bb4-9924-2e0fc2086551",
     "interrupt_details": [
       {
@@ -32,6 +44,18 @@
         "reason": null,
         "delta_s_from_started": 8,
         "prev_progress_event": "Runner local-alpha stage stage-1790707081501: finished"
+      }
+    ]
+  },
+  {
+    "task": "79c51992-ab52-4f97-b35e-5a2aa605505d",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-23T09:19:30.347Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 10,
+        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
       }
     ]
   },
@@ -78,6 +102,20 @@
         "runner": "server2-alpha",
         "reason": null,
         "delta_s_from_started": 353,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-23T11:40:52.034Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 241,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-23T11:44:38.854Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 188,
         "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
       }
     ]
@@ -254,30 +292,6 @@
         "reason": null,
         "delta_s_from_started": 130,
         "prev_progress_event": "Runner local-alpha stage 3: finished"
-      }
-    ]
-  },
-  {
-    "task": "3b82f6ae-8c54-44bf-b283-0ffab76e7ab7",
-    "interrupt_details": [
-      {
-        "ts": "2026-11-23T08:25:23.803Z",
-        "runner": "server2-alpha",
-        "reason": null,
-        "delta_s_from_started": 82,
-        "prev_progress_event": "Runner server2-alpha stage stage-1792362077711: finished"
-      }
-    ]
-  },
-  {
-    "task": "79c51992-ab52-4f97-b35e-5a2aa605505d",
-    "interrupt_details": [
-      {
-        "ts": "2026-11-23T09:19:30.347Z",
-        "runner": "local-alpha",
-        "reason": null,
-        "delta_s_from_started": 10,
-        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
       }
     ]
   }
