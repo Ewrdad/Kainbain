@@ -1,30 +1,3 @@
-/***
- * MARK: createRunnerClient
- * @description Thin fetch wrapper over the Runner-facing backend API
- *   (ADR 0009). Holds the per-Runner credential after approval and sends
- *   it as `x-runner-credential`; every call throws the backend's
- *   `{ error, code }` shape on non-2xx so the daemon can branch on codes.
- * @example const client = createRunnerClient({ backendUrl: 'http://localhost:3100' })
- * @param {Object} opts - Options.
- * @param {string} opts.backendUrl - Backend origin (no trailing slash).
- * @param {Function} [opts.fetchImpl] - Fetch implementation (tests inject a stub).
- * @returns {Object} Runner API client.
- ***/
-/***
- * MARK: isTransientBackendError
- * @description Explicit non-fatal set for backend outages (S4): HTTP
- *   502/503/504 (the backend or its proxy is restarting) plus
- *   network-layer fetch rejections where the backend never answered
- *   (refused/reset connection, timeout, DNS failure, dropped socket —
- *   matched on stable `code`/`cause.code` signals, never message text).
- *   Everything else returns false — STALE_EPOCH, auth rejections (401
- *   INVALID_CREDENTIAL, 403), 429, 500, and unknown errors stay fatal
- *   by construction, so new failure modes stay loud. Pure predicate:
- *   no logging, no dependencies.
- * @example isTransientBackendError(Object.assign(new Error('x'), { statusCode: 502 })) => true
- * @param {*} err - Thrown value from a backend call.
- * @returns {boolean} True only for the enumerated transient set.
- ***/
 const TRANSIENT_BACKEND_STATUSES = new Set([502, 503, 504]);
 // Node system codes (ECONN*) plus undici fetch-failure codes (UND_ERR_*,
 // e.g. a destroyed socket surfaces as UND_ERR_SOCKET on Node 20/22/24).
@@ -47,6 +20,21 @@ const TRANSIENT_NETWORK_CODES = new Set([
 	"UND_ERR_BODY_TIMEOUT",
 ]);
 
+/***
+ * MARK: isTransientBackendError
+ * @description Explicit non-fatal set for backend outages (S4): HTTP
+ *   502/503/504 (the backend or its proxy is restarting) plus
+ *   network-layer fetch rejections where the backend never answered
+ *   (refused/reset connection, timeout, DNS failure, dropped socket —
+ *   matched on stable `code`/`cause.code` signals, never message text).
+ *   Everything else returns false — STALE_EPOCH, auth rejections (401
+ *   INVALID_CREDENTIAL, 403), 429, 500, and unknown errors stay fatal
+ *   by construction, so new failure modes stay loud. Pure predicate:
+ *   no logging, no dependencies.
+ * @example isTransientBackendError(Object.assign(new Error('x'), { statusCode: 502 })) => true
+ * @param {*} err - Thrown value from a backend call.
+ * @returns {boolean} True only for the enumerated transient set.
+ ***/
 export function isTransientBackendError(err) {
 	if (!err || (typeof err !== "object" && typeof err !== "function")) return false;
 	// A status means the backend answered: only gateway outages are
@@ -63,6 +51,18 @@ export function isTransientBackendError(err) {
 	return false;
 }
 
+/***
+ * MARK: createRunnerClient
+ * @description Thin fetch wrapper over the Runner-facing backend API
+ *   (ADR 0009). Holds the per-Runner credential after approval and sends
+ *   it as `x-runner-credential`; every call throws the backend's
+ *   `{ error, code }` shape on non-2xx so the daemon can branch on codes.
+ * @example const client = createRunnerClient({ backendUrl: 'http://localhost:3100' })
+ * @param {Object} opts - Options.
+ * @param {string} opts.backendUrl - Backend origin (no trailing slash).
+ * @param {Function} [opts.fetchImpl] - Fetch implementation (tests inject a stub).
+ * @returns {Object} Runner API client.
+ ***/
 export function createRunnerClient({ backendUrl, fetchImpl = fetch }) {
 	const base = String(backendUrl).replace(/\/+$/, "");
 	let credential = "";

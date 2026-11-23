@@ -61,6 +61,7 @@ describe("isTransientBackendError", () => {
 			"EPIPE",
 			"EHOSTUNREACH",
 			"ENETUNREACH",
+			"ENETDOWN",
 			"UND_ERR_SOCKET",
 			"UND_ERR_CONNECT_TIMEOUT",
 			"UND_ERR_HEADERS_TIMEOUT",
@@ -88,6 +89,10 @@ describe("isTransientBackendError", () => {
 		// A 500 is a backend bug, not an outage: it stays loud.
 		assert.equal(isTransientBackendError(httpError(500, null, "Backend 500")), false);
 		assert.equal(isTransientBackendError(httpError(404, null, "Not found")), false);
+		// "501 fetch failed" in the field evidence is a COUNT of fetch
+		// failures, not this status: 501 Not Implemented is a backend
+		// bug, never an outage to ride through.
+		assert.equal(isTransientBackendError(httpError(501, null, "Not Implemented")), false);
 	});
 
 	it("keeps unknown and ambiguous errors fatal (never an inverted catch-all)", () => {
@@ -107,6 +112,23 @@ describe("isTransientBackendError", () => {
 		assert.equal(isTransientBackendError(undefined), false);
 		assert.equal(isTransientBackendError("502"), false);
 		assert.equal(isTransientBackendError(502), false);
+	});
+
+	it("pins coercion edges and terminates on cyclic causes", () => {
+		// Numeric-string statuses ride through (lenient Number()
+		// coercion); junk statuses stay loud.
+		assert.equal(isTransientBackendError(Object.assign(new Error("x"), { statusCode: "502" })), true);
+		assert.equal(isTransientBackendError(Object.assign(new Error("x"), { statusCode: "garbage" })), false);
+		assert.equal(isTransientBackendError(Object.assign(new Error("x"), { statusCode: NaN })), false);
+		// A cyclic cause chain must terminate (depth-bounded walk),
+		// never hang the dispatch loop.
+		const cyclic = Object.assign(new Error("cycle"), { code: "NOPE" });
+		cyclic.cause = cyclic;
+		assert.equal(isTransientBackendError(cyclic), false);
+		const cyclicTransient = Object.assign(new Error("cycle"), { code: "NOPE" });
+		cyclicTransient.cause = Object.assign(new Error("reset"), { code: "ECONNRESET" });
+		cyclicTransient.cause.cause = cyclicTransient;
+		assert.equal(isTransientBackendError(cyclicTransient), true);
 	});
 });
 

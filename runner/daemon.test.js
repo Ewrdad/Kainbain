@@ -548,6 +548,51 @@ describe("runSingleAssignment", () => {
 		assert.match(err.message, /Backend unreachable mid-assignment/);
 		assert.equal(interrupted.length, 1);
 		assert.match(interrupted[0].reason, /Backend unreachable mid-assignment/);
+		assert.match(interrupted[0].reason, /ECONNRESET/, "the stable system code travels on the reason, not bare 'fetch failed'");
+	});
+
+	it("still releases cleanly when the ride-through interrupt itself 502s", async () => {
+		// S4 fail-safe: the interrupt during an outage is best-effort
+		// (the backend may still be down) — its failure must not mask
+		// the release with the raw 502. The lease TTL bounds the rest.
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		let interruptAttempts = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async () => {
+				throw Object.assign(new Error("Backend 502 on /tasks/t1/complete-execution"), {
+					statusCode: 502,
+					code: null,
+				});
+			},
+			interrupt: async () => {
+				interruptAttempts += 1;
+				throw Object.assign(new Error("Backend 502 on /tasks/t1/interrupt"), {
+					statusCode: 502,
+					code: null,
+				});
+			},
+		});
+		const err = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: { log: () => {}, warn: () => {} },
+		}).then(
+			() => null,
+			(e) => e,
+		);
+		assert.ok(err, "single-shot still ends non-zero when the interrupt also fails");
+		assert.match(err.message, /Backend unreachable mid-assignment/);
+		assert.equal(err.statusCode, undefined, "clean release reason, not the interrupt's raw 502");
+		assert.equal(interruptAttempts, 1, "one best-effort interrupt attempt, then release");
 	});
 
 	it("still rethrows STALE_EPOCH mid-assignment (epoch fencing intact)", async () => {
@@ -2422,6 +2467,10 @@ describe("runDispatchLoop", () => {
 			warnings.filter((m) => m.includes("backend unreachable")).length,
 			2,
 			"one line per ride-through",
+		);
+		assert.ok(
+			warnings.some((m) => m.includes("Backend 502")),
+			"the ride-through line names the backend's answer",
 		);
 	});
 

@@ -1109,21 +1109,58 @@ export function factsFor({ config, harnessVersions, updateStatus = null, command
  *   socket — see `isTransientBackendError`) retry once per entry of
  *   `waitsMs`, then the last error still throws. Bounded by
  *   construction, never infinite: single-shot mode keeps its failure
- *   contract and non-transient failures propagate untouched.
- * @example await retryTransient(() => client.dispatchClaim({}), [1000, 2000])
- * @param {Function} fn - Idempotent backend call.
- * @param {Array<number>} waitsMs - One wait per retry, in ms.
+ *   contract and non-transient failures propagate untouched. A missing
+ *   or malformed wait list means no retries — the first error throws,
+ *   so a caller bug can never mask the backend's answer.
+ * @example await retryTransient({ callBackend: () => client.dispatchClaim({}), waitsMs: [1000, 2000] })
+ * @param {Object} opts - Options.
+ * @param {Function} opts.callBackend - Idempotent backend call to attempt.
+ * @param {Array<number>} [opts.waitsMs] - One wait per retry, in ms (default: none — throw on first failure).
  * @returns {Promise<*>} The call's result.
  ***/
-async function retryTransient(fn, waitsMs) {
+async function retryTransient({ callBackend, waitsMs = [] } = {}) {
+	const waits = Array.isArray(waitsMs) ? waitsMs : [];
 	for (let attempt = 0; ; attempt += 1) {
 		try {
-			return await fn();
+			return await callBackend();
 		} catch (err) {
-			if (!isTransientBackendError(err) || attempt >= waitsMs.length) throw err;
-			await new Promise((r) => setTimeout(r, waitsMs[attempt]));
+			if (!isTransientBackendError(err) || attempt >= waits.length) throw err;
+			const waitMs = Number(waits[attempt]);
+			await new Promise((resolveWait) => setTimeout(resolveWait, Number.isFinite(waitMs) && waitMs > 0 ? waitMs : 0));
 		}
 	}
+}
+
+/***
+ * MARK: describeBackendOutageCause
+ * @description One-line, secret-redacted cause for a transient backend
+ *   failure (S4): fetch rejections carry the stable system code the
+ *   classifier matched on — undici's bare "fetch failed" names nothing,
+ *   so the code (`ECONNRESET`, `UND_ERR_SOCKET`, …) is what lets an
+ *   operator tell "backend down" from "DNS broken" in the task history.
+ *   Gateway statuses keep the backend's own message instead. Never
+ *   returns an empty string: callers only invoke it on
+ *   classifier-positive errors, and the fallback covers defensive use.
+ * @example describeBackendOutageCause({ error: Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } }) }) => 'fetch failed (ECONNRESET)'
+ * @param {Object} opts - Options.
+ * @param {*} opts.error - The transient backend error to describe.
+ * @returns {string} Redacted one-line cause, never empty.
+ ***/
+function describeBackendOutageCause({ error } = {}) {
+	const rawMessage = typeof error?.message === "string" ? error.message : typeof error === "string" ? error : "";
+	const message = redactSecretsText(rawMessage).trim();
+	const status = Number(error?.statusCode);
+	if (Number.isFinite(status)) return message || `status ${status}`;
+	// Mirror of the classifier's cause walk: report the first code found,
+	// which is the signal the outage was ridden through on.
+	let current = error;
+	for (let depth = 0; depth < 4 && current && (typeof current === "object" || typeof current === "function"); depth += 1) {
+		if (typeof current.code === "string" && current.code) {
+			return message ? `${message} (${current.code})` : current.code;
+		}
+		current = current.cause;
+	}
+	return message || "backend unreachable";
 }
 
 /***
@@ -1164,16 +1201,16 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 			// S4: joining during a backend restart window rides through
 			// a few transient failures instead of exiting into a
 			// systemd restart storm; auth/unknown failures still throw.
-			const reg = await retryTransient(
-				() =>
+			const reg = await retryTransient({
+				callBackend: () =>
 					client.register({
 						runnerId: config.runnerId,
 						joinToken: config.joinToken,
 						facts: factsFor({ config, harnessVersions: joinVersions, commandAck: stagedCommandAck(state) }),
 						joinNonce,
 					}),
-				[250, 500, 1000],
-			);
+				waitsMs: [250, 500, 1000],
+			});
 			if (reg.status === "active") {
 				if (typeof reg?.credential === "string" && reg.credential.trim()) {
 					collectedCredential = reg.credential.trim();
@@ -1225,7 +1262,7 @@ export async function joinAndHeartbeat({ config, client, loadHarness, logger, st
 	const facts = factsFor({ config, harnessVersions, updateStatus: state?.updateStatus ?? null, commandAck: stagedCommandAck(state) });
 	// S4: same ride-through as the register poll above — one blip at boot
 	// must not cost the process.
-	const beat = await retryTransient(() => client.heartbeat({ runnerId: config.runnerId, facts }), [250, 500, 1000]);
+	const beat = await retryTransient({ callBackend: () => client.heartbeat({ runnerId: config.runnerId, facts }), waitsMs: [250, 500, 1000] });
 	if (beat.status !== "active") {
 		throw new Error(`Runner ${config.runnerId} is ${beat.status}; need an active registration.`);
 	}
@@ -2473,7 +2510,7 @@ async function executeAssignment({
 				} catch {
 					// Flushing is best-effort: the interrupt matters more.
 				}
-				const reason = `Backend unreachable mid-assignment: ${redactSecretsText(String(err?.message || err)).trim()}`.slice(0, 500);
+				const reason = `Backend unreachable mid-assignment: ${describeBackendOutageCause({ error: err })}`.slice(0, 500);
 				if (typeof logger.error === "function") logger.error(reason);
 				else logger.log(reason);
 				try {
@@ -2747,14 +2784,12 @@ async function executeIntegrationAssignment({
 			// interrupt WITH the reason and RETURN — parity with the
 			// executeAssignment branch above, never rethrow. The
 			// integration lease TTL bounds the half-reported merge.
-			const reason = `Backend unreachable mid-assignment: ${redactSecretsText(String(err?.message || err)).trim()}`.slice(0, 500);
+			const reason = `Backend unreachable mid-assignment: ${describeBackendOutageCause({ error: err })}`.slice(0, 500);
 			if (typeof logger.error === "function") logger.error(reason);
 			else logger.log(reason);
 			try {
-				await client.interrupt({
-					taskId, projectId, executionId,
-					...(reason ? { reason } : {}),
-				});
+				// reason is never empty — describeBackendOutageCause always falls back.
+				await client.interrupt({ taskId, projectId, executionId, reason });
 			} catch {
 				// Interrupting is best-effort: the lease TTL still bounds the damage.
 			}
@@ -3111,14 +3146,14 @@ export async function runDispatchLoop({
 					// 429/RUNNER_PAUSED branches above. A non-transient
 					// failure during retry still throws loud.
 					try {
-						answer = await retryTransient(
-							() => client.dispatchClaim({ projectIds: config.projectIds ?? null }),
-							[1000, 2000, 4000].map((waitMs) => Math.min(waitMs, pollMs)),
-						);
+						answer = await retryTransient({
+							callBackend: () => client.dispatchClaim({ projectIds: config.projectIds ?? null }),
+							waitsMs: [1000, 2000, 4000].map((waitMs) => Math.min(waitMs, pollMs)),
+						});
 					} catch (retryErr) {
 						if (!isTransientBackendError(retryErr)) throw retryErr;
 						polls += 1;
-						const cause = redactSecretsText(String(retryErr?.message || retryErr)).trim().slice(0, 200) || "backend unreachable";
+						const cause = describeBackendOutageCause({ error: retryErr }).slice(0, 200);
 						if (typeof logger.warn === "function") logger.warn(`Dispatch: backend unreachable (${cause}); backing off.`);
 						else logger.log(`Dispatch: backend unreachable (${cause}); backing off.`);
 						await new Promise((r) => setTimeout(r, pollMs));
