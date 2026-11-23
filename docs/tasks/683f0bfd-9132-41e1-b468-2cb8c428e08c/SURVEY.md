@@ -57,6 +57,31 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "It is already set — this task only observes and records versions before/after (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Yes — read-only access to the backend API, runner logs, and work folders is approved for this task too (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Wait and watch until both local-alpha and server2-alpha run a 0.2.x build, then do the 'after' recount in the same run (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "The same project only, so the numbers compare directly with the 2026-11-21 baseline (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
