@@ -63,3 +63,39 @@
   "answers": {}
 }
 ```
+
+## Round 2
+
+```survey-json
+{
+  "round": 2,
+  "generatedAt": "2026-11-23T12:56:57.000Z",
+  "stage": "stage-question-me",
+  "questions": [
+    {
+      "id": "q5",
+      "type": "single",
+      "text": "If the failed-step report still cannot be saved safely, where should the clear error appear so you notice it and know what to do?",
+      "options": [
+        "In the task history log as an error entry (Recommended)",
+        "As a warning banner on the task page",
+        "Both — history log and task page banner"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q6",
+      "type": "single",
+      "text": "Should this work also try to recover the old missing report from the example task, or only stop future reports from being lost?",
+      "options": [
+        "Only stop future reports from being lost (Recommended)",
+        "Also try to recover the old missing report if possible"
+      ],
+      "required": true,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
