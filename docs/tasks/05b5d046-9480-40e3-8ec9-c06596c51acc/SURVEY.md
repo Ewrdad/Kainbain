@@ -20,6 +20,13 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Yes - proceed as described (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
