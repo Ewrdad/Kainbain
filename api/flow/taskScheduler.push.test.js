@@ -36,6 +36,7 @@ function makeTickStore({ tasks = [], busy = false, stages: projectStages = stage
 			listProjects: () => [{ id: "p1", stages: projectStages, cwd: "/tmp/kb-push-sched-test" }],
 		},
 		listTasks: () => tasks,
+		getTask: (pid, tid) => tasks.find((t) => t.id === tid) || null,
 		isTaskBlocked: () => ({ blocked: false }),
 		notifyQueueEmpty: (opts) => {
 			calls.push({ at: Date.now(), opts });
@@ -150,6 +151,33 @@ describe("scheduler queue-empty push latch", () => {
 		// the fire-time re-check sees the candidate and stays silent.
 		tasks.push(runnableTask());
 		await vi.advanceTimersByTimeAsync(QUEUE_EMPTY_DEBOUNCE_MS);
+		expect(calls).toHaveLength(0);
+	});
+
+	it("stays silent while a resumed task is inside its re-dispatch backoff (task 3b82f6ae)", async () => {
+		vi.useFakeTimers();
+		const backedOff = {
+			id: "t-resumed",
+			status: "interrupted",
+			currentStageId: "work",
+			updatedAt: new Date(Date.now() - 1_000).toISOString(),
+			consecutiveResumes: 3,
+			consecutiveResumeStage: "work",
+			lastResumedAt: new Date(Date.now() - 1_000).toISOString(), // 30s backoff, 29s left
+		};
+		const tasks = [backedOff];
+		const { store, calls } = makeTickStore({ tasks });
+		store._schedulerWasActive = true; // Previous stage was running.
+		await scheduleTick(store, {}); // No candidate (backoff) → arms the push.
+		expect(calls).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(QUEUE_EMPTY_DEBOUNCE_MS * 2);
+		// The backed-off resume still counts as pending work: no queue-empty page.
+		expect(calls).toHaveLength(0);
+		// Once the backoff elapses, the next tick dispatches the resume instead.
+		backedOff.lastResumedAt = new Date(Date.now() - 31_000).toISOString();
+		backedOff.updatedAt = backedOff.lastResumedAt;
+		await scheduleTick(store, {});
+		expect(store.schedulerStats.dispatched).toBe(1);
 		expect(calls).toHaveLength(0);
 	});
 

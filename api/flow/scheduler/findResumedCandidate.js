@@ -27,14 +27,18 @@ import { resumeBackoffRemainingMs } from './resumeBackoffRemainingMs.js';
  *   consecutive resumes is SKIPPED here until its backoff delay has elapsed
  *   (30s doubling to 5min), so fresh work (Rules 1–3) wins meanwhile and a
  *   still-full runner cannot re-claim within milliseconds; the first
- *   resumes stay instant.
+ *   resumes stay instant. Callers that only ask "is any resumable work
+ *   pending at all?" (the queue-empty push re-check) pass
+ *   `ignoreBackoff: true` — a backed-off resume still counts as pending
+ *   work, so the queue must not report itself empty while it waits.
  * @param {Object} store
  * @param {Object} [opts]
  * @param {number} [opts.now] - Clock override in ms since epoch (tests); defaults to Date.now().
+ * @param {boolean} [opts.ignoreBackoff=false] - Skip the 3b82f6ae backoff hold (pending-work check only).
  * @returns {Object|null} Candidate with `priorityReason: "resumed_interrupted"`.
   * @example findResumedCandidate(store) => { task, priorityReason: "resumed_interrupted", … }
  ***/
-export function findResumedCandidate(store, { now = Date.now() } = {}) {
+export function findResumedCandidate(store, { now = Date.now(), ignoreBackoff = false } = {}) {
 	if (
 		!store.projectStore ||
 		typeof store.projectStore.listProjects !== "function"
@@ -78,6 +82,7 @@ export function findResumedCandidate(store, { now = Date.now() } = {}) {
 			// re-dispatch backoff window; they re-enter candidacy once the
 			// delay has elapsed, and meanwhile fresh work may win instead.
 			if (
+				!ignoreBackoff &&
 				resumeBackoffRemainingMs(task, task.currentStageId ?? null, now) > 0
 			) {
 				continue;

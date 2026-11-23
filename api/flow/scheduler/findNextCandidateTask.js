@@ -38,10 +38,11 @@ import { sortCentralQueue } from './sortCentralQueue.js';
  * @param {boolean} [opts.ignoreTrip=false] - Admit a candidate despite the trip (canary probe).
  * @param {Object} [opts.queue] - Central-queue policy overrides (`order`, `maxWaitMs`, `now`); omitted = config defaults.
  * @param {number} [opts.now] - Clock override in ms since epoch, threaded to the Rule-0 backoff check (task 3b82f6ae; tests); falls back to `queue.now`, else Date.now().
+ * @param {boolean} [opts.ignoreBackoff=false] - Rule 0 also returns candidates inside their task-3b82f6ae backoff window (pending-work checks such as the queue-empty push re-check); dispatch paths must NOT set this.
  * @returns {Object|null}
   * @example findNextCandidateTask(store) => { task, projectId, … } | null
  ***/
-export function findNextCandidateTask(store, { ignoreTrip = false, queue = null, now = null } = {}) {
+export function findNextCandidateTask(store, { ignoreTrip = false, queue = null, now = null, ignoreBackoff = false } = {}) {
 	// Tier-5 containment gate: containment stops dispatch before any candidate
 	// scan so even a direct caller (route, test, reconcile) cannot bypass it.
 	if (!ignoreTrip && isTripped(store)) {
@@ -62,7 +63,12 @@ export function findNextCandidateTask(store, { ignoreTrip = false, queue = null,
 			: typeof queue?.now === "number" && Number.isFinite(queue.now)
 				? queue.now
 				: undefined;
-	const resumed = findResumedCandidate(store, nowMs === undefined ? {} : { now: nowMs });
+	const resumed = findResumedCandidate(
+		store,
+		nowMs === undefined
+			? { ignoreBackoff }
+			: { now: nowMs, ignoreBackoff },
+	);
 	if (resumed) return resumed;
 
 	const candidates = [];
