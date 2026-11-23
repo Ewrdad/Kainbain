@@ -268,5 +268,17 @@
         "prev_progress_event": "Runner server2-alpha stage stage-1792362077711: finished"
       }
     ]
+  },
+  {
+    "task": "79c51992-ab52-4f97-b35e-5a2aa605505d",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-23T09:19:30.347Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 10,
+        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
+      }
+    ]
   }
 ]

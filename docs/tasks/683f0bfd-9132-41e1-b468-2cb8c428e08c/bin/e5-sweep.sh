@@ -7,6 +7,12 @@
 #     stage-output commit is present in HEAD history
 #   - origin branch refs (refs/remotes/origin/kb/<id>* and kb-<id>*): the
 #     durable evidence that survives worktree reaping, with git log
+#
+# Stage-output detection is scoped to the task's OWN branch: a commit counts
+# only if its subject matches ^kb/$PREFIX.*stage output. Merged/mirrored
+# history regularly contains OTHER tasks' stage-output commits (observed in
+# the 2026-11-23 before-sweep: kb/1cae113f commits inside kb/7f6220c3 refs),
+# and an unscoped grep would flip the verdict to a false Cause 2/4.
 #   - journal lines for the task id (Runner failed / commit / hook / 413 /
 #     502 / fetch failed / interrupt)
 # and prints one VERDICT line per task:
@@ -46,18 +52,21 @@ for d in "$WORK_ROOT"/kb-"$PREFIX"*; do
   found=1; any_evidence=1
   echo "   worktree: $d (branch: $(git -C "$d" branch --show-current 2>/dev/null || echo "?"))"
   git -C "$d" log --format="     %h %ci %s" -5 2>&1 | head -6 || true
-  if git -C "$d" log --format=%s -20 2>/dev/null | grep -qi "stage output"; then
+  # NB: grep WITHOUT -q on purpose — under `set -o pipefail`, `grep -q` exits on
+  # the first match, git log gets SIGPIPE (rc 141), and the pipeline reports
+  # failure even when a match existed. Plain grep reads all input: rc 0 = match.
+  if git -C "$d" log --format=%s -20 2>/dev/null | grep -E "^kb/$PREFIX.*stage output" >/dev/null; then
     stage_present=1
-    echo "     stage-output-commit: PRESENT in worktree HEAD history"
+    echo "     stage-output-commit: PRESENT in worktree HEAD history (subject ^kb/$PREFIX.*stage output)"
   else
     echo "     stage-output-commit: absent in worktree HEAD history"
   fi
   for ref in $(git -C "$d" for-each-ref --format="%(refname)" "refs/remotes/origin/kb/$PREFIX"* "refs/remotes/origin/kb-$PREFIX"* 2>/dev/null); do
     echo "   origin ref: $ref"
     git -C "$d" log --format="     %h %ci %s" -5 "$ref" 2>&1 | head -6 || true
-    if git -C "$d" log --format=%s -20 "$ref" 2>/dev/null | grep -qi "stage output"; then
+    if git -C "$d" log --format=%s -20 "$ref" 2>/dev/null | grep -E "^kb/$PREFIX.*stage output" >/dev/null; then
       stage_present=1
-      echo "     stage-output-commit: PRESENT on $ref"
+      echo "     stage-output-commit: PRESENT on $ref (subject ^kb/$PREFIX.*stage output)"
     else
       echo "     stage-output-commit: absent on $ref"
     fi
@@ -67,15 +76,15 @@ done
 
 echo "-- origin branch refs in $ORIGIN_REPO (durable, survives worktree reaping):"
 if git -C "$ORIGIN_REPO" rev-parse --git-dir >/dev/null 2>&1; then
-  refs=$(git -C "$ORIGIN_REPO" for-each-ref --format="%(refname)" "refs/remotes/origin/kb/$PREFIX"* "refs/remotes/origin/kb-$PREFIX"* 2>/dev/null || true)
+  refs=$(git -C "$ORIGIN_REPO" for-each-ref --format="%(refname)" "refs/remotes/origin/kb/$PREFIX"* "refs/remotes/origin/kb-$PREFIX"* "refs/heads/kb/$PREFIX"* "refs/heads/kb-$PREFIX"* 2>/dev/null || true)
   if [ -n "$refs" ]; then
     any_evidence=1
     while IFS= read -r ref; do
       echo "   $ref"
       git -C "$ORIGIN_REPO" log --format="     %h %ci %s" -8 "$ref" 2>&1 | head -9 || true
-      if git -C "$ORIGIN_REPO" log --format=%s -20 "$ref" 2>/dev/null | grep -qi "stage output"; then
+      if git -C "$ORIGIN_REPO" log --format=%s -20 "$ref" 2>/dev/null | grep -E "^kb/$PREFIX.*stage output" >/dev/null; then
         stage_present=1
-        echo "     stage-output-commit: PRESENT on $ref"
+        echo "     stage-output-commit: PRESENT on $ref (subject ^kb/$PREFIX.*stage output)"
       else
         echo "     stage-output-commit: absent on $ref"
       fi

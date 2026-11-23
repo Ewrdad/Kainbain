@@ -1,0 +1,86 @@
+== T1: per-task.jq + aggregate.jq over recorded before-fixtures reproduce the pinned table
+PASS: T1 row count
+PASS: T1 aggregate == recount-before-table.json
+== T2: per-task.jq edge cases (synthetic payloads)
+PASS: T2 reasoned interrupt counted
+PASS: T2 bare interrupt counted
+PASS: T2 reason text
+PASS: T2 git_failure_streak
+PASS: T2 last_error_git_kind
+PASS: T2 escalated
+PASS: T2 auto_resumed
+PASS: T2 post-finished interrupt detail present
+PASS: T2 fractional-second delta computed (whole seconds)
+PASS: T2 no-fraction timestamp delta (10:06:30 - 10:00:00)
+PASS: T2 missing history does not crash
+PASS: T2 non-object payload fails loudly (non-zero), not silently
+== T3: aggregate.jq arithmetic on hand-built rows
+PASS: T3 totals
+PASS: T3 bare
+PASS: T3 le15s
+PASS: T3 ge120s
+PASS: T3 post_finished
+PASS: T3 git streak tasks
+PASS: T3 per_runner merge
+== T4: e5-worklist.jq scope
+PASS: T4 both tasks in worklist
+PASS: T4 only post-finished details kept
+== T5: runners-tsv.jq over the recorded runners fixture
+PASS: T5 header + one line per runner
+PASS: T5 header first column
+PASS: T5 local-alpha version column
+PASS: T5 local-alpha build sha column
+== T6: convergence verdict (jq rule + git ancestry check)
+PASS: T6 HEAD build contains fix -> true
+PASS: T6 runner-v0.2.0 tag build lacks fix -> false
+PASS: T6 unknown sha -> null
+PASS: T6 empty sha -> null
+PASS: T6 verdict: 0.2.0 build WITH fix converges
+PASS: T6 verdict: 0.2.0 build WITHOUT fix does not converge
+PASS: T6 verdict: 0.1.0 never converges
+PASS: T6 verdict: no build sha -> not converged, reason says cannot verify
+PASS: T6 verdict_for missing runner
+== T7: E5 probe classification on a synthetic work root + origin repo
+PASS: T7 present -> Cause 2/4
+PASS: T7 absent -> Cause 5 suspect
+PASS: T7 no evidence -> gap
+PASS: T7 origin ref evidence used
+PASS: T7 cross-task stage-output commit NOT counted (scoped to ^kb/$PREFIX)
+== T8: e5-sweep.sh argument validation (injection guard)
+PASS: T8 injection attempt rejected with clear message
+PASS: T8 bad host rejected
+== T9: lib.sh api_get_json failure modes (against mock API / dead port)
+PASS: T9 api_get_json 200 JSON ok
+PASS: T9 HTTP 404 fails (curl -f), nothing stored
+PASS: T9 no file left behind on failure
+PASS: T9 dead port fails with clear message
+PASS: T9 invalid JSON body refused
+== T10: fleet-recount.sh end-to-end against the mock API
+PASS: T10 exit code on full success
+PASS: T10 table matches pinned before-table
+PASS: T10 rows written
+PASS: T10 raw evidence kept
+PASS: T10 meta ok count
+PASS: T10 partial failure exit code
+PASS: T10 errors file lists the failed task
+PASS: T10 table still written with remaining tasks
+PASS: T10 empty list exit code
+PASS: T10 empty list has clear message
+PASS: T10 empty list wrote no outputs
+== T11: runners-snapshot.sh end-to-end against the mock API
+PASS: T11 exit 0 without --require-converged
+PASS: T11 raw runners payload preserved
+PASS: T11 tsv lines
+PASS: T11 local-alpha NOT-CONVERGED (0.1.0)
+PASS: T11 server2-alpha NOT-CONVERGED
+PASS: T11 --require-converged exit code
+PASS: T11 converged fleet exits 0 with --require-converged
+PASS: T11 converged verdict line
+== T12: server2-ssh.sh guards (no network)
+PASS: T12 missing password file exit code
+PASS: T12 clear message, password never printed
+PASS: T12 no password material in output
+PASS: T12 no-args exit code
+
+RESULT: 71 passed, 0 failed
+SUITE_RC=0

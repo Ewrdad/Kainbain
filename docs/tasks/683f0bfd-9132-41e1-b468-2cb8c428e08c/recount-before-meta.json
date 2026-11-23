@@ -1,0 +1,9 @@
+{
+  "label": "before",
+  "api": "http://192.168.1.206:3100",
+  "project": "0fd41821-d8a5-4e49-bc2e-28ce8c739a0a",
+  "startedAt": "2026-11-23T11:06:23Z",
+  "finishedAt": "2026-11-23T11:06:29Z",
+  "tasksFetched": 81,
+  "tasksFailed": 0
+}

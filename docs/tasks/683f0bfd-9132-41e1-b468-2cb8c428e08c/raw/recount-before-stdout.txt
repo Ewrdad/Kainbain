@@ -1,29 +1,29 @@
-## WIDE_NET_ANALYSIS.md §2 table — label=before, project 0fd41821-d8a5-4e49-bc2e-28ce8c739a0a, 2026-11-23T09:04:10Z
+## WIDE_NET_ANALYSIS.md §2 table — label=before, project 0fd41821-d8a5-4e49-bc2e-28ce8c739a0a, 2026-11-23T11:06:29Z
 {
   "tasks_total": 81,
   "tasks_with_interrupts": 35,
-  "runner_interrupts": 145,
-  "with_reason": 70,
-  "bare": 75,
+  "runner_interrupts": 149,
+  "with_reason": 73,
+  "bare": 76,
   "per_runner": [
     {
       "runner": "local-alpha",
-      "n": 106
+      "n": 109
     },
     {
       "runner": "server2-alpha",
-      "n": 39
+      "n": 40
     }
   ],
-  "le15s_after_started": 124,
+  "le15s_after_started": 128,
   "ge120s_after_started": 16,
-  "post_finished_interrupts": 25,
+  "post_finished_interrupts": 26,
   "median_delta_s": 4,
-  "auto_resumed": 121,
+  "auto_resumed": 124,
   "server_restart": 0,
   "recovered_server_restart": 0,
-  "escalated": 49,
-  "failed_stage_actions": 177,
+  "escalated": 50,
+  "failed_stage_actions": 181,
   "tasks_with_git_failure_streak": 0,
   "reason_vocabulary": [
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-1f8959ca-265a-4f85-bb3a-c82eaa612e27 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server/.kainbain/runner-work/kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b, /home/server/.kain",
@@ -36,9 +36,11 @@
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-4ec027a7-0566-4d48-9fbc-37fc95ceea50 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-1c91140c-7bb9-43a1-b58f-82ad8d91f4ac, /home/server/.kainbain/runner-work/kb-5a38ad45-74a6-4d00-b6fd-a1796e5f4f1f, /home/server/.kainbain/runner-work/kb-77a4072e-3b0b-42b1-bd0b-3b21e129dd4b, /home/server/.kainbain/runner-work/kb-ae1ae677-7eb5-432c-b0d5-20c72e833084, /home/server/.kain",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-4f927ecb-ba3a-423c-ace3-5f7dd7d36896 (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551, /home/server2/.kainbain/runner-work/kb-b31cab50-3ece-4678-a933-3192288fbefd, /home/server2/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server2/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server2/",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498, /home/server2/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server2/.kainbain/runner-work/kb-7f347a7a-0bfd-4a37-9500-a34eb5ee3219, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-78eac844-250a-44d1-810e-6f047eb5a59e (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-3b82f6ae-8c54-44bf-b283-0ffab76e7ab7, /home/server/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c, /home/server/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21, /home/server/.kain",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-78eac844-250a-44d1-810e-6f047eb5a59e (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498, /home/server2/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server2/.kainbain/runner-work/kb-7f347a7a-0bfd-4a37-9500-a34eb5ee3219, /home/server2/",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-79c51992-ab52-4f97-b35e-5a2aa605505d (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c, /home/server/.kainbain/runner-work/kb-78eac844-250a-44d1-810e-6f047eb5a59e, /home/server/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21, /home/server/.kain",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-7b69d365-44ba-4942-875a-7fc121e6ab4a (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-0faa3d87-fd70-402d-839f-e2cced302d9b, /home/server/.kainbain/runner-work/kb-3c45b620-6cd0-4fab-a30f-a034ca85ed98, /home/server/.kainbain/runner-work/kb-6d3c9317-bfb5-4dd2-b25b-19ca347f043f, /home/server/.kainbain/runner-work/kb-712ce327-abc7-4518-89e1-961a50efb8e1, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-7f6220c3-c536-489c-b952-9858aae9ef21 (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server2/.kainbain/runner-work/kb-3b82f6ae-8c54-44bf-b283-0ffab76e7ab7, /home/server2/.kainbain/runner-work/kb-78eac844-250a-44d1-810e-6f047eb5a59e, /home/server2/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server2/",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-78e0522a-430d-4659-9e2f-7db6444d13f9, /home/server/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server/.kainbain/runner-work/kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b, /home/server/.kainbain/runner-work/kb-c5c465c4-9904-47ae-8661-63f08b9fbede, /home/server/.kain",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-b31cab50-3ece-4678-a933-3192288fbefd (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551, /home/server2/.kainbain/runner-work/kb-4f927ecb-ba3a-423c-ace3-5f7dd7d36896, /home/server2/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server2/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server2/",
     "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server2/.kainbain/runner-work/kb-78e0522a-430d-4659-9e2f-7db6444d13f9, /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server2/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server2/",
@@ -323,5 +325,18 @@
         "prev_progress_event": "Runner server2-alpha stage stage-1792362077711: finished"
       }
     ]
+  },
+  {
+    "task": "79c51992-ab52-4f97-b35e-5a2aa605505d",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-23T09:19:30.347Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 10,
+        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
+      }
+    ]
   }
 ]
+

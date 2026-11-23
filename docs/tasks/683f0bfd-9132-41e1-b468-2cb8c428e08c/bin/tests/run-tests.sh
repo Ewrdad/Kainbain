@@ -12,7 +12,10 @@
 #   - edge cases: reasoned interrupts, gitFailureStreak/lastError.gitDiagnostics,
 #     post-finished interrupts, missing history, non-object payloads
 #   - jq/runner-verdict.jq convergence rules + the git ancestry check
-#   - the E5 probe classification (present / absent / evidence-gap / probe-failed)
+#   - the E5 probe classification (present / absent / evidence-gap / probe-failed),
+#     incl. the cross-task false-positive pin: a stage-output commit from ANOTHER
+#     task's branch in merged history must NOT count (grep is scoped to
+#     ^kb/$PREFIX.*stage output)
 #   - fleet-recount.sh end-to-end against the mock API: success, partial
 #     failure (exit 2, errors file, table still written), empty list (exit 1)
 #   - runners-snapshot.sh end-to-end against the mock API, incl.
@@ -127,7 +130,8 @@ check_eq "T6 HEAD build contains fix -> true" "true" "$(fix_in_build "$(git -C "
 check_eq "T6 runner-v0.2.0 tag build lacks fix -> false" "false" "$(fix_in_build "$(git -C "$REPO_ROOT" rev-parse runner-v0.2.0^{commit})" "$REPO_ROOT" "$FIX_COMMIT")"
 check_eq "T6 unknown sha -> null" "null" "$(fix_in_build "0000000000000000000000000000000000000000" "$REPO_ROOT" "$FIX_COMMIT")"
 check_eq "T6 empty sha -> null" "null" "$(fix_in_build "" "$REPO_ROOT" "$FIX_COMMIT")"
-mk_runner() { jq -n --arg id "$1" --arg v "$2" --arg sha "$3" '{runnerId: $id, status: "active", runnerVersion: $v, recommendedVersion: "0.1.0", updateAvailable: false, facts: {versions: {runner: $v, build: (if $sha == "" then null else {sha: $sha} end)}}}}'; }
+# NOTE: exactly three closing braces after `end)` — versions, facts, outer object.
+mk_runner() { jq -n --arg id "$1" --arg v "$2" --arg sha "$3" '{runnerId: $id, status: "active", runnerVersion: $v, recommendedVersion: "0.1.0", updateAvailable: false, facts: {versions: {runner: $v, build: (if $sha == "" then null else {sha: $sha} end)}}}'; }
 head_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 tag_sha="$(git -C "$REPO_ROOT" rev-parse 'runner-v0.2.0^{commit}')"
 check_eq "T6 verdict: 0.2.0 build WITH fix converges" "true" "$(jq -n -f "$BIN_DIR/jq/runner-verdict.jq" --argjson runner "$(mk_runner local-alpha 0.2.0 "$head_sha")" --argjson fixInBuild true | jq -r .converged)"
@@ -141,22 +145,39 @@ echo "== T7: E5 probe classification on a synthetic work root + origin repo"
 source "$BIN_DIR/e5-sweep.sh"
 E5W="$WORK/e5"; mkdir -p "$E5W/wr" "$E5W/origin"
 git init -q "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444"
-git -C "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "kb/x stage-1: Runner local-alpha stage output"
+# filler commits first, stage-output commit LAST => it is the newest commit and
+# appears FIRST in `git log` output. With `grep -q` + pipefail the early exit
+# would SIGPIPE git and flip a true PRESENT to absent (real bug found on the
+# 2026-11-23 before-sweep) — this fixture pins the fix.
+for i in 1 2 3 4 5 6 7 8; do
+  git -C "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs: filler $i"
+done
+git -C "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "kb/aaaaaaaa-1111-2222-3333-444444444444 stage-1: Runner local-alpha stage output"
 git init -q "$E5W/wr/kb-bbbbbbbb-1111-2222-3333-444444444444"
 git -C "$E5W/wr/kb-bbbbbbbb-1111-2222-3333-444444444444" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs: something else"
+# cross-task trap: kb-dddddddd's history contains ANOTHER task's stage-output
+# commit (merged/mirrored history) — must NOT count as PRESENT for dddddddd
+git init -q "$E5W/wr/kb-dddddddd-1111-2222-3333-444444444444"
+git -C "$E5W/wr/kb-dddddddd-1111-2222-3333-444444444444" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "kb/aaaaaaaa-1111-2222-3333-444444444444 stage-9: Runner local-alpha stage output"
 git init -q --bare "$E5W/origin/kb-repo.git"
 git -C "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444" branch -M "kb/aaaaaaaa-1111-2222-3333-444444444444"
 git -C "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444" remote add origin "$E5W/origin/kb-repo.git"
 git -C "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444" push -q origin "kb/aaaaaaaa-1111-2222-3333-444444444444"
 git -C "$E5W/wr/kb-aaaaaaaa-1111-2222-3333-444444444444" fetch -q origin 2>/dev/null || true
-E5_OUT="$WORK/e5-out.txt"
 run_probe local "$E5W/wr" "test-unit" "$E5W/origin/kb-repo.git" aaaaaaaa 2026-11-19 > "$WORK/e5-aaa.txt" 2>&1 || true
 run_probe local "$E5W/wr" "test-unit" "$E5W/origin/kb-repo.git" bbbbbbbb 2026-11-19 > "$WORK/e5-bbb.txt" 2>&1 || true
 run_probe local "$E5W/wr" "test-unit" "$E5W/origin/kb-repo.git" cccccccc 2026-11-19 > "$WORK/e5-ccc.txt" 2>&1 || true
+run_probe local "$E5W/wr" "test-unit" "$E5W/origin/kb-repo.git" dddddddd 2026-11-19 > "$WORK/e5-ddd.txt" 2>&1 || true
 if grep -q "VERDICT kb-aaaaaaaa: stage-output commit PRESENT -> Cause 2/4 territory" "$WORK/e5-aaa.txt"; then ok "T7 present -> Cause 2/4"; else bad "T7 present verdict — got: $(grep VERDICT "$WORK/e5-aaa.txt")"; fi
 if grep -q "VERDICT kb-bbbbbbbb: evidence found but no stage-output commit -> Cause 5 suspect" "$WORK/e5-bbb.txt"; then ok "T7 absent -> Cause 5 suspect"; else bad "T7 absent verdict — got: $(grep VERDICT "$WORK/e5-bbb.txt")"; fi
 if grep -q "VERDICT kb-cccccccc: no worktree and no origin branch -> evidence gap" "$WORK/e5-ccc.txt"; then ok "T7 no evidence -> gap"; else bad "T7 gap verdict — got: $(grep VERDICT "$WORK/e5-ccc.txt")"; fi
 if grep -q "stage-output-commit: PRESENT on refs/remotes/origin/kb/aaaaaaaa" "$WORK/e5-aaa.txt"; then ok "T7 origin ref evidence used"; else bad "T7 origin ref evidence missing"; fi
+if grep -q "VERDICT kb-dddddddd: evidence found but no stage-output commit -> Cause 5 suspect" "$WORK/e5-ddd.txt" \
+   && ! grep -q "stage-output-commit: PRESENT" "$WORK/e5-ddd.txt"; then
+  ok "T7 cross-task stage-output commit NOT counted (scoped to ^kb/\$PREFIX)"
+else
+  bad "T7 cross-task false-positive — got: $(grep -E 'VERDICT|PRESENT' "$WORK/e5-ddd.txt")"
+fi
 
 echo "== T8: e5-sweep.sh argument validation (injection guard)"
 if "$BIN_DIR/e5-sweep.sh" local 'bad;id' >/dev/null 2>"$WORK/inj.txt"; then
@@ -187,13 +208,20 @@ if api_get_json "http://127.0.0.1:$MOCK_PORT/tasks?projectId=x" "$WORK/api-ok.js
 if api_get_json "http://127.0.0.1:$MOCK_PORT/tasks/does-not-exist?projectId=x" "$WORK/api-404.json" 2>/dev/null; then bad "T9 HTTP 404 should fail"; else ok "T9 HTTP 404 fails (curl -f), nothing stored"; fi
 [ -e "$WORK/api-404.json" ] && bad "T9 404 body was stored" || ok "T9 no file left behind on failure"
 if api_get_json "http://127.0.0.1:1/tasks" "$WORK/api-dead.json" 2>"$WORK/api-dead.err"; then bad "T9 dead port should fail"; else grep -q "ERROR: GET" "$WORK/api-dead.err" && ok "T9 dead port fails with clear message" || bad "T9 dead port message unclear"; fi
-MOCK_BADJSON_ID="$(ls "$FIXTURE_RAW" | head -1 | sed 's/.json//')" start_mock badjson
+# NOTE: mock-driving vars are plain exported shell assignments, NOT `VAR=x
+# start_mock` prefix assignments — under bash 5.3 + set -u a prefix assignment
+# on a function call does not leave the variable bound for later lines.
+MOCK_BADJSON_ID="$(ls "$FIXTURE_RAW" | head -1 | sed 's/.json//')"
+export MOCK_BADJSON_ID
+start_mock badjson
 if api_get_json "http://127.0.0.1:$MOCK_PORT/tasks/$MOCK_BADJSON_ID?projectId=x" "$WORK/api-bad.json" 2>"$WORK/api-bad.err"; then bad "T9 invalid JSON body should fail"; else grep -q "not valid JSON" "$WORK/api-bad.err" && ok "T9 invalid JSON body refused" || bad "T9 invalid JSON message unclear"; fi
+unset MOCK_BADJSON_ID
 
 echo "== T10: fleet-recount.sh end-to-end against the mock API"
 start_mock recount
-KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/fleet-recount.sh" mock "$WORK/mockdir" > "$WORK/recount.out" 2> "$WORK/recount.err"
-check_eq "T10 exit code on full success" "0" "$?"
+t10rc=0
+KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/fleet-recount.sh" mock "$WORK/mockdir" > "$WORK/recount.out" 2> "$WORK/recount.err" || t10rc=$?
+check_eq "T10 exit code on full success" "0" "$t10rc"
 check_json_eq "T10 table matches pinned before-table" "$WORK/mockdir/recount-mock-table.json" "$TASK_DIR/recount-before-table.json"
 check_eq "T10 rows written" "$(ls "$FIXTURE_RAW"/*.json | wc -l)" "$(wc -l < "$WORK/mockdir/recount-mock.jsonl" | tr -d ' ')"
 check_eq "T10 raw evidence kept" "$(ls "$FIXTURE_RAW"/*.json | wc -l)" "$(ls "$WORK/mockdir/raw/mock"/*.json | wc -l)"
@@ -201,7 +229,9 @@ check_eq "T10 meta ok count" "$(ls "$FIXTURE_RAW"/*.json | wc -l)" "$(jq -r .tas
 # partial failure: one task 500s -> exit 2, errors file, table still written
 first_id="$(ls "$FIXTURE_RAW" | head -1 | sed 's/.json//')"
 kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
-MOCK_FAIL_IDS="$first_id" start_mock recountfail
+MOCK_FAIL_IDS="$first_id"
+export MOCK_FAIL_IDS
+start_mock recountfail
 if KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/fleet-recount.sh" mockfail "$WORK/mockdir2" > "$WORK/recount2.out" 2> "$WORK/recount2.err"; then
   bad "T10 partial failure should exit 2"
 else
@@ -209,9 +239,12 @@ else
 fi
 check_eq "T10 errors file lists the failed task" "$first_id" "$(jq -r .task "$WORK/mockdir2/recount-mockfail-errors.jsonl")"
 check_eq "T10 table still written with remaining tasks" "$(( $(ls "$FIXTURE_RAW"/*.json | wc -l) - 1 ))" "$(jq -r .tasks_total "$WORK/mockdir2/recount-mockfail-table.json")"
+unset MOCK_FAIL_IDS
 # empty list -> exit 1, no outputs
 kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
-MOCK_EMPTY=1 start_mock empty
+MOCK_EMPTY=1
+export MOCK_EMPTY
+start_mock empty
 if KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/fleet-recount.sh" mockempty "$WORK/mockdir3" > /dev/null 2> "$WORK/recount3.err"; then
   bad "T10 empty task list should exit 1"
 else
@@ -219,11 +252,13 @@ else
   grep -q "zero tasks" "$WORK/recount3.err" && ok "T10 empty list has clear message" || bad "T10 empty list message unclear: $(cat "$WORK/recount3.err")"
 fi
 [ -e "$WORK/mockdir3/recount-mockempty.jsonl" ] && bad "T10 empty list wrote outputs anyway" || ok "T10 empty list wrote no outputs"
+unset MOCK_EMPTY
 
 echo "== T11: runners-snapshot.sh end-to-end against the mock API"
 start_mock snap
-KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap" > "$WORK/snap.out" 2> "$WORK/snap.err"
-check_eq "T11 exit 0 without --require-converged" "0" "$?"
+t11rc=0
+KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap" > "$WORK/snap.out" 2> "$WORK/snap.err" || t11rc=$?
+check_eq "T11 exit 0 without --require-converged" "0" "$t11rc"
 snap_json="$(ls "$WORK/snap"/runners-*.json | head -1)"
 check_json_eq "T11 raw runners payload preserved" "$snap_json" "$FIXTURE_RUNNERS"
 check_eq "T11 tsv lines" "10" "$(wc -l < "$(ls "$WORK/snap"/runners-*.tsv | head -1)" | tr -d ' ')"
@@ -241,15 +276,17 @@ jq -n --arg sha "$(git -C "$REPO_ROOT" rev-parse HEAD)" '
    {runnerId: "server2-alpha", status: "active", runnerVersion: "0.2.0", recommendedVersion: "0.2.0", minimumVersion: "0.1.0", desiredVersion: "latest", availableVersions: ["0.1.0","0.2.0"], updateAvailable: false, belowMinimum: false, updateStatus: null, pendingCommands: [], lastSeenAt: "2026-11-23T10:00:00Z", facts: {versions: {runner: "0.2.0", build: {sha: $sha, builtAt: "2026-11-23T09:00:00Z"}}}}]
 ' > "$WORK/runners-converged.json"
 kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
-R_FILE="$WORK/runners-converged.json" start_mock snapok
+R_FILE="$WORK/runners-converged.json"
+start_mock snapok
 # restart mock with the converged runners file
 kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
 port_file="$WORK/snapok2.port"
-python3 "$TESTS_DIR/mock-api.py" --tasks-dir "$FIXTURE_RAW" --runners-file "$WORK/runners-converged.json" --deploy-file "$FIXTURE_DEPLOY" --port 0 --port-file "$port_file" &
+python3 "$TESTS_DIR/mock-api.py" --tasks-dir "$FIXTURE_RAW" --runners-file "$R_FILE" --deploy-file "$FIXTURE_DEPLOY" --port 0 --port-file "$port_file" &
 MOCK_PIDS+=($!)
 for _ in $(seq 1 50); do [ -s "$port_file" ] && break; sleep 0.1; done
-KAINBAIN_API_BASE="http://127.0.0.1:$(cat "$port_file")" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap3" --require-converged > "$WORK/snap3.out" 2>&1
-check_eq "T11 converged fleet exits 0 with --require-converged" "0" "$?"
+t11crc=0
+KAINBAIN_API_BASE="http://127.0.0.1:$(cat "$port_file")" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap3" --require-converged > "$WORK/snap3.out" 2>&1 || t11crc=$?
+check_eq "T11 converged fleet exits 0 with --require-converged" "0" "$t11crc"
 grep -q "CONVERGED    local-alpha 0.2.0" "$(ls "$WORK/snap3"/verdict-*.txt | head -1)" && ok "T11 converged verdict line" || bad "T11 converged verdict: $(cat "$(ls "$WORK/snap3"/verdict-*.txt | head -1)")"
 
 echo "== T12: server2-ssh.sh guards (no network)"
