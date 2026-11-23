@@ -2,7 +2,10 @@
 
 Task: `683f0bfd-9132-41e1-b468-2cb8c428e08c` (RESPONSE.md S5 of `2e663986-aaf3-4afe-8dcf-3adad34acdb4`).
 Type: ops + verification. No code changes, no new unit tests.
-Date: 2026-11-23. Status: plan (nothing executed yet).
+Date: 2026-11-23. Status: BEFORE + E5 delivered under the q3-fallback
+(see `RUN-LOG.md`, `RECOUNT-BEFORE.md`, `E5-SWEEP.md`, `BASELINE.md`);
+the AFTER recount is a scheduled follow-up gated on a human PROD-ACTION
+(raise `KAINBAIN_RUNNER_RECOMMENDED_VERSION` to the fix-bearing release).
 
 ## Goal
 
@@ -39,9 +42,16 @@ interrupts. Record the post-rollout counts as the new baseline for S1–S4.
   --is-ancestor 046a6391 HEAD` → YES). `046a6391` is the 17-file
   deterministic-git-failure change (daemon branch, `shared/gitFailure/*`).
 - `runner/version.json` reads `runnerVersion: 0.2.0`.
-  Release tags `runner-v0.1.0` AND `runner-v0.2.0` both exist, so the 0.2.x
-  release is already cut (runbook step 4 done). Remaining rollout gates: the
-  backend recommended knob + per-runner idle converge.
+  **CORRECTED 2026-11-23 (review F1): tag existence ≠ tag content.**
+  `runner-v0.2.0` (`8460e4a8`, 2026-11-19) predates the fix (`046a6391`,
+  merged 2026-11-21 09:38 in `7ac148ce`):
+  `git merge-base --is-ancestor 046a6391 runner-v0.2.0` → NO, and
+  `shared/gitFailure.js` is absent at the tag. A NEW tag `runner-v0.2.1`
+  (created 2026-11-23 11:30:02Z from main `65580333`) DOES contain the fix
+  (merge-base YES, `shared/gitFailure.js` present, `runnerVersion 0.2.1`).
+  Remaining rollout gates: the backend recommended knob (still `0.1.0` at
+  12:22Z — runbook step 5, human PROD-ACTION) + per-runner idle converge.
+  Never move `runner-v0.2.0`; the fleet converges to `0.2.1` (or newer).
 - Recommended-knob wiring: `api/config/schema.js` key `runnerRecommendedVersion`
   (`KAINBAIN_RUNNER_RECOMMENDED_VERSION`), **default `0.1.0`**. The live value
   must be read at execution time — the default alone cannot confirm the rollout
@@ -68,17 +78,18 @@ interrupts. Record the post-rollout counts as the new baseline for S1–S4.
 
 ## Survey integration (SURVEY.md + RESPONSE_SURVEY.md)
 
-The task survey (`SURVEY.md`, Round 1, stage-1792362077711) is **generated but
-unanswered** (`"answers": {}`); the source survey (`RESPONSE_SURVEY.md` q1–q9)
-is likewise unanswered. The plan therefore adopts the recommended option of
-each question as a reviewable assumption, keeps the question open, and carries
-a fallback branch per question:
+The task survey (`SURVEY.md`, Round 1, stage-1792362077711) is **answered**
+(all four recommended options selected); the source survey
+(`RESPONSE_SURVEY.md` q1–q9) remains unanswered, so q9's recommended option
+(gradual rollout, never force-restart mid-task) is held as a hard constraint.
+The table below records the effective decision per question, including where
+live data overrode an answer (q1) or forced a fallback (q3):
 
 | Q | Recommended assumption (plan default) | Fallback if answered otherwise |
 |---|---|---|
-| q1 (knob already on?) | Observe + record; verify knob state read-only, do NOT change it | If "check and switch on": add one backend config change (`KAINBAIN_RUNNER_RECOMMENDED_VERSION=0.2.0`), no restarts, recorded with before/after value |
-| q2 (read-only prod access?) | Full read-only: backend API + runner journals + worktrees on both hosts | API-only: Phases 1/3/4 proceed, Phase 2 E5 becomes journals-unavailable gap note; "docs only": task cannot execute — re-plan as procedure-only doc |
-| q3 (wait for converge?) | Wait-and-watch in the same run until both runners converge, then after-recount | Before-now/stop: deliver BEFORE + E5 + versions now, AFTER as a scheduled follow-up run; never "record mid-rollout as after" |
+| q1 (knob already on?) | **ANSWERED "already set — observe only", FALSIFIED by live data** (knob is `0.1.0` at 09:04/10:36/11:07/11:46/12:22Z; `availableVersions ["0.1.0"]`, no nudges). Task stays observe-only; the raise to `0.2.1` is a human PROD-ACTION recorded as the blocking prerequisite (see `RUN-LOG.md`) | — (answer binds this task to observe-only) |
+| q2 (read-only prod access?) | **ANSWERED: full read-only approved** (backend API + runner journals + worktrees on both hosts) — used throughout | n/a (granted) |
+| q3 (wait for converge?) | **ANSWERED "wait-and-watch same-run", ADOPTED FALLBACK**: convergence is impossible until the knob is raised (F1/F2), so this run delivers BEFORE + E5 + versions now and the AFTER recount becomes a scheduled follow-up gated on both runners CONVERGED per `bin/runners-snapshot.sh --require-converged`; never "record mid-rollout as after" | n/a (fallback active; see `BASELINE.md` for the follow-up procedure) |
 | q4 (recount scope?) | Same project `0fd41821` only, directly comparable to the 11-21 baseline | All-projects: run the same script per project and keep `0fd41821` as the headline comparison table |
 | RESPONSE q9 (rollout pace) | **Hard constraint**: gradual idle-converge, never force-restart mid-task | No fallback — any "faster" answer must come from the human explicitly; the plan refuses to include forced restarts on its own authority |
 
@@ -286,8 +297,9 @@ command output (or the raw JSON), and the exact re-run command.
 
 ## Open questions
 
-1. SURVEY.md q1–q4 unanswered — plan proceeds on recommended-option assumptions
-   (table above); execution re-checks for answers first.
+1. SURVEY.md q1–q4 — **answered** (all recommended). q1's answer ("knob
+   already set") is falsified by live data; q3's answer ("wait same-run")
+   fell back to BEFORE-now/AFTER-later (table above + `RUN-LOG.md`).
 2. RESPONSE_SURVEY.md q1–q9 unanswered, including q9 (rollout pace) — q9's
    recommended option is treated as a hard constraint regardless.
 3. Live `runnerRecommendedVersion` value — read-only check in 0.3 decides
