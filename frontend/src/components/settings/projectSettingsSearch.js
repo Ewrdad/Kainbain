@@ -174,14 +174,14 @@ const SETTINGS_SEARCH_INDEX_SOURCE_ENTRIES = [
     id: 'docs-repo-url',
     tab: 'files-repos',
     label: 'Separate Docs Repository URL',
-    keywords: ['separate', 'docs', 'repository', 'repo', 'private', 'stealth', 'remote', 'url', 'state'],
+    keywords: ['separate', 'docs', 'repository', 'repo', 'private', 'stealth', 'remote', 'url', 'state', 'kainbain'],
     elementId: 'project-docs-repo-url-input',
   },
   {
     id: 'docs-repo-path',
     tab: 'files-repos',
     label: 'Docs Repository Local Path',
-    keywords: ['docs', 'repository', 'repo', 'local', 'path', 'checkout', 'separate'],
+    keywords: ['docs', 'repository', 'repo', 'local', 'path', 'checkout', 'separate', 'private', 'stealth', 'kainbain'],
     elementId: 'project-docs-repo-path-input',
   },
   {

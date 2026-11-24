@@ -51,6 +51,11 @@ describe('searchSettings', () => {
     expect(urlHit.elementId).toBe('project-docs-repo-url-input');
     // The pre-existing git-remote entry still wins plain "git" queries.
     expect(searchSettings('git')[0]?.id).toBe('git-repo');
+    // Natural-language "kainbain" queries find the stealth docs repo too
+    // (previously "kainbain docs" matched nothing under AND semantics).
+    expect(searchSettings('kainbain docs').map((hit) => hit.id)).toContain('docs-repo-url');
+    expect(searchSettings('kainbain docs')[0]?.id).toBe('docs-repo-path');
+    expect(searchSettings('kainbain')[0]?.id).toBe('kainbain-dir');
   });
 
   it('requires every word to hit (one miss disqualifies the entry)', () => {

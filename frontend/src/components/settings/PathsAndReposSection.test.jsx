@@ -158,6 +158,18 @@ describe('PathsAndReposSection', () => {
     expect(setDocsRepoLocalPath).toHaveBeenCalledWith('/srv/kb/other');
   });
 
+  it('renders the separate docs repo block FIRST so it is in the first viewport without scrolling', () => {
+    renderWithKainBain(<PathsAndReposSection {...baseProps} />);
+    const urlInput = screen.getByLabelText('Separate Docs Repository URL (optional)');
+    const pathInput = screen.getByLabelText('Docs Repository Local Path (optional)');
+    const cwdInput = screen.getByLabelText('Working Directory (Root)');
+    // DOM order (not just presence): the docs-repo block leads the tab, so
+    // direct Files & Repos navigation shows it without scrolling. The block
+    // used to sit halfway down the tab and reviewers never found it.
+    expect(urlInput.compareDocumentPosition(cwdInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(pathInput.compareDocumentPosition(cwdInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('shows the docs repo block with a heading and a disabled status when unset', () => {
     renderWithKainBain(<PathsAndReposSection {...baseProps} />);
     expect(screen.getByText('Separate Docs Repository')).toBeInTheDocument();
