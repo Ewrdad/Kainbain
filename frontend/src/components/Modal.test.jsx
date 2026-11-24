@@ -6,7 +6,8 @@ import '@testing-library/jest-dom';
 /**
  * MARK: Modal tests
  * @description Verifies the accessible modal: role=dialog + aria-modal,
- *   Escape-to-close, backdrop click close, initial focus, and content render.
+ *   Escape-to-close, backdrop click close, initial focus, content render,
+ *   and backdrop stacking above the fixed bottom bar.
  */
 test('renders children inside a dialog with ARIA attributes', () => {
   render(
@@ -52,4 +53,16 @@ test('moves focus to the first focusable element on open', () => {
     </Modal>,
   );
   expect(screen.getByLabelText('first')).toHaveFocus();
+});
+
+test('backdrop layers above the fixed bottom bar', () => {
+  // The bottom bar is fixed at z-50 (NowPlayingBar); the backdrop must sit
+  // strictly above it so a tall dialog is never occluded, and below tooltips
+  // (z-60) so in-modal tooltips stay on top.
+  const { container } = render(
+    <Modal onClose={() => {}}>
+      <div>Panel content</div>
+    </Modal>,
+  );
+  expect(container.querySelector('.fixed.inset-0')).toHaveClass('z-[55]');
 });

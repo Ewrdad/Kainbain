@@ -78,9 +78,12 @@ export function Modal({
   // Backdrop click closes; keyboard users close via the document-level Escape
   // handler in the focus-trap effect below (the backdrop is intentionally not
   // focusable). The panel stops propagation so panel clicks never close.
+  // z-[55]: strictly above the fixed bottom bar (z-50, same slot as this
+  // backdrop used to tie on, where DOM order let the bar occlude tall
+  // dialogs) and below in-modal tooltips (z-60).
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- keyboard close via Escape (tested in Modal.test.jsx)
-    <div className={`fixed inset-0 z-50 ${containerClassName}`} onClick={onClose}>
+    <div className={`fixed inset-0 z-[55] ${containerClassName}`} onClick={onClose}>
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- propagation guard only, not an interaction; keyboard close is via the document Escape handler */}
       <div
         ref={dialogRef}
