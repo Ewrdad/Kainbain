@@ -188,6 +188,24 @@ export function SystemSettingsContent({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-2 custom-scrollbar bg-surface-deep">
+        {/* Separate Docs Repository is per-project, not a system setting:
+            visitors hunting for it here would otherwise never find it. This
+            pointer (visible on every System Settings tab) routes them to
+            Project Settings -> Files & Repos, where the fields live. */}
+        <p
+          data-testid="system-settings-docs-repo-pointer"
+          className="mt-3 px-3 py-2 text-[11px] text-text-muted bg-surface-container-high border border-border-standard rounded-sm"
+        >
+          Looking for the Separate Docs Repository setting? It is per-project, not a system
+          setting — open{' '}
+          <a
+            href="#/settings/files-repos"
+            className="text-primary font-bold underline hover:brightness-110"
+          >
+            Project Settings → Files &amp; Repos
+          </a>{' '}
+          to move KainBain docs/state into a private repo.
+        </p>
         {isDraftOnlySection && (
           <p
             id="system-settings-wireframe-note"

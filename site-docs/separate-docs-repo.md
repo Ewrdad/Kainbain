@@ -19,9 +19,9 @@ A project can instead store **everything KainBain** in a separate, private git r
 
 ## Setting it up
 
-**On create or import** (recommended, especially on import): both the New Project and the Add Existing Project dialogs show **Docs Repository URL** right in the form — the *Advanced options: separate docs repo* section is expanded by default. On import you can also set **Docs Repo Local Path**: the absolute path where the docs repo is (or will be) checked out on this machine. When left blank, KainBain provisions a sibling `<project-dir>-kainbain-docs` directory.
+**On create or import** (recommended, especially on import): both the New Project and the Add Existing Project dialogs show **Docs Repository URL** and **Docs Repo Local Path** right in the form — the *Advanced options: separate docs repo* section is expanded by default. The local path is the absolute path where the docs repo is (or will be) checked out on this machine; when left blank, KainBain provisions a sibling `<project-dir>-kainbain-docs` directory. The first-run one-click adopt (Found on disk) registers with no docs repo — use Adopt Existing… instead when you need one at import time.
 
-**On an existing project**: Project Settings → Files & Repositories carries the same fields in a *Separate Docs Repository* block (with an Enabled/Disabled status line); the Project tab shows a compact summary row with a jump button, and typing "separate docs repo" in the settings search jumps straight to the fields. Saving provisions the docs repo and moves all *new* KainBain docs/state into it.
+**On an existing project**: Project Settings → Files & Repositories carries the same fields in a *Separate Docs Repository* block (with an Enabled/Disabled status line); the Project tab shows a compact summary row with a jump button, and typing "separate docs repo" in the settings search jumps straight to the fields. System Settings itself has no docs-repo setting (it is per-project) — a pointer at the top of System Settings routes you there. Saving provisions the docs repo and moves all *new* KainBain docs/state into it.
 
 The docs repo URL is stored credential-redacted; authentication uses the same login as the main repo (ambient git credentials — same host, same credential helper). One docs repo per project; a second project claiming the same URL or path is refused with a 409.
 

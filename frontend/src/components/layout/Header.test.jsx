@@ -520,11 +520,13 @@ test('create project modal shows the docs repo fields by default (Advanced expan
   const toggle = screen.getByRole('button', { name: /advanced options/i });
   expect(toggle).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
+  expect(screen.getByLabelText('Docs Repo Local Path (optional)')).toBeInTheDocument();
   // The toggle names the option so it stays findable when collapsed.
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute('aria-expanded', 'false');
   expect(toggle).toHaveTextContent(/separate docs repo/i);
   expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Docs Repo Local Path (optional)')).not.toBeInTheDocument();
 });
 
 test('create project modal forwards the advanced docs repo URL', () => {
@@ -546,6 +548,31 @@ test('create project modal forwards the advanced docs repo URL', () => {
   expect(createProject).toHaveBeenCalledWith('Stealth', {
     gitUrl: undefined,
     docsRepo: { url: 'git@github.com:me/stealth-docs.git' },
+  });
+});
+
+test('create project modal forwards the advanced docs repo local path', () => {
+  const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Stealth' });
+  renderWithKainBain(<Header />, {
+    projects,
+    activeProjectId: 'proj-1',
+    createProject,
+    isProjectDropdownOpen: true,
+    setIsProjectDropdownOpen: vi.fn(),
+  });
+  fireEvent.click(screen.getByText('+ New Project'));
+  fireEvent.change(screen.getByLabelText('Project Name'), { target: { value: 'Stealth' } });
+  fireEvent.change(screen.getByLabelText('Docs Repository URL (optional)'), {
+    target: { value: 'https://git.example.com/me/created-docs.git' },
+  });
+  fireEvent.change(screen.getByLabelText('Docs Repo Local Path (optional)'), {
+    target: { value: '/srv/kb/created' },
+  });
+  fireEvent.submit(screen.getByLabelText('Project Name').closest('form'));
+
+  expect(createProject).toHaveBeenCalledWith('Stealth', {
+    gitUrl: undefined,
+    docsRepo: { url: 'https://git.example.com/me/created-docs.git', localPath: '/srv/kb/created' },
   });
 });
 

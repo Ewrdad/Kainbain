@@ -625,4 +625,24 @@ describe('SystemSettingsContent', () => {
     expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Runners' })).toHaveAttribute('aria-selected', 'true');
   });
+
+  it('points per-project docs-repo visitors to Project Settings on every tab', async () => {
+    renderContent();
+    expect(await screen.findByTestId('runner-detail-r1')).toBeInTheDocument();
+
+    // The docs-repo setting is per-project, so System Settings carries no
+    // fields for it — only a pointer that routes hunters to the real home.
+    const pointer = screen.getByTestId('system-settings-docs-repo-pointer');
+    expect(pointer).toBeInTheDocument();
+    expect(pointer).toHaveTextContent(/per-project, not a system setting/i);
+    expect(screen.getByRole('link', { name: /Project Settings/i })).toHaveAttribute(
+      'href',
+      '#/settings/files-repos',
+    );
+    // Visible on every tab, not just the landing one.
+    fireEvent.click(screen.getByRole('tab', { name: 'Storage' }));
+    expect(screen.getByTestId('system-settings-docs-repo-pointer')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'About' }));
+    expect(screen.getByTestId('system-settings-docs-repo-pointer')).toBeInTheDocument();
+  });
 });

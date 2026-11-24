@@ -6,9 +6,11 @@ import React, { useState } from 'react';
  *   configured" panel when the server confirms zero projects. Shows the
  *   Runner status line, the guided-checklist steps, the three first moves
  *   (create, adopt, setup guide), and any git checkouts found on disk
- *   with one-click adoption. Pure view over the `GET /onboarding`
- *   summary — a null summary (unreachable backend) still renders the
- *   static CTAs so the board is never blank.
+ *   with one-click adoption. One-click adopt registers with no separate
+ *   docs repo, so the list notes how to set one via the Adopt Existing…
+ *   dialog instead (the only import path that offers it). Pure view over
+ *   the `GET /onboarding` summary — a null summary (unreachable backend)
+ *   still renders the static CTAs so the board is never blank.
  * @example <OnboardingEmptyState summary={summary} onCreate={openCreate} onAdopt={openAdopt} onAdoptPath={adopt} onLearnMore={openDocs} />
  * @param {Object|null} [summary] - `GET /onboarding` payload (or null when unavailable).
  * @param {Function} [onCreate] - Opens the "Create New Project" dialog.
@@ -130,6 +132,14 @@ export function OnboardingEmptyState({
           <div className="space-y-2" data-testid="onboarding-adoptable-list">
             <p className="text-xs font-bold uppercase tracking-widest text-center">
               Found on disk — adopt in one click
+            </p>
+            <p
+              data-testid="onboarding-adopt-docs-hint"
+              className="text-[11px] text-center text-text-muted"
+            >
+              One-click adopt registers without a separate docs repo. To keep KainBain
+              docs/state in a private repo instead, use Adopt Existing… above and set the
+              docs repository there.
             </p>
             <ul className="space-y-1">
               {adoptable.map((entry) => (

@@ -310,6 +310,7 @@ export function Header() {
   const [newProjName, setNewProjName] = useState('');
   const [newProjGitUrl, setNewProjGitUrl] = useState('');
   const [newProjDocsRepoUrl, setNewProjDocsRepoUrl] = useState('');
+  const [newProjDocsRepoPath, setNewProjDocsRepoPath] = useState('');
   // Expanded by default (like import): the separate-docs-repo option must be
   // visible without hunting for it — a collapsed disclosure hid it so well
   // that reviewers could not find the setting at all.
@@ -425,15 +426,20 @@ export function Header() {
     try {
       // Advanced: a blank docs-repo URL means the default (docs inside the
       // main repo); a set URL moves all KainBain docs/state into the
-      // separate repo. undefined keys are dropped by JSON.stringify.
+      // separate repo, optionally at an explicit local checkout path.
+      // undefined keys are dropped by JSON.stringify.
       const docsRepoUrl = newProjDocsRepoUrl.trim();
+      const docsRepoPath = newProjDocsRepoPath.trim();
       await createProject(newProjName.trim(), {
         gitUrl: newProjGitUrl.trim() || undefined,
-        ...(docsRepoUrl ? { docsRepo: { url: docsRepoUrl } } : {}),
+        ...(docsRepoUrl
+          ? { docsRepo: { url: docsRepoUrl, ...(docsRepoPath ? { localPath: docsRepoPath } : {}) } }
+          : {}),
       });
       setNewProjName('');
       setNewProjGitUrl('');
       setNewProjDocsRepoUrl('');
+      setNewProjDocsRepoPath('');
       setCreateAdvancedOpen(true);
       setIsCreatingProject(false);
       setIsProjectDropdownOpen(false);
@@ -853,6 +859,9 @@ export function Header() {
                   <DocsRepoFields
                     docsRepoUrl={newProjDocsRepoUrl}
                     setDocsRepoUrl={setNewProjDocsRepoUrl}
+                    docsRepoLocalPath={newProjDocsRepoPath}
+                    setDocsRepoLocalPath={setNewProjDocsRepoPath}
+                    showLocalPath
                   />
                 </div>
               )}

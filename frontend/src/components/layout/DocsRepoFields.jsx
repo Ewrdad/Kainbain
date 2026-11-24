@@ -7,7 +7,7 @@ import React from 'react';
  *   repository that stores ALL KainBain-specific information (task docs,
  *   plans, reports, and the KainBain state folder) so the main repo stays
  *   free of KainBain traces. Blank URL = feature off (default, legacy
- *   behaviour). `showLocalPath` (adopt dialog only) adds the optional local
+ *   behaviour). `showLocalPath` (both dialogs) adds the optional local
  *   checkout path; when blank the backend provisions a sibling
  *   `<project>-kainbain-docs` directory. Auth reuses the same login as the
  *   main repo (ambient git credentials).
@@ -15,7 +15,7 @@ import React from 'react';
  * @param {Object} props
  * @param {string} props.docsRepoUrl - Draft docs-repo remote URL.
  * @param {Function} props.setDocsRepoUrl - URL setter.
- * @param {string} [props.docsRepoLocalPath] - Draft local checkout path (adopt only).
+ * @param {string} [props.docsRepoLocalPath] - Draft local checkout path.
  * @param {Function} [props.setDocsRepoLocalPath] - Local path setter.
  * @param {boolean} [props.showLocalPath] - Show the local checkout path field.
  ***/

@@ -91,6 +91,7 @@ describe('OnboardingEmptyState', () => {
     const onAdoptPath = vi.fn().mockResolvedValue({});
     render(<OnboardingEmptyState summary={SUMMARY} onAdoptPath={onAdoptPath} />);
     expect(screen.getByTestId('onboarding-adoptable-list')).toBeInTheDocument();
+    expect(screen.getByTestId('onboarding-adopt-docs-hint')).toHaveTextContent(/Adopt Existing/);
     expect(screen.getByTestId('onboarding-adopt-foo')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('onboarding-adopt-foo'));
     expect(screen.getByTestId('onboarding-adopt-foo')).toHaveTextContent('Adopting…');
