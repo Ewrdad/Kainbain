@@ -1,6 +1,7 @@
 import { expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import App from './App';
+import { api } from '../services/api';
 import '@testing-library/jest-dom';
 
 /**
@@ -481,11 +482,13 @@ test('document title is unaffected by the compute toggle', async () => {
     expect(document.title).toBe(bootTitle);
   });
   fireEvent.keyDown(window, { key: 'p' });
-  // The toggle fires (the engine badge flips elsewhere); the tab title must
-  // not carry — and therefore must not change — any status prefix.
+  // The toggle really fired (the engine start was requested and the badge
+  // flips elsewhere) — only then is "title unchanged" meaningful proof that
+  // the tab no longer tracks engine state.
   await waitFor(() => {
-    expect(document.title).toBe(bootTitle);
-    expect(document.title).not.toMatch(/^\[(Running|Paused)\]/);
+    expect(api.computeStart).toHaveBeenCalled();
   });
+  expect(document.title).toBe(bootTitle);
+  expect(document.title).not.toMatch(/^\[(Running|Paused)\]/);
   window.location.hash = '';
 });
