@@ -759,6 +759,27 @@ describe("resumeTask / retryStage", () => {
 		expect(persisted.resumedAfterInterruption).toBe(false);
 	});
 
+	it("resumeTask consumes any runner-interrupt marker", async () => {
+		const store = makeStore();
+		const agentRunner = vi.fn();
+		store.seed(
+			"p-1",
+			task({
+				status: "interrupted",
+				wasInterrupted: true,
+				interruptedBy: { runnerId: "r-7", reason: "socket hangup" },
+			}),
+		);
+		const resumed = await resumeTask(store, "p-1", "t-1", {
+			stages: STAGES,
+			agentRunner,
+		});
+		expect(resumed.status).toBe("in_stage");
+		// The operator takes over: a later crash-path auto-resume must read
+		// as a restart, not as this old runner death.
+		expect(resumed.interruptedBy).toBeUndefined();
+	});
+
 	it("retryStage consumes any startup-recovery marker", async () => {
 		const store = makeStore();
 		const agentRunner = vi.fn();
@@ -777,6 +798,25 @@ describe("resumeTask / retryStage", () => {
 		});
 		expect(retried.resumedAfterInterruption).toBe(false);
 		expect(retried.interruptedAt).toBeNull();
+	});
+
+	it("retryStage consumes any runner-interrupt marker", async () => {
+		const store = makeStore();
+		const agentRunner = vi.fn();
+		store.seed(
+			"p-1",
+			task({
+				status: "failed",
+				failureReason: "boom",
+				interruptedBy: { runnerId: "r-7", reason: "socket hangup" },
+			}),
+		);
+		const retried = await retryStage(store, "p-1", "t-1", {
+			stages: STAGES,
+			agentRunner,
+		});
+		expect(retried.status).toBe("in_stage");
+		expect(retried.interruptedBy).toBeUndefined();
 	});
 
 	it("resumeTask skips dispatch without an agent runner", async () => {

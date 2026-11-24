@@ -148,6 +148,65 @@ describe("The Work: gitFailureStreak persistence", () => {
 	});
 });
 
+/* eslint-disable security/detect-non-literal-fs-filename -- throwaway temp-dir reads, same as every other test in this file */
+describe("The Work: runner-interrupt marker never persists (S6)", () => {
+	it("drops interruptedBy on the task.md round-trip, so a post-restart resume reads as restart", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-s6-marker-"));
+		const store = stubStore({ cwd: dir });
+		const task = {
+			id: "task-s6-marker",
+			projectId: "proj-1",
+			title: "S6 marker task",
+			status: "interrupted",
+			createdAt: "2026-11-23T00:00:00.000Z",
+			updatedAt: "2026-11-23T00:00:00.000Z",
+			history: [],
+			reports: [],
+			interruptedBy: { runnerId: "r-7", reason: "socket hangup", at: "2026-11-23T00:00:00.000Z" },
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-s6-marker", "task.md"),
+			"utf8",
+		);
+		expect(content).not.toContain("interruptedBy");
+		expect(content).not.toContain("socket hangup");
+
+		const rehydrated = parseTaskMarkdown(store, content, "task-s6-marker", "proj-1");
+		expect(rehydrated.status).toBe("interrupted");
+		expect(rehydrated.interruptedBy).toBeUndefined();
+	});
+
+	it("keeps a runner resume history line byte-identical through the round-trip", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-s6-history-"));
+		const store = stubStore({ cwd: dir });
+		const action =
+			"Auto-resumed after runner interrupt — prioritised in queue (runner r-7, reason: socket hangup)";
+		const task = {
+			id: "task-s6-history",
+			projectId: "proj-1",
+			title: "S6 history task",
+			status: "in_stage",
+			createdAt: "2026-11-23T00:00:00.000Z",
+			updatedAt: "2026-11-23T00:00:00.000Z",
+			history: [{ timestamp: "2026-11-23T01:00:00.000Z", action }],
+			reports: [],
+		};
+
+		saveTaskMarkdown(store, dir, task);
+		const content = fs.readFileSync(
+			path.join(dir, "docs", "tasks", "task-s6-history", "task.md"),
+			"utf8",
+		);
+		const rehydrated = parseTaskMarkdown(store, content, "task-s6-history", "proj-1");
+		expect(rehydrated.history).toEqual([
+			{ timestamp: "2026-11-23T01:00:00.000Z", action },
+		]);
+	});
+});
+/* eslint-enable security/detect-non-literal-fs-filename */
+
 describe("The Work: reliability-sample persistence", () => {
 	it("round-trips reliabilitySamples through task.md frontmatter", () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-reliability-persist-"));
