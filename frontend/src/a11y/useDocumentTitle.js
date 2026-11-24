@@ -47,19 +47,20 @@ function pageTitleForView(view, taskKey) {
  * @description Builds the full document title (WCAG 2.4.2 Page Titled: every
  * SPA view exposes a distinct, descriptive title so screen-reader and tab
  * users always know where they are). Format is
- * `[Running|Paused] Kainbain - <project> - <page>`; the project segment is
- * omitted while no project name is known, and the page segment is omitted
- * for unknown views. Only an explicit `computeRunning: true` renders
- * `Running` — everything else reads `Paused` so a slow or failed status
- * fetch never claims the engine is running.
+ * `Kainbain - <project> - <page>`; the project segment is omitted while no
+ * project name is known, and the page segment is omitted for unknown views.
+ * The title deliberately carries no engine-status prefix: compute state is
+ * surfaced by badges and pills instead, so the tab never implies a single
+ * global running/paused state.
  * @param {string} view - Router-synced view key (see KainBainRouteBridge).
  * @param {string|Object} [taskKeyOrOptions] - Legacy positional task key, or
- * an options object `{ taskKey, computeRunning, projectName }`.
+ * an options object `{ taskKey, projectName }`. A `computeRunning` key is
+ * still accepted but ignored (deprecated, kept for backward compatibility).
  * @param {Object} [legacyOptions] - Options when the task key is positional:
- * `{ computeRunning, projectName }`.
- * @returns {string} Full document title including the status prefix.
- * @example titleForView('explorer', { computeRunning: true, projectName: 'MyProject' }) => '[Running] Kainbain - MyProject - Files & Repo'
- * @example titleForView('task-detail', 'task-1') => '[Paused] Kainbain - Task task-1'
+ * `{ projectName }`.
+ * @returns {string} Full document title without any status prefix.
+ * @example titleForView('explorer', { projectName: 'MyProject' }) => 'Kainbain - MyProject - Files & Repo'
+ * @example titleForView('task-detail', 'task-1') => 'Kainbain - Task task-1'
  ***/
 export function titleForView(view, taskKeyOrOptions, legacyOptions = {}) {
   const taskKey =
@@ -70,11 +71,10 @@ export function titleForView(view, taskKeyOrOptions, legacyOptions = {}) {
     taskKeyOrOptions !== null && typeof taskKeyOrOptions === 'object'
       ? taskKeyOrOptions
       : legacyOptions || {};
-  const status = options.computeRunning === true ? 'Running' : 'Paused';
   const projectName = typeof options.projectName === 'string' ? options.projectName.trim() : '';
   const page = pageTitleForView(view, taskKey);
 
-  const segments = [`[${status}] Kainbain`];
+  const segments = ['Kainbain'];
   if (projectName) segments.push(projectName);
   if (page) segments.push(page);
   return segments.join(' - ');
@@ -86,7 +86,7 @@ export function titleForView(view, taskKeyOrOptions, legacyOptions = {}) {
  * previous title on unmount (so tests and host shells never leak a stale
  * title). No-ops outside a DOM environment.
  * @param {string} title - Full title to apply while mounted.
- * @example useDocumentTitle(titleForView(view, { taskKey, computeRunning, projectName }))
+ * @example useDocumentTitle(titleForView(view, { taskKey, projectName }))
  ***/
 export function useDocumentTitle(title) {
   useEffect(() => {

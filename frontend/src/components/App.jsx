@@ -31,7 +31,6 @@ function App() {
     setView,
     activeProjectId,
     activeProject,
-    computeRunning,
     selectedTask,
     toggleCompute,
     uiPreferences,
@@ -41,13 +40,13 @@ function App() {
   } = useKainBain();
 
   // WCAG 2.4.2 Page Titled: the single document-title owner — every SPA
-  // view exposes a distinct `[Running|Paused] Kainbain - <project> - <page>`
-  // title. Views must not set document.title themselves (a second owner
-  // fights this hook on mount/unmount and leaves stale titles behind).
+  // view exposes a distinct `Kainbain - <project> - <page>` title (no
+  // engine-status prefix; compute state lives in badges/pills). Views must
+  // not set document.title themselves (a second owner fights this hook on
+  // mount/unmount and leaves stale titles behind).
   useDocumentTitle(
     titleForView(view, {
       taskKey: selectedTask?.id,
-      computeRunning,
       projectName: activeProject?.name,
     }),
   );
