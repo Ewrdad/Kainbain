@@ -20,12 +20,25 @@
 # Failure modes: missing git / not a checkout (REF defaults to `dev` and
 # the stamp is null — the bundle still builds, but runners report an
 # unknown build); unknown platform/arch (exit 1); packager error (exit 1,
-# no tarball written — a previous tarball at the same path is left alone).
+# no tarball written — a previous tarball at the same path is left alone);
+# transfer-receipt failure (exit 1 AFTER the tarball is written — the
+# bundle exists but could not prove its own sha256/build.sha readback, so
+# do not publish it).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+. "$(dirname "$0")/lib/bundle-receipt.sh"
 ALLOW_MISMATCH=0
 if [ "${1:-}" = "--allow-ref-mismatch" ]; then ALLOW_MISMATCH=1; shift; fi
 REF="${1:-$(git rev-parse --short HEAD 2>/dev/null || echo dev)}"
+# The REF lands in the tarball path (dist/kainbain-runner-<REF>.tar.gz), so
+# it must be a safe filename component — no '/', no '.', no '..' — or a
+# crafted REF could write outside dist/. Always enforced, even with
+# --allow-ref-mismatch (that flag only bypasses the sha-mismatch guard).
+case "$REF" in
+  ""|"."|".."|*[!A-Za-z0-9._-]*)
+    echo "package-runner.sh: REF '$REF' is not a safe tarball-name component (allowed: letters, digits, '.', '_', '-')." >&2
+    exit 1 ;;
+esac
 if [ "$ALLOW_MISMATCH" -eq 0 ] && printf '%s' "$REF" | grep -Eq '^[0-9a-f]{7,40}$'; then
 	HEAD_FULL="$(git rev-parse HEAD 2>/dev/null || echo "")"
 	HEAD_SHORT="$(git rev-parse --short HEAD 2>/dev/null || echo "")"
@@ -54,7 +67,9 @@ cp "$TMP/kainbain-runner-${VERSION#v}-${PLATFORM}-${ARCH}.tar.gz" "$OUT"
 # Transfer receipt: the sha256 below is what the installer re-hashes before
 # use, and the stamped build.sha is the ONLY identity that matters — it is
 # what runners report as versions.build.sha, never the REF in the filename.
+# print_bundle_receipt hashes and parses through node, so this works on
+# macOS too (sha256sum does not exist there) and never depends on tar's
+# entry order. It returns 1 when the bundle cannot be read back, which
+# fails this script loudly after the tarball was written.
 echo "Runner distributable: $OUT"
-sha256sum "$OUT" | awk '{print "sha256: " $1}'
-TOP="$(tar tzf "$OUT" | head -n 1)"
-tar xzOf "$OUT" "${TOP}version.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const v=JSON.parse(s);console.log("stamped build.sha: "+(v?.build?.sha??"(unknown — no git checkout at build time)"));}catch(e){console.log("stamped build.sha: (unreadable version.json)");}})'
+print_bundle_receipt "$OUT"

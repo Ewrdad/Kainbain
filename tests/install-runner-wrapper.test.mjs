@@ -245,27 +245,116 @@ describe("runner-install-root.sh helper", () => {
 		}
 	});
 
-	it("fails with the missing path named when the copy lands incomplete (silent-old-boot guard)", () => {
+	it("fails with the missing path named and swaps nothing when the copy lands incomplete (silent-old-boot guard)", () => {
 		const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-"));
 		try {
 			const tree = path.join(sandbox, "tree");
 			fakeTree(tree);
 			const root = path.join(sandbox, "install");
-			// Block the runner/ dir with a regular file so the runner copy
-			// cannot land: the post-copy assert must catch it and refuse to
-			// point `current` at the partial tree.
-			const blockedRunner = path.join(root, "releases", "0.1.0", "unpacked", "runner");
-			fs.mkdirSync(path.dirname(blockedRunner), { recursive: true });
-			fs.writeFileSync(blockedRunner, "blocker");
+			// A stub cp that "succeeds" but copies nothing simulates a partial
+			// extract (e.g. missing --strip-components=1): the post-copy
+			// asserts must catch it, name the missing entrypoint, and leave no
+			// unpacked/, no current, and no staging leftovers behind.
+			const stubBin = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-stubcp-"));
+			fs.writeFileSync(path.join(stubBin, "cp"), "#!/bin/bash\nexit 0\n");
+			fs.chmodSync(path.join(stubBin, "cp"), 0o755);
+			const got = spawnSync(
+				"bash",
+				["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root ${JSON.stringify(tree)} ${JSON.stringify(root)}`,],
+				{ encoding: "utf8", env: { ...process.env, PATH: `${stubBin}${path.delimiter}${process.env.PATH}` } },
+			);
+			assert.notEqual(got.status, 0);
+			assert.match(got.stderr, /lay-down incomplete, missing .*runner\/main\.js/, "the error names the missing entrypoint");
+			assert.equal(fs.existsSync(path.join(root, "releases", "0.1.0", "unpacked")), false, "no partial tree is swapped in");
+			assert.equal(fs.existsSync(path.join(root, "current")), false, "current never points at a partial tree");
+			assert.deepEqual(fs.readdirSync(path.join(root, "releases", "0.1.0")), [], "the staging dir is cleaned up on failure");
+			fs.rmSync(stubBin, { recursive: true, force: true });
+		} finally {
+			fs.rmSync(sandbox, { recursive: true, force: true });
+		}
+	});
+
+	it("fails cleanly when the staging dir cannot be created", () => {
+		const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-"));
+		try {
+			const tree = path.join(sandbox, "tree");
+			fakeTree(tree);
+			const root = path.join(sandbox, "install");
+			// A regular file where the staging parent must be a directory:
+			// mkdir fails, so the lay-down aborts before any copy.
+			const blocker = path.join(sandbox, "blocker");
+			fs.writeFileSync(blocker, "not a dir");
+			const got = spawnSync(
+				"bash",
+				["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root ${JSON.stringify(tree)} ${JSON.stringify(root)} ${JSON.stringify(path.join(blocker, "stage"))}`,],
+				{ encoding: "utf8" },
+			);
+			assert.notEqual(got.status, 0);
+			assert.match(got.stderr, /cannot create staging dir/, "the error names the staging failure");
+			assert.equal(fs.existsSync(path.join(root, "current")), false);
+			assert.equal(fs.existsSync(path.join(root, "releases")), false, "nothing is laid down");
+		} finally {
+			fs.rmSync(sandbox, { recursive: true, force: true });
+		}
+	});
+
+	it("re-laying the same version replaces the tree wholesale — no stale files survive", () => {
+		const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-"));
+		try {
+			const tree = path.join(sandbox, "tree");
+			fakeTree(tree);
+			const root = path.join(sandbox, "install");
+			const lay = () =>
+				spawnSync("bash", ["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root ${JSON.stringify(tree)} ${JSON.stringify(root)}`,], {
+					encoding: "utf8",
+				});
+			const first = lay();
+			assert.equal(first.status, 0, first.stderr);
+			const unpacked = path.join(root, "releases", "0.1.0", "unpacked");
+			// Simulate a file the new tree no longer ships (an old-boot
+			// leftover): a re-lay must remove it, not merge around it.
+			fs.writeFileSync(path.join(unpacked, "runner", "stale.js"), "old\n");
+			const second = lay();
+			assert.equal(second.status, 0, second.stderr);
+			assert.equal(second.stdout, "0.1.0");
+			assert.equal(fs.existsSync(path.join(unpacked, "runner", "stale.js")), false, "stale files never survive a re-lay");
+			assert.ok(fs.existsSync(path.join(unpacked, "runner", "main.js")), "the new tree is in place");
+			assert.equal(fs.readlinkSync(path.join(root, "current")), unpacked, "current still points at the release");
+			assert.deepEqual(
+				fs.readdirSync(path.join(root, "releases", "0.1.0")).filter((name) => name.includes("incoming") || name.includes(".old")),
+				[],
+				"no staging or backup dirs are left behind",
+			);
+		} finally {
+			fs.rmSync(sandbox, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects an unsafe runnerVersion (path traversal) before writing anything", () => {
+		const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kb-laydown-"));
+		try {
+			const tree = path.join(sandbox, "tree");
+			fakeTree(tree);
+			fs.writeFileSync(path.join(tree, "runner", "version.json"), JSON.stringify({ runnerVersion: "../../evil" }));
+			const root = path.join(sandbox, "install");
 			const got = spawnSync("bash", ["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root ${JSON.stringify(tree)} ${JSON.stringify(root)}`,], {
 				encoding: "utf8",
 			});
 			assert.notEqual(got.status, 0);
-			assert.match(got.stderr, /lay-down incomplete, missing .*runner\/main\.js/, "the error names the missing entrypoint");
-			assert.equal(fs.existsSync(path.join(root, "current")), false, "current never points at a partial tree");
+			assert.match(got.stderr, /refusing unsafe runnerVersion/, "the bad version is named");
+			assert.equal(fs.existsSync(root), false, "nothing is created under the install root");
+			assert.equal(fs.existsSync(path.join(sandbox, "evil")), false, "no path traversal happened");
 		} finally {
 			fs.rmSync(sandbox, { recursive: true, force: true });
 		}
+	});
+
+	it("fails with usage when called without arguments", () => {
+		const got = spawnSync("bash", ["-c", `. ${JSON.stringify(path.join(ROOT, "scripts", "lib", "runner-install-root.sh"))} && lay_down_runner_install_root`], {
+			encoding: "utf8",
+		});
+		assert.notEqual(got.status, 0);
+		assert.match(got.stderr, /usage: lay_down_runner_install_root/);
 	});
 
 	it("warns (not fails) when the tree ships no pi discovery dependency", () => {

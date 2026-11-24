@@ -316,6 +316,31 @@ export const validatePackageSourceTree = ({ root = REPO_ROOT } = {}) => {
 	}
 };
 
+/***
+ * MARK: packageRunner
+ * @description Builds one runner bundle: validates every input FIRST (the
+ *   source tree via `validatePackageSourceTree`, platform/arch, semver
+ *   version, and that `outDir` is usable), then stages a pruned copy of
+ *   runner/ + shared/ + api/, installs the discovery-leg npm closure unless
+ *   skipped, stamps `runnerVersion` and the git build identity into both
+ *   version.json copies, writes INSTALL.txt, runs the forbidden-file gate
+ *   (`assertClean` — test files, node_modules, .env, and secrets never
+ *   ship; a hit fails the build instead of leaking), and tars the stage as
+ *   `<outDir>/kainbain-runner-<version>-<platform>-<arch>.tar.gz`. All
+ *   validation happens before anything is staged, so a bad invocation
+ *   leaves no partial stage or tarball behind. Throws with a named cause on
+ *   any failure; never swallows a copy error mid-stage.
+ * @example packageRunner({ platform: 'linux', arch: 'x64', version: '1.2.3', outDir: 'dist' }) => { name, tarball, version, platform, arch, build }
+ * @param {Object} opts - Labelled inputs.
+ * @param {string} opts.platform - Target platform (`linux` or `darwin`).
+ * @param {string} opts.arch - Target arch (`x64` or `arm64`).
+ * @param {string} opts.version - Runner version to stamp (semver, optional leading `v`).
+ * @param {string} opts.outDir - Directory the tarball (and stage) are written to; created when missing.
+ * @param {string} [opts.root] - Source tree root (defaults to this repo).
+ * @param {boolean} [opts.installLegDeps] - Install the leg npm closure (auto-skipped for layout-only roots without api/package.json).
+ * @param {Object} [opts.build] - Precomputed build stamp override (tests); defaults to `resolveBuildStamp({ root })`.
+ * @returns {{name: string, tarball: string, version: string, platform: string, arch: string, build: Object}} The built bundle descriptor.
+ ***/
 export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROOT, installLegDeps = true, build } = {}) => {
 	if (!["linux", "darwin"].includes(platform)) {
 		throw new Error(`package-runner: unsupported platform '${platform}' (v1: linux, darwin).`);
@@ -335,6 +360,9 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 		if (err?.message?.startsWith("package-runner:")) throw err;
 		throw new Error(`package-runner: cannot use --out '${outDir}': ${err?.message || err}`);
 	}
+	// Created only after every check above passed, so a rejected --out never
+	// leaves a directory behind and a file-as-outDir gets the clear error.
+	fs.mkdirSync(outDir, { recursive: true });
 	const clean = String(version || "").trim().replace(/^v/, "");
 	// Full semver incl. canary pre-releases (`1.2.3-rc.1`): the release
 	// workflow keeps the tag's suffix so a canary manifest never claims to
@@ -394,12 +422,21 @@ export const packageRunner = ({ platform, arch, version, outDir, root = REPO_ROO
 };
 
 const main = () => {
+	const usage = "Usage: node scripts/package-runner.mjs --platform <linux|darwin> --arch <x64|arm64> --version <semver> [--out <dir>]";
 	const args = parsePackagerArgs({ args: process.argv.slice(2) });
 	if (args.help === "true" || args.h === "true") {
-		console.log("Usage: node scripts/package-runner.mjs --platform <linux|darwin> --arch <x64|arm64> --version <semver> [--out <dir>]");
+		console.log(usage);
 		return;
 	}
 	try {
+		// parsePackagerArgs keeps unknown keys so typos surface here instead of
+		// being silently ignored (a '--platfrom' must never mean "default").
+		// Warned before the required-key check so a typo is visible even when
+		// another arg is the one that fails.
+		const knownKeys = new Set(["platform", "arch", "version", "out", "help", "h"]);
+		for (const unknownKey of Object.keys(args)) {
+			if (!knownKeys.has(unknownKey)) console.error(`package-runner: warning: unknown arg '--${unknownKey}' ignored.`);
+		}
 		if (args.out === "true") {
 			throw new Error("package-runner: --out needs a directory (got a bare --out flag with no value).");
 		}
@@ -409,7 +446,6 @@ const main = () => {
 			}
 		}
 		const outDir = path.resolve(typeof args.out === "string" ? args.out : path.join(REPO_ROOT, "dist"));
-		fs.mkdirSync(outDir, { recursive: true });
 		const result = packageRunner({
 			platform: args.platform,
 			arch: args.arch,
@@ -419,7 +455,7 @@ const main = () => {
 		console.log(`packaged ${result.tarball}`);
 	} catch (err) {
 		console.error(err?.message || err);
-		console.error("Usage: node scripts/package-runner.mjs --platform <linux|darwin> --arch <x64|arm64> --version <semver> [--out <dir>]");
+		console.error(usage);
 		process.exitCode = 1;
 	}
 };
