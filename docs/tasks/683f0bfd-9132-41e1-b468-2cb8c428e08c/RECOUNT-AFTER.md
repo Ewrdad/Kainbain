@@ -35,10 +35,12 @@ verdict is **cannot pass yet** — see `Baseline gate` row.
 | Per-runner split | local-alpha 96 / server2-alpha 22 | local-alpha 108 / server2-alpha 41 | **local-alpha 103 / server2-alpha 46** |
 | Tasks with `gitFailureStreak` | — | 0 | **0** |
 
-`reason_vocabulary` (24 distinct cap strings, 2026-11-24T02:15Z): every
+`reason_vocabulary` (26 distinct cap strings, 2026-11-24T02:15Z): every
 string is the Cause-1 workdir-cap format
-(`Runner workdir unavailable: Worktree cap reached (~5); …`). Count 24
-matches BEFORE; the full list in `recount-after-table.json` is
+(`Runner workdir unavailable: Worktree cap reached (~5); …`). Count 26
+vs BEFORE's 24 (net +2 from history churn: 3 new cap strings accrued,
+1 fell off retained histories — all still Cause-1 format); the full list
+in `recount-after-table.json` is
 machine-verified to contain zero non-cap reasons (checked with
 `jq -r '.reason_vocabulary[]' | grep -vc "Runner workdir unavailable:"`
 → 0). Negative control still holds: on still-deployed 0.1.0 runners, no
@@ -89,8 +91,9 @@ Per-runner converge timestamps: **none** — both remain NOT-CONVERGED.
 Canonical worklist `recount-after-e5worklist.json` (35 rows, 22 tasks)
 is 7 rows larger than BEFORE/2026-11-23T11:46Z (28 rows). Diff vs BEFORE
 (`comm` on sorted `ts` sets) shows **7 net-new post-`finished`
-interrupts, 0 removed** (one removed earlier churned out of a completed
-task's history; not a regression):
+interrupts, 0 removed** (verified monotonic across windows: BEFORE 28 →
+mid 34 → AFTER 35, 0 removed at every step; churn affects other history
+rows, not the post-`finished` ts set):
 
 | # | interrupt ts (UTC) | runner | task | Δ from started |
 |---|---|---|---|---|

@@ -34,7 +34,7 @@ verdict is **cannot pass yet** — see `S5 gates` row.
 | Per-runner split | local-alpha 108 / server2-alpha 41 | local-alpha 103 / server2-alpha 46 | **local-alpha 102 / server2-alpha 47** |
 | Tasks with `gitFailureStreak` | 0 | 0 | **0** |
 
-`reason_vocabulary` (24 distinct cap strings, 2026-11-24T02:40Z): every
+`reason_vocabulary` (26 distinct cap strings, 2026-11-24T02:40Z — identical set to AFTER): every
 string is the Cause-1 workdir-cap format
 (`Runner workdir unavailable: Worktree cap reached (~5); …`). Verified with
 `jq -r '.reason_vocabulary[]' | grep -vc "Runner workdir unavailable:"`
@@ -43,12 +43,14 @@ non-cap reason is ever emitted; all 79 bare + 70 cap are exactly as
 expected on 0.1.0. This re-confirms "until the 0.2.x build lands, every
 new interrupt is still bare" — see §Convergence below.
 
-Per-task interrupt counts are identical to AFTER (no per-task delta —
-diffed `recount-after.jsonl` vs `recount-after2.jsonl`: 0 rows changed);
-the total held at 149 despite ~25 min of new interrupts because `history`
-arrays churn as tasks complete/advance. The comparison MUST stay
-timestamp-gated at each runner's converge time (plan §4.2); canonical
-BEFORE tables are untouched.
+Per-task `runner_interrupts` counts are identical to AFTER across all 81
+tasks (no per-task count delta), but 2 of the 81 jsonl lines differ by
+history churn: `7f6220c3` (oldest local row fell off + N8 accrued,
+per-runner 12/13→11/14, `auto_resumed` 18→19) and `8c7e2d15`
+(`failed_stage` 19→21). The total held at 149 despite ~25 min of new
+interrupts because `history` arrays churn as tasks complete/advance.
+The comparison MUST stay timestamp-gated at each runner's converge time
+(plan §4.2); canonical BEFORE tables are untouched.
 
 ## Runner versions at AFTER2 time
 
