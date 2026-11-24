@@ -1,6 +1,8 @@
 import { resolveStagesForTask, candidateStageIndex } from "../stageResolution.js";
 import { isSchedulerRunnable } from "../scheduler/isSchedulerRunnable.js";
 import { sortCentralQueue } from "../scheduler/sortCentralQueue.js";
+import { resumeBackoffRemainingMs } from "../scheduler/resumeBackoffRemainingMs.js";
+import { isCapacityRefusalHidden } from "../scheduler/capacityRefusalHide.js";
 import { taskRequirements } from "./taskRequirements.js";
 
 /***
@@ -20,14 +22,22 @@ import { taskRequirements } from "./taskRequirements.js";
  *   built-in 15-minute default in oldest-first mode (task 16d6fbd6).
  *   Human/non-model stages are excluded here (their requirements mark
  *   `runnableType: false`).
+ *   Task 3b82f6ae (S1): a task+stage inside its re-dispatch backoff window
+ *   (RESUME_BACKOFF_THRESHOLD+ consecutive resumes, 30s doubling to 5min)
+ *   is omitted until the delay elapses, and a task is hidden from the
+ *   runner that just capacity-refused it for ~2min (`opts.runnerId`), so
+ *   the same still-full runner cannot re-claim it instantly.
  * @example scanClaimableTasks({ projectStore, taskStore, claimStore }) => [{ projectId, taskId, task, req }]
  * @param {Object} deps - Stores (`projectStore`, `taskStore`, `claimStore`).
- * @param {Object} [opts] - `{ projectIds }` (Runner-enforced allowlist), `{ maxWaitMs, now, order }` (central-queue policy overrides; omitted = config defaults).
+ * @param {Object} [opts] - `{ projectIds }` (Runner-enforced allowlist), `{ maxWaitMs, now, order }` (central-queue policy overrides; omitted = config defaults), `{ runnerId }` (requesting Runner, for the task-3b82f6ae refusal hide window).
  * @returns {Array} Claimable tasks with requirements, in dispatch order.
  ***/
 export function scanClaimableTasks(deps = {}, opts = {}) {
 	const { projectStore, taskStore, claimStore } = deps;
 	const only = Array.isArray(opts.projectIds) ? new Set(opts.projectIds) : null;
+	const nowMs =
+		typeof opts.now === "number" && Number.isFinite(opts.now) ? opts.now : Date.now();
+	const runnerId = typeof opts.runnerId === "string" ? opts.runnerId : null;
 	if (!projectStore || typeof projectStore.listProjects !== "function") return [];
 	if (!taskStore || typeof taskStore.listTasks !== "function") return [];
 	const out = [];
@@ -42,6 +52,16 @@ export function scanClaimableTasks(deps = {}, opts = {}) {
 		for (const task of tasks) {
 			if (!task || task.status !== "in_stage") continue;
 			if (claimStore && typeof claimStore.describe === "function" && claimStore.describe(task.id)) {
+				continue;
+			}
+			// Task 3b82f6ae (S1): honor the re-dispatch backoff on the fleet
+			// path too — without this the embedded-scheduler fix would be
+			// bypassed by an instant re-claim here — and hide the task from
+			// the runner that just capacity-refused it.
+			if (resumeBackoffRemainingMs(task, task.currentStageId ?? null, nowMs) > 0) {
+				continue;
+			}
+			if (runnerId && isCapacityRefusalHidden(task, runnerId, nowMs)) {
 				continue;
 			}
 			let blockCheck = { blocked: false };
