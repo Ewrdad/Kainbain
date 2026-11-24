@@ -1,6 +1,11 @@
 # aggregate.jq — WIDE_NET_ANALYSIS.md §2 table over an array of per-task rows
 # (input: `jq -s` over recount-<label>.jsonl). Pinned by bin/tests/run-tests.sh
 # against recount-before-table.json.
+#
+# median_delta_s: jq truncates a fractional array index, so for an odd count
+# this is the middle element and for an even count the upper-middle one.
+# Crude but stable — and identical inputs always give identical output, which
+# is all the before/after comparison needs.
 {
   tasks_total: length,
   tasks_with_interrupts: ([.[] | select(.runner_interrupts > 0)] | length),

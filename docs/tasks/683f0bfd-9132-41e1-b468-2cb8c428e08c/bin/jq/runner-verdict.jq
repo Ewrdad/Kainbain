@@ -7,7 +7,11 @@
 #   <fixCommit> <buildSha>` (null when no build sha is reported or the sha is
 #   unknown to the local repo) — a version string alone proves nothing.
 # Converged = runnerVersion >= 0.2.x AND the running build contains the fix.
-def semverAtLeast($v; $min): ($v | split(".") | map(tonumber? // 0)) >= ($min | split(".") | map(tonumber? // 0));
+# Components are padded to the same length first: without that, "0.2"
+# ([0,2]) would compare LESS than "0.2.0" ([0,2,0]) under jq's array order,
+# because a strict prefix sorts before the longer array.
+def semverParts($v): ($v | split(".") | map(tonumber? // 0) | . + [0,0,0] | .[0:3]);
+def semverAtLeast($v; $min): semverParts($v) >= semverParts($min);
 
 $runner as $r |
 (semverAtLeast($r.runnerVersion // "0"; "0.2.0")) as $versionOk |

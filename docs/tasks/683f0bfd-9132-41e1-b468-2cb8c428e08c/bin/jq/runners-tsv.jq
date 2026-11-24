@@ -14,9 +14,9 @@ if type != "array" then error("runners-tsv.jq: expected an array of runner objec
       .recommendedVersion,
       .minimumVersion,
       .desiredVersion,
-      ([.availableVersions[]] | join(",")),
-      (.updateAvailable | tostring),
-      (.belowMinimum | tostring),
+      ([.availableVersions[]?] | join(",")),
+      ((.updateAvailable // "") | tostring),
+      ((.belowMinimum // "") | tostring),
       (if .updateStatus == null then "" else (.updateStatus | tostring) end),
       ([.pendingCommands[]?] | map(.command // .) | join(",")),
       (.lastSeenAt // "")

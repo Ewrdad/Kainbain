@@ -68,14 +68,20 @@ main() {
   local outdir="${1:-}"
   [ -n "$outdir" ] || die "usage: runners-snapshot.sh <outdir> [--require-converged]"
   local require_converged=0
-  if [ "${2:-}" = "--require-converged" ]; then require_converged=1; fi
+  if [ -n "${2:-}" ]; then
+    [ "$2" = "--require-converged" ] || die "usage: runners-snapshot.sh <outdir> [--require-converged] — unexpected argument '$2'"
+    require_converged=1
+  fi
+  [ $# -le 2 ] || die "usage: runners-snapshot.sh <outdir> [--require-converged] — unexpected extra argument '$3'"
 
   local api_base="${KAINBAIN_API_BASE:-http://192.168.1.206:3100}"
   local named="${KAINBAIN_S5_NAMED_RUNNERS:-local-alpha,server2-alpha}"
+  [ -n "${named//[[:space:],]/}" ] || die "no named runners to check (KAINBAIN_S5_NAMED_RUNNERS is empty) — nothing to do"
   local fix_commit="${KAINBAIN_S5_FIX_COMMIT:-046a63917d52181d00efbd4a6624bd1c53131fa4}"
   local task_dir repo_root stamp
   task_dir="$(cd "$SCRIPT_DIR/.." && pwd)"
   repo_root="$(git -C "$task_dir" rev-parse --show-toplevel)"
+  # Second precision: two snapshots in the same minute must not overwrite each other.
   stamp="$(date -u +%Y%m%dT%H%M%SZ)"
   mkdir -p "$outdir"
 
@@ -84,33 +90,51 @@ main() {
   local runners_json="$outdir/runners-$stamp.json" deploy_json="$outdir/deploy-status-$stamp.json"
   api_get_json "$api_base/runners" "$runners_json" \
     || die "GET $api_base/runners failed — nothing written to $outdir"
+  # /runners must be an array of runner objects; anything else (an error
+  # envelope, an HTML page that slipped through) would make every downstream
+  # verdict meaningless, so stop here with a clear message.
+  if ! jq -e 'type == "array"' "$runners_json" >/dev/null 2>&1; then
+    rm -f "$runners_json"
+    die "GET $api_base/runners returned valid JSON that is not an array — refusing to build a verdict from it"
+  fi
+  local deploy_ok=1
   api_get_json "$api_base/deploy/status" "$deploy_json" \
-    || { log "WARN: GET /deploy/status failed — continuing with /runners only"; rm -f "$deploy_json"; }
+    || { log "WARN: GET /deploy/status failed — continuing with /runners only"; rm -f "$deploy_json"; deploy_ok=0; }
 
   jq -r -f "$SCRIPT_DIR/jq/runners-tsv.jq" "$runners_json" > "$outdir/runners-$stamp.tsv"
 
   local verdict_json="$outdir/verdict-$stamp.json" verdict_txt="$outdir/verdict-$stamp.txt"
-  : > "$verdict_json.tmp"
+  local verdict_body
+  verdict_body="$(mktemp)"
+  : > "$verdict_json.tmp.$$"
   local IFS=',' r all_converged=1 v
+  # Named runners come from env, so tolerate "a, b" spacing and stray commas.
+  # shellcheck disable=SC2086
   for r in $named; do
+    r="${r//[[:space:]]/}"
+    [ -n "$r" ] || continue
     v="$(verdict_for "$runners_json" "$r" "$repo_root" "$fix_commit")"
-    printf '%s\n' "$v" >> "$verdict_json.tmp"
+    printf '%s\n' "$v" >> "$verdict_json.tmp.$$"
     if printf '%s' "$v" | jq -e '.converged == true' >/dev/null; then
-      printf 'CONVERGED    %s\n' "$(printf '%s' "$v" | jq -r '[.runnerId, .runnerVersion, (.buildSha // "no-sha")] | join(" ")')" >> "$verdict_txt"
+      printf 'CONVERGED    %s\n' "$(printf '%s' "$v" | jq -r '[.runnerId, .runnerVersion, (.buildSha // "no-sha")] | join(" ")')" >> "$verdict_body"
     else
       all_converged=0
-      printf 'NOT-CONVERGED %s — %s\n' "$r" "$(printf '%s' "$v" | jq -r '.reasons | join("; ")')" >> "$verdict_txt"
+      printf 'NOT-CONVERGED %s — %s\n' "$r" "$(printf '%s' "$v" | jq -r '.reasons | join("; ")')" >> "$verdict_body"
     fi
   done
-  jq -s '.' "$verdict_json.tmp" > "$verdict_json" && rm -f "$verdict_json.tmp"
+  jq -s '.' "$verdict_json.tmp.$$" > "$verdict_json" && rm -f "$verdict_json.tmp.$$"
 
   {
     echo "# runner convergence verdict — $(date -u +%FT%TZ) — fix commit $fix_commit"
     echo "# converged = runnerVersion >= 0.2.x AND running build sha contains the fix commit"
-    cat "$verdict_txt"
-  } > "$verdict_txt.hdr" && mv "$verdict_txt.hdr" "$verdict_txt"
+    cat "$verdict_body"
+  } > "$verdict_txt" && rm -f "$verdict_body"
 
-  echo "wrote $outdir/runners-$stamp.{json,tsv} ${deploy_json:+deploy-status-$stamp.json} verdict-$stamp.{json,txt}"
+  if [ "$deploy_ok" = 1 ]; then
+    echo "wrote $outdir/runners-$stamp.{json,tsv} $outdir/deploy-status-$stamp.json $outdir/verdict-$stamp.{json,txt}"
+  else
+    echo "wrote $outdir/runners-$stamp.{json,tsv} $outdir/verdict-$stamp.{json,txt} (no deploy-status: GET /deploy/status failed)"
+  fi
   cat "$outdir/runners-$stamp.tsv"
   echo "--- verdict:"
   cat "$verdict_txt"

@@ -62,7 +62,6 @@ describe('useOnboarding', () => {
     rerender({ enabled: true });
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
-      expect(result.current.summary).toEqual(SUMMARY);
     });
     expect(result.current.summary).toEqual(SUMMARY);
   });

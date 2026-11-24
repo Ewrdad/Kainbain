@@ -60,6 +60,11 @@ def main() -> int:
                 return
             if path.startswith("/tasks/"):
                 task_id = path[len("/tasks/"):]
+                # Test-only server, but never let a request path escape the
+                # fixture dir: reject anything that is not a plain file stem.
+                if "/" in task_id or task_id.startswith(".") or "\\" in task_id:
+                    self._send(400, json.dumps({"error": "bad task id"}))
+                    return
                 if task_id in fail_ids:
                     self._send(500, json.dumps({"error": "mock failure"}))
                     return

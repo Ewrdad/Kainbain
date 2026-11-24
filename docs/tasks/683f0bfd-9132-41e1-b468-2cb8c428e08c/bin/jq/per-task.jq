@@ -6,8 +6,10 @@
 # Defensive notes: every .action access goes through (// "") and runner/reason
 # extraction uses match() (which yields no output on no-match) instead of
 # capture() (which hard-errors), so one odd history row can never abort the
-# whole recount.
-def ts: if type == "string" then sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 else null end;
+# whole recount. Timestamp parsing is wrapped in try/catch for the same
+# reason: fromdateiso8601 hard-errors on anything outside %Y-%m-%dT%H:%M:%SZ
+# (e.g. a +00:00 offset), and that must cost us one delta, not the whole row.
+def ts: try (if type == "string" then sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601 else null end) catch null;
 def runnerOf($action): [$action | match("Runner (?<r>[^ ]+) interrupted execution") | .captures[0].string] | first // "unknown";
 def reasonOf($action): if ($action | test("Reason:")) then [$action | match("Reason: (?<x>.*)$") | .captures[0].string] | first else null end;
 

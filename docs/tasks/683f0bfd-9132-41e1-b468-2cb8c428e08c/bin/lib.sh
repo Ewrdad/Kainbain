@@ -39,14 +39,25 @@ require_commands() {
 # write_atomic <dest> <src-file> — copy src-file next to dest and rename over
 # it, so a crashed run never leaves a half-written evidence file that looks
 # complete. Same directory => the final mv is an atomic rename.
+# Returns non-zero (and leaves dest untouched) when either step fails.
 write_atomic() {
-  local dest="$1" src="$2" tmp="$dest.tmp.$$"
+  # NOTE: tmp gets its own statement on purpose. `local dest="$1" ...
+  # tmp="$dest.tmp.$$"` in ONE declaration does NOT see the just-assigned
+  # dest — bash expands it from the caller's scope, so it only worked while
+  # every caller happened to have its own $dest (and died with
+  # `dest: unbound variable` otherwise). Separate statements, no surprise.
+  local dest="$1" src="$2" tmp
+  tmp="$dest.tmp.$$"
   if ! cp "$src" "$tmp"; then
     rm -f "$tmp"
-    log "ERROR: cannot write $dest"
+    log "ERROR: cannot write $dest (copy step failed)"
     return 1
   fi
-  mv "$tmp" "$dest"
+  if ! mv "$tmp" "$dest"; then
+    rm -f "$tmp"
+    log "ERROR: cannot write $dest (rename step failed)"
+    return 1
+  fi
 }
 
 # api_get_json <url> <dest> — GET url into dest as validated JSON.
@@ -69,8 +80,24 @@ api_get_json() {
     log "ERROR: GET $url returned a body that is not valid JSON — refusing to store it in $dest"
     return 1
   fi
-  write_atomic "$dest" "$tmp"
+  # Propagate the write result explicitly: without this, the status of the
+  # `rm` below would mask a failed store and the caller would trust a file
+  # that was never written.
+  local write_rc=0
+  write_atomic "$dest" "$tmp" || write_rc=$?
   rm -f "$tmp"
+  return "$write_rc"
+}
+
+# validate_label <label> — recount/snapshot labels become file- and directory
+# names (recount-<label>.jsonl, raw/<label>/...), so they must be a single
+# safe path segment. Without this a label like "../../x" would write evidence
+# outside the task folder.
+validate_label() {
+  local label="$1"
+  if ! [[ "$label" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+    die "bad label '$label' — use letters, digits, dot, dash, underscore only, starting with a letter or digit (e.g. before, mid-1431)"
+  fi
 }
 
 # validate_task_prefix <prefix...> — task ids/prefixes get interpolated into

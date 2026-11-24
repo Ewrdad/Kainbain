@@ -17,11 +17,14 @@
 #     task's branch in merged history must NOT count (grep is scoped to
 #     ^kb/$PREFIX.*stage output)
 #   - fleet-recount.sh end-to-end against the mock API: success, partial
-#     failure (exit 2, errors file, table still written), empty list (exit 1)
+#     failure (exit 2, errors file, table still written), empty list (exit 1),
+#     plus label traversal + extra-arg rejection
 #   - runners-snapshot.sh end-to-end against the mock API, incl.
-#     --require-converged exit 3
+#     --require-converged exit 3, non-array payload refusal, and
+#     named-runners spacing tolerance
 #   - lib.sh api_get_json failure modes (HTTP 500, invalid JSON, connection
-#     refused) and the e5-sweep task-id injection guard
+#     refused), write_atomic failure propagation, and the e5-sweep task-id
+#     injection guard
 #
 # Run: bin/tests/run-tests.sh   (exit 0 = all pass)
 set -euo pipefail
@@ -30,8 +33,18 @@ BIN_DIR="$(cd "$TESTS_DIR/.." && pwd)"
 TASK_DIR="$(cd "$BIN_DIR/.." && pwd)"
 REPO_ROOT="$(git -C "$TASK_DIR" rev-parse --show-toplevel)"
 FIXTURE_RAW="$TASK_DIR/raw/before"
-FIXTURE_RUNNERS="$(ls "$TASK_DIR"/runners-before/runners-*.json | head -1)"
-FIXTURE_DEPLOY="$(ls "$TASK_DIR"/runners-before/deploy-status-*.json | head -1)"
+# First match wins; fail with a clear message (not a cryptic glob) when the
+# recorded evidence is absent — e.g. a partial checkout.
+shopt -s nullglob
+runners_candidates=("$TASK_DIR"/runners-before/runners-*.json)
+deploy_candidates=("$TASK_DIR"/runners-before/deploy-status-*.json)
+raw_candidates=("$FIXTURE_RAW"/*.json)
+shopt -u nullglob
+[ "${#runners_candidates[@]}" -gt 0 ] || { echo "FATAL: no runners fixture in $TASK_DIR/runners-before/ — is the task evidence checked out?" >&2; exit 1; }
+[ "${#deploy_candidates[@]}" -gt 0 ] || { echo "FATAL: no deploy-status fixture in $TASK_DIR/runners-before/ — is the task evidence checked out?" >&2; exit 1; }
+[ "${#raw_candidates[@]}" -gt 0 ] || { echo "FATAL: no raw task fixtures in $FIXTURE_RAW/ — is the task evidence checked out?" >&2; exit 1; }
+FIXTURE_RUNNERS="${runners_candidates[0]}"
+FIXTURE_DEPLOY="${deploy_candidates[0]}"
 FIX_COMMIT="046a63917d52181d00efbd4a6624bd1c53131fa4"
 
 pass=0 fail=0
@@ -41,23 +54,33 @@ bad() { fail=$((fail + 1)); echo "FAIL: $1"; }
 check_eq() {
   if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 — expected [$2], got [$3]"; fi
 }
-# check_file_eq <name> <fileA> <fileB> — compares after canonical jq -S (JSON) or plain diff
+# check_json_eq <name> <fileA> <fileB> — compares canonicalised (jq -S) JSON
 check_json_eq() {
   if diff -q <(jq -S . "$2") <(jq -S . "$3") >/dev/null 2>&1; then ok "$1"; else bad "$1 — $2 != $3"; diff <(jq -S . "$2") <(jq -S . "$3") | head -10 || true; fi
 }
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+MOCK_PIDS=()
+# Always clean up: temp dir AND any mock API servers started so far. The
+# :- guard matters because the trap also runs if we die before the first
+# start_mock (set -u would otherwise fail inside the trap itself).
+cleanup() {
+  local pid
+  for pid in ${MOCK_PIDS[@]:-}; do kill "$pid" 2>/dev/null || true; done
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 
 # shellcheck source=../lib.sh
 source "$BIN_DIR/lib.sh"
 
 echo "== T1: per-task.jq + aggregate.jq over recorded before-fixtures reproduce the pinned table"
+FIXTURE_COUNT="${#raw_candidates[@]}"
 : > "$WORK/rows.jsonl"
 for f in "$FIXTURE_RAW"/*.json; do
   jq -c -f "$BIN_DIR/jq/per-task.jq" "$f" >> "$WORK/rows.jsonl"
 done
-check_eq "T1 row count" "$(ls "$FIXTURE_RAW"/*.json | wc -l)" "$(wc -l < "$WORK/rows.jsonl" | tr -d ' ')"
+check_eq "T1 row count" "$FIXTURE_COUNT" "$(wc -l < "$WORK/rows.jsonl" | tr -d ' ')"
 jq -s -f "$BIN_DIR/jq/aggregate.jq" "$WORK/rows.jsonl" > "$WORK/table.json"
 check_json_eq "T1 aggregate == recount-before-table.json" "$WORK/table.json" "$TASK_DIR/recount-before-table.json"
 
@@ -91,6 +114,18 @@ check_eq "T2 fractional-second delta computed (whole seconds)" "4" "$(jq -r '[.i
 check_eq "T2 no-fraction timestamp delta (10:06:30 - 10:00:00)" "390" "$(jq -r '[.interrupt_details[] | select(.runner == "server2-alpha")] | .[0].delta_s_from_started' "$WORK/edge1.row")"
 jq -c -f "$BIN_DIR/jq/per-task.jq" "$WORK/fix/edge2-nohistory.json" > "$WORK/edge2.row"
 check_eq "T2 missing history does not crash" "0" "$(jq -r '.runner_interrupts' "$WORK/edge2.row")"
+# fromdateiso8601 hard-errors on non-Z timestamps (e.g. +00:00 offsets); the
+# row must survive with a null delta, not abort the whole recount.
+jq -n '{
+  id: "cccccccc-1111-2222-3333-444444444444", status: "in_stage",
+  history: [
+    {timestamp: "2026-11-22T10:00:00Z", action: "Runner local-alpha stage 1: started"},
+    {timestamp: "2026-11-22T10:00:04.500+00:00", action: "Runner local-alpha interrupted execution e1 — lease dropped, re-queues as interrupted."}
+  ]
+}' > "$WORK/fix/edge3-offset-ts.json"
+jq -c -f "$BIN_DIR/jq/per-task.jq" "$WORK/fix/edge3-offset-ts.json" > "$WORK/edge3.row"
+check_eq "T2 offset timestamp keeps the interrupt counted" "1" "$(jq -r '.runner_interrupts' "$WORK/edge3.row")"
+check_eq "T2 offset timestamp yields null delta" "null" "$(jq -r '.interrupt_details[0].delta_s_from_started' "$WORK/edge3.row")"
 if echo '"just a string"' | jq -c -f "$BIN_DIR/jq/per-task.jq" >/dev/null 2>&1; then
   bad "T2 non-object payload should fail loudly"
 else
@@ -110,6 +145,7 @@ check_eq "T3 ge120s" "1" "$(jq -r '.ge120s_after_started' "$WORK/agg.json")"
 check_eq "T3 post_finished" "2" "$(jq -r '.post_finished_interrupts' "$WORK/agg.json")"
 check_eq "T3 git streak tasks" "1" "$(jq -r '.tasks_with_git_failure_streak' "$WORK/agg.json")"
 check_eq "T3 per_runner merge" "local-alpha:2,server2-alpha:1" "$(jq -r '.per_runner | map("\(.runner):\(.n)") | join(",")' "$WORK/agg.json")"
+check_eq "T3 median delta (middle of sorted [3,10,200])" "10" "$(jq -r '.median_delta_s' "$WORK/agg.json")"
 
 echo "== T4: e5-worklist.jq scope"
 jq -s -f "$BIN_DIR/jq/e5-worklist.jq" "$WORK/agg-rows.jsonl" > "$WORK/e5.json"
@@ -127,16 +163,24 @@ echo "== T6: convergence verdict (jq rule + git ancestry check)"
 # shellcheck source=../runners-snapshot.sh
 source "$BIN_DIR/runners-snapshot.sh"
 check_eq "T6 HEAD build contains fix -> true" "true" "$(fix_in_build "$(git -C "$REPO_ROOT" rev-parse HEAD)" "$REPO_ROOT" "$FIX_COMMIT")"
-check_eq "T6 runner-v0.2.0 tag build lacks fix -> false" "false" "$(fix_in_build "$(git -C "$REPO_ROOT" rev-parse runner-v0.2.0^{commit})" "$REPO_ROOT" "$FIX_COMMIT")"
+# The tag pin needs runner-v0.2.0 in the local clone; a tag-less checkout must
+# report that plainly instead of dying inside rev-parse.
+if git -C "$REPO_ROOT" rev-parse -q --verify 'runner-v0.2.0^{commit}' >/dev/null 2>&1; then
+  tag_sha="$(git -C "$REPO_ROOT" rev-parse 'runner-v0.2.0^{commit}')"
+  check_eq "T6 runner-v0.2.0 tag build lacks fix -> false" "false" "$(fix_in_build "$tag_sha" "$REPO_ROOT" "$FIX_COMMIT")"
+else
+  tag_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  bad "T6 runner-v0.2.0 tag missing locally — fetch tags (git fetch --tags) and rerun"
+fi
 check_eq "T6 unknown sha -> null" "null" "$(fix_in_build "0000000000000000000000000000000000000000" "$REPO_ROOT" "$FIX_COMMIT")"
 check_eq "T6 empty sha -> null" "null" "$(fix_in_build "" "$REPO_ROOT" "$FIX_COMMIT")"
 # NOTE: exactly three closing braces after `end)` — versions, facts, outer object.
 mk_runner() { jq -n --arg id "$1" --arg v "$2" --arg sha "$3" '{runnerId: $id, status: "active", runnerVersion: $v, recommendedVersion: "0.1.0", updateAvailable: false, facts: {versions: {runner: $v, build: (if $sha == "" then null else {sha: $sha} end)}}}'; }
 head_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-tag_sha="$(git -C "$REPO_ROOT" rev-parse 'runner-v0.2.0^{commit}')"
 check_eq "T6 verdict: 0.2.0 build WITH fix converges" "true" "$(jq -n -f "$BIN_DIR/jq/runner-verdict.jq" --argjson runner "$(mk_runner local-alpha 0.2.0 "$head_sha")" --argjson fixInBuild true | jq -r .converged)"
 check_eq "T6 verdict: 0.2.0 build WITHOUT fix does not converge" "false" "$(jq -n -f "$BIN_DIR/jq/runner-verdict.jq" --argjson runner "$(mk_runner local-alpha 0.2.0 "$tag_sha")" --argjson fixInBuild false | jq -r .converged)"
 check_eq "T6 verdict: 0.1.0 never converges" "false" "$(jq -n -f "$BIN_DIR/jq/runner-verdict.jq" --argjson runner "$(mk_runner local-alpha 0.1.0 "$head_sha")" --argjson fixInBuild true | jq -r .converged)"
+check_eq "T6 verdict: short version 0.2 equals 0.2.0" "true" "$(jq -n -f "$BIN_DIR/jq/runner-verdict.jq" --argjson runner "$(mk_runner local-alpha 0.2 "$head_sha")" --argjson fixInBuild true | jq -r .converged)"
 check_eq "T6 verdict: no build sha -> not converged, reason says cannot verify" "cannot verify" "$(jq -n -f "$BIN_DIR/jq/runner-verdict.jq" --argjson runner "$(mk_runner local-alpha 0.2.0 '')" --argjson fixInBuild null | jq -r '.reasons[0] | if test("cannot verify") then "cannot verify" else . end')"
 check_eq "T6 verdict_for missing runner" "false" "$(verdict_for "$FIXTURE_RUNNERS" no-such-runner "$REPO_ROOT" "$FIX_COMMIT" | jq -r .converged)"
 
@@ -179,7 +223,7 @@ else
   bad "T7 cross-task false-positive — got: $(grep -E 'VERDICT|PRESENT' "$WORK/e5-ddd.txt")"
 fi
 
-echo "== T8: e5-sweep.sh argument validation (injection guard)"
+echo "== T8: CLI argument validation (injection + path guards)"
 if "$BIN_DIR/e5-sweep.sh" local 'bad;id' >/dev/null 2>"$WORK/inj.txt"; then
   bad "T8 injection attempt should be rejected"
 else
@@ -190,28 +234,60 @@ if "$BIN_DIR/e5-sweep.sh" bogushost 7f6220c3 >/dev/null 2>"$WORK/host.txt"; then
 else
   grep -q "host must be" "$WORK/host.txt" && ok "T8 bad host rejected" || bad "T8 bad host message unclear"
 fi
+# Labels become file paths — a traversal label must die before anything is written.
+if "$BIN_DIR/fleet-recount.sh" "../escape" "$WORK" >/dev/null 2>"$WORK/label.txt"; then
+  bad "T8 traversal label should be rejected"
+else
+  grep -q "bad label" "$WORK/label.txt" && ok "T8 traversal label rejected" || bad "T8 label message unclear: $(cat "$WORK/label.txt")"
+fi
+# The escape vector is raw/<label>/, which ../escape would resolve to $WORK/escape.
+[ -e "$WORK/escape" ] && bad "T8 traversal label wrote outside its raw dir" || ok "T8 traversal label wrote nothing"
+if "$BIN_DIR/fleet-recount.sh" ok-label "$WORK" extra-arg >/dev/null 2>"$WORK/extra1.txt"; then
+  bad "T8 fleet-recount extra arg should be rejected"
+else
+  grep -q "unexpected extra argument" "$WORK/extra1.txt" && ok "T8 fleet-recount extra arg rejected" || bad "T8 extra-arg message unclear: $(cat "$WORK/extra1.txt")"
+fi
+if "$BIN_DIR/runners-snapshot.sh" "$WORK" --bogus >/dev/null 2>"$WORK/extra2.txt"; then
+  bad "T8 runners-snapshot bad flag should be rejected"
+else
+  grep -q "unexpected argument" "$WORK/extra2.txt" && ok "T8 runners-snapshot bad flag rejected" || bad "T8 bad-flag message unclear: $(cat "$WORK/extra2.txt")"
+fi
 
 echo "== T9: lib.sh api_get_json failure modes (against mock API / dead port)"
-start_mock() { # <name> [extra env via environment] -> sets MOCK_PORT
-  local port_file="$WORK/$1.port"
-  MOCK_PORT_FILE="$port_file" python3 "$TESTS_DIR/mock-api.py" \
-    --tasks-dir "$FIXTURE_RAW" --runners-file "$FIXTURE_RUNNERS" --deploy-file "$FIXTURE_DEPLOY" \
-    --port 0 --port-file "$port_file" &
+# start_mock <name> [runners-file] — boot a mock API; sets MOCK_PORT. Mock
+# behaviour knobs come from the environment (MOCK_FAIL_IDS, MOCK_BADJSON_ID,
+# MOCK_EMPTY). Dies clearly if the mock never comes up, instead of letting
+# every later curl fail confusingly.
+start_mock() {
+  local name="$1" runners_file="${2:-$FIXTURE_RUNNERS}"
+  local port_file="$WORK/$name.port" mock_log="$WORK/$name.mock-stderr.log"
+  rm -f "$port_file"
+  python3 "$TESTS_DIR/mock-api.py" \
+    --tasks-dir "$FIXTURE_RAW" --runners-file "$runners_file" --deploy-file "$FIXTURE_DEPLOY" \
+    --port 0 --port-file "$port_file" 2>"$mock_log" &
   local pid=$!
-  for _ in $(seq 1 50); do [ -s "$port_file" ] && break; sleep 0.1; done
-  MOCK_PORT="$(cat "$port_file")"
   MOCK_PIDS+=("$pid")
+  local i
+  for i in $(seq 1 50); do [ -s "$port_file" ] && break; sleep 0.1; done
+  if [ ! -s "$port_file" ]; then
+    echo "FATAL: mock API '$name' did not start (pid $pid) — mock stderr:" >&2
+    cat "$mock_log" >&2 || true
+    kill "$pid" 2>/dev/null || true
+    exit 1
+  fi
+  MOCK_PORT="$(cat "$port_file")"
 }
-MOCK_PIDS=()
 start_mock ok
 if api_get_json "http://127.0.0.1:$MOCK_PORT/tasks?projectId=x" "$WORK/api-ok.json" 2>"$WORK/api-ok.err"; then ok "T9 api_get_json 200 JSON ok"; else bad "T9 api_get_json 200 failed: $(cat "$WORK/api-ok.err")"; fi
 if api_get_json "http://127.0.0.1:$MOCK_PORT/tasks/does-not-exist?projectId=x" "$WORK/api-404.json" 2>/dev/null; then bad "T9 HTTP 404 should fail"; else ok "T9 HTTP 404 fails (curl -f), nothing stored"; fi
 [ -e "$WORK/api-404.json" ] && bad "T9 404 body was stored" || ok "T9 no file left behind on failure"
+if api_get_json "http://127.0.0.1:$MOCK_PORT/tasks/.hidden?projectId=x" "$WORK/api-trav.json" 2>/dev/null; then bad "T9 dotfile task id should be refused"; else ok "T9 dotfile task id refused (400), nothing stored"; fi
+[ -e "$WORK/api-trav.json" ] && bad "T9 traversal body was stored" || ok "T9 no file left behind on traversal attempt"
 if api_get_json "http://127.0.0.1:1/tasks" "$WORK/api-dead.json" 2>"$WORK/api-dead.err"; then bad "T9 dead port should fail"; else grep -q "ERROR: GET" "$WORK/api-dead.err" && ok "T9 dead port fails with clear message" || bad "T9 dead port message unclear"; fi
 # NOTE: mock-driving vars are plain exported shell assignments, NOT `VAR=x
 # start_mock` prefix assignments — under bash 5.3 + set -u a prefix assignment
 # on a function call does not leave the variable bound for later lines.
-MOCK_BADJSON_ID="$(ls "$FIXTURE_RAW" | head -1 | sed 's/.json//')"
+MOCK_BADJSON_ID="$(basename "${raw_candidates[0]}" .json)"
 export MOCK_BADJSON_ID
 start_mock badjson
 if api_get_json "http://127.0.0.1:$MOCK_PORT/tasks/$MOCK_BADJSON_ID?projectId=x" "$WORK/api-bad.json" 2>"$WORK/api-bad.err"; then bad "T9 invalid JSON body should fail"; else grep -q "not valid JSON" "$WORK/api-bad.err" && ok "T9 invalid JSON body refused" || bad "T9 invalid JSON message unclear"; fi
@@ -223,11 +299,13 @@ t10rc=0
 KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/fleet-recount.sh" mock "$WORK/mockdir" > "$WORK/recount.out" 2> "$WORK/recount.err" || t10rc=$?
 check_eq "T10 exit code on full success" "0" "$t10rc"
 check_json_eq "T10 table matches pinned before-table" "$WORK/mockdir/recount-mock-table.json" "$TASK_DIR/recount-before-table.json"
-check_eq "T10 rows written" "$(ls "$FIXTURE_RAW"/*.json | wc -l)" "$(wc -l < "$WORK/mockdir/recount-mock.jsonl" | tr -d ' ')"
-check_eq "T10 raw evidence kept" "$(ls "$FIXTURE_RAW"/*.json | wc -l)" "$(ls "$WORK/mockdir/raw/mock"/*.json | wc -l)"
-check_eq "T10 meta ok count" "$(ls "$FIXTURE_RAW"/*.json | wc -l)" "$(jq -r .tasksFetched "$WORK/mockdir/recount-mock-meta.json")"
+check_eq "T10 rows written" "$FIXTURE_COUNT" "$(wc -l < "$WORK/mockdir/recount-mock.jsonl" | tr -d ' ')"
+shopt -s nullglob; kept_raw=("$WORK/mockdir/raw/mock"/*.json); shopt -u nullglob
+check_eq "T10 raw evidence kept" "$FIXTURE_COUNT" "${#kept_raw[@]}"
+check_eq "T10 meta ok count" "$FIXTURE_COUNT" "$(jq -r .tasksFetched "$WORK/mockdir/recount-mock-meta.json")"
+check_eq "T10 errors file exists and is empty on success" "0" "$(wc -c < "$WORK/mockdir/recount-mock-errors.jsonl" | tr -d ' ')"
 # partial failure: one task 500s -> exit 2, errors file, table still written
-first_id="$(ls "$FIXTURE_RAW" | head -1 | sed 's/.json//')"
+first_id="$(basename "${raw_candidates[0]}" .json)"
 kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
 MOCK_FAIL_IDS="$first_id"
 export MOCK_FAIL_IDS
@@ -238,7 +316,8 @@ else
   check_eq "T10 partial failure exit code" "2" "$?"
 fi
 check_eq "T10 errors file lists the failed task" "$first_id" "$(jq -r .task "$WORK/mockdir2/recount-mockfail-errors.jsonl")"
-check_eq "T10 table still written with remaining tasks" "$(( $(ls "$FIXTURE_RAW"/*.json | wc -l) - 1 ))" "$(jq -r .tasks_total "$WORK/mockdir2/recount-mockfail-table.json")"
+check_eq "T10 table still written with remaining tasks" "$(( FIXTURE_COUNT - 1 ))" "$(jq -r .tasks_total "$WORK/mockdir2/recount-mockfail-table.json")"
+[ -e "$WORK/mockdir2/raw/mockfail/$first_id.json" ] && bad "T10 failed task left raw evidence behind" || ok "T10 failed task leaves no raw evidence behind"
 unset MOCK_FAIL_IDS
 # empty list -> exit 1, no outputs
 kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
@@ -259,12 +338,20 @@ start_mock snap
 t11rc=0
 KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap" > "$WORK/snap.out" 2> "$WORK/snap.err" || t11rc=$?
 check_eq "T11 exit 0 without --require-converged" "0" "$t11rc"
-snap_json="$(ls "$WORK/snap"/runners-*.json | head -1)"
-check_json_eq "T11 raw runners payload preserved" "$snap_json" "$FIXTURE_RUNNERS"
-check_eq "T11 tsv lines" "10" "$(wc -l < "$(ls "$WORK/snap"/runners-*.tsv | head -1)" | tr -d ' ')"
-verdict_txt="$(ls "$WORK/snap"/verdict-*.txt | head -1)"
+shopt -s nullglob; snap_jsons=("$WORK/snap"/runners-*.json); snap_tsvs=("$WORK/snap"/runners-*.tsv); snap_verdicts=("$WORK/snap"/verdict-*.txt); shopt -u nullglob
+check_eq "T11 one runners json written" "1" "${#snap_jsons[@]}"
+check_json_eq "T11 raw runners payload preserved" "${snap_jsons[0]}" "$FIXTURE_RUNNERS"
+check_eq "T11 tsv lines" "10" "$(wc -l < "${snap_tsvs[0]}" | tr -d ' ')"
+verdict_txt="${snap_verdicts[0]}"
 grep -q "NOT-CONVERGED local-alpha" "$verdict_txt" && ok "T11 local-alpha NOT-CONVERGED (0.1.0)" || bad "T11 verdict missing: $(cat "$verdict_txt")"
 grep -q "NOT-CONVERGED server2-alpha" "$verdict_txt" && ok "T11 server2-alpha NOT-CONVERGED" || bad "T11 verdict missing server2: $(cat "$verdict_txt")"
+# Named-runners spacing tolerance: "a, b" must behave like "a,b".
+t11sp=0
+KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" KAINBAIN_S5_NAMED_RUNNERS="local-alpha, server2-alpha" \
+  "$BIN_DIR/runners-snapshot.sh" "$WORK/snap-space" > /dev/null 2>&1 || t11sp=$?
+check_eq "T11 spaced named-runners list still snapshots" "0" "$t11sp"
+shopt -s nullglob; space_verdicts=("$WORK/snap-space"/verdict-*.txt); shopt -u nullglob
+grep -q "NOT-CONVERGED server2-alpha" "${space_verdicts[0]}" && ok "T11 spaced list checks both runners" || bad "T11 spaced list verdict: $(cat "${space_verdicts[0]}")"
 if KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap2" --require-converged > /dev/null 2>&1; then
   bad "T11 --require-converged should exit 3 when not converged"
 else
@@ -275,19 +362,23 @@ jq -n --arg sha "$(git -C "$REPO_ROOT" rev-parse HEAD)" '
   [{runnerId: "local-alpha", status: "active", runnerVersion: "0.2.0", recommendedVersion: "0.2.0", minimumVersion: "0.1.0", desiredVersion: "latest", availableVersions: ["0.1.0","0.2.0"], updateAvailable: false, belowMinimum: false, updateStatus: null, pendingCommands: [], lastSeenAt: "2026-11-23T10:00:00Z", facts: {versions: {runner: "0.2.0", build: {sha: $sha, builtAt: "2026-11-23T09:00:00Z"}}}},
    {runnerId: "server2-alpha", status: "active", runnerVersion: "0.2.0", recommendedVersion: "0.2.0", minimumVersion: "0.1.0", desiredVersion: "latest", availableVersions: ["0.1.0","0.2.0"], updateAvailable: false, belowMinimum: false, updateStatus: null, pendingCommands: [], lastSeenAt: "2026-11-23T10:00:00Z", facts: {versions: {runner: "0.2.0", build: {sha: $sha, builtAt: "2026-11-23T09:00:00Z"}}}}]
 ' > "$WORK/runners-converged.json"
-kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
 R_FILE="$WORK/runners-converged.json"
-start_mock snapok
-# restart mock with the converged runners file
-kill "${MOCK_PIDS[-1]}" 2>/dev/null || true
-port_file="$WORK/snapok2.port"
-python3 "$TESTS_DIR/mock-api.py" --tasks-dir "$FIXTURE_RAW" --runners-file "$R_FILE" --deploy-file "$FIXTURE_DEPLOY" --port 0 --port-file "$port_file" &
-MOCK_PIDS+=($!)
-for _ in $(seq 1 50); do [ -s "$port_file" ] && break; sleep 0.1; done
+start_mock snapok "$R_FILE"
 t11crc=0
-KAINBAIN_API_BASE="http://127.0.0.1:$(cat "$port_file")" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap3" --require-converged > "$WORK/snap3.out" 2>&1 || t11crc=$?
+KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap3" --require-converged > "$WORK/snap3.out" 2>&1 || t11crc=$?
 check_eq "T11 converged fleet exits 0 with --require-converged" "0" "$t11crc"
-grep -q "CONVERGED    local-alpha 0.2.0" "$(ls "$WORK/snap3"/verdict-*.txt | head -1)" && ok "T11 converged verdict line" || bad "T11 converged verdict: $(cat "$(ls "$WORK/snap3"/verdict-*.txt | head -1)")"
+shopt -s nullglob; ok_verdicts=("$WORK/snap3"/verdict-*.txt); shopt -u nullglob
+grep -q "CONVERGED    local-alpha 0.2.0" "${ok_verdicts[0]}" && ok "T11 converged verdict line" || bad "T11 converged verdict: $(cat "${ok_verdicts[0]}")"
+# A /runners payload that is valid JSON but not an array must be refused
+# loudly — verdicts built from it would be meaningless.
+jq -n '{error: "not an array"}' > "$WORK/runners-object.json"
+start_mock snapobj "$WORK/runners-object.json"
+if KAINBAIN_API_BASE="http://127.0.0.1:$MOCK_PORT" "$BIN_DIR/runners-snapshot.sh" "$WORK/snap-obj" > /dev/null 2> "$WORK/snap-obj.err"; then
+  bad "T11 non-array /runners should be refused"
+else
+  check_eq "T11 non-array /runners exit code" "1" "$?"
+  grep -q "not an array" "$WORK/snap-obj.err" && ok "T11 non-array /runners has clear message" || bad "T11 non-array message unclear: $(cat "$WORK/snap-obj.err")"
+fi
 
 echo "== T12: server2-ssh.sh guards (no network)"
 empty_home="$WORK/nohome"; mkdir -p "$empty_home"
@@ -297,13 +388,48 @@ else
   check_eq "T12 missing password file exit code" "66" "$?"
   grep -q "password file" "$WORK/ssh.txt" && ok "T12 clear message, password never printed" || bad "T12 message unclear: $(cat "$WORK/ssh.txt")"
 fi
+empty_pw_home="$WORK/emptypw"; mkdir -p "$empty_pw_home"; : > "$empty_pw_home/.passwrd"
+if HOME="$empty_pw_home" "$BIN_DIR/server2-ssh.sh" "echo hi" > /dev/null 2> "$WORK/ssh-empty.txt"; then
+  bad "T12 empty password file should fail"
+else
+  check_eq "T12 empty password file exit code" "66" "$?"
+  grep -q "is empty" "$WORK/ssh-empty.txt" && ok "T12 empty password file has clear message" || bad "T12 empty message unclear: $(cat "$WORK/ssh-empty.txt")"
+fi
 pw_prefix="$(head -c 4 "$HOME/.passwrd" 2>/dev/null || true)"
 if [ -n "$pw_prefix" ] && grep -qF "$pw_prefix" "$WORK/ssh.txt" 2>/dev/null; then bad "T12 output contains password material"; else ok "T12 no password material in output"; fi
 if "$BIN_DIR/server2-ssh.sh" > /dev/null 2>&1; then bad "T12 no-args should fail"; else check_eq "T12 no-args exit code" "64" "$?"; fi
 
-# cleanup mock servers
-for pid in "${MOCK_PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
+echo "== T13: lib.sh unit checks (write_atomic, validate_label)"
+echo '{"a":1}' > "$WORK/wa-src.json"
+if write_atomic "$WORK/wa-dest.json" "$WORK/wa-src.json" 2>/dev/null; then
+  check_json_eq "T13 write_atomic stores the content" "$WORK/wa-dest.json" "$WORK/wa-src.json"
+else
+  bad "T13 write_atomic failed on a writable dir"
+fi
+# Unwritable destination: non-zero exit, dest untouched, clear message.
+# (validate_label dies via exit, so both negative cases run in subshells to
+# keep the suite alive.)
+if [ "$(id -u)" = 0 ]; then
+  ok "T13 unwritable-dir case skipped (suite runs as root, permission bits do not apply)"
+else
+  mkdir -p "$WORK/wa-ro"; chmod 555 "$WORK/wa-ro"
+  if write_atomic "$WORK/wa-ro/dest.json" "$WORK/wa-src.json" 2>"$WORK/wa.err"; then
+    bad "T13 write_atomic should fail in a read-only dir"
+  else
+    grep -q "cannot write" "$WORK/wa.err" && ok "T13 write_atomic fails loudly on unwritable dest" || bad "T13 write_atomic message unclear: $(cat "$WORK/wa.err")"
+  fi
+  [ -e "$WORK/wa-ro/dest.json" ] && bad "T13 failed write left a dest file" || ok "T13 failed write leaves dest untouched"
+  chmod 755 "$WORK/wa-ro"
+fi
+(validate_label "mid-1431" 2>/dev/null) && ok "T13 sane label accepted" || bad "T13 sane label rejected"
+if (validate_label "../escape" 2>"$WORK/label2.txt"); then
+  bad "T13 traversal label should be rejected"
+else
+  grep -q "bad label" "$WORK/label2.txt" && ok "T13 traversal label rejected" || bad "T13 label message unclear: $(cat "$WORK/label2.txt")"
+fi
 
+# Mock servers + temp dir are cleaned by the EXIT trap (cleanup), even when
+# an earlier section dies — no manual kill loop needed here.
 echo
 echo "RESULT: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

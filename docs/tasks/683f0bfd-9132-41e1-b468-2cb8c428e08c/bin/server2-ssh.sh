@@ -8,8 +8,9 @@
 #
 # Failure behaviour (this matters: a failed remote probe must not look like a
 # success to the caller):
-#   - no command given            -> usage on stderr, exit 64
+#   - no command given             -> usage on stderr, exit 64
 #   - password file missing/empty  -> FATAL on stderr, exit 66 (contents never shown)
+#   - neither sshpass nor pexpect + python3 available -> FATAL on stderr, exit 69
 #   - password file not mode 600   -> warning on stderr (contents never shown)
 #   - connect/auth timeout         -> FATAL on stderr, partial output kept, exit 124
 #   - otherwise the REMOTE exit code is propagated (ssh does this natively;
@@ -31,6 +32,10 @@ if [ ! -f "$PASSWORD_FILE" ]; then
   echo "FATAL: password file $PASSWORD_FILE not found (expected mode 600, first line = password)" >&2
   exit 66
 fi
+if [ ! -s "$PASSWORD_FILE" ]; then
+  echo "FATAL: password file $PASSWORD_FILE is empty — ssh auth would fail; fix the file, do not retry blindly" >&2
+  exit 66
+fi
 MODE="$(stat -c %a "$PASSWORD_FILE")"
 if [ "$MODE" != "600" ]; then
   echo "WARN: $PASSWORD_FILE has mode $MODE, expected 600 — tighten it with: chmod 600 $PASSWORD_FILE" >&2
@@ -39,6 +44,13 @@ fi
 if command -v sshpass >/dev/null 2>&1; then
   # sshpass consumes the file itself; the password never enters argv or env.
   exec sshpass -f "$PASSWORD_FILE" ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "$@"
+fi
+
+# No sshpass: the pexpect fallback needs python3 + the pexpect module. Check
+# up front so a bare host fails with one clear line, not a Python traceback.
+if ! command -v python3 >/dev/null 2>&1 || ! python3 -c "import pexpect" 2>/dev/null; then
+  echo "FATAL: need sshpass or python3 with the pexpect module to reach $SSH_TARGET — install one (e.g. apt install sshpass, or pip install pexpect)" >&2
+  exit 69
 fi
 
 python3 - "$@" <<'PY'

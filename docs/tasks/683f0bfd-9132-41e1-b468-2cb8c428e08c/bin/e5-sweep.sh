@@ -133,7 +133,7 @@ run_probe() {
 }
 
 main() {
-  require_commands bash base64 date
+  require_commands bash base64 date git
   local host="${1:-}"
   [ -n "$host" ] || die "usage: e5-sweep.sh <local|server2> <taskId-prefix>..."
   [ "$host" = "local" ] || [ "$host" = "server2" ] || die "host must be 'local' or 'server2', got '$host'"
@@ -149,12 +149,10 @@ main() {
     work_root="${E5_WORK_ROOT:-/home/server2/.kainbain/runner-work}"
     unit="${E5_UNIT:-kainbain-runner-server2-alpha}"
     origin_repo="${E5_ORIGIN_REPO:-/home/server2/.kainbain/runner-work/mirrors/Kainbain}"
-    require_commands git
   else
     work_root="${E5_WORK_ROOT:-$HOME/.kainbain/runner-work}"
     unit="${E5_UNIT:-kainbain-runner-local-alpha}"
     origin_repo="${E5_ORIGIN_REPO:-$repo_root}"
-    require_commands git
   fi
 
   echo "## E5 sweep host=$host work_root=$work_root unit=$unit origin_repo=$origin_repo since=$since at $(date -u +%FT%TZ)"

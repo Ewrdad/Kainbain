@@ -9,9 +9,14 @@
 #   recount-<label>.jsonl            one aggregated row per task  (jq/per-task.jq)
 #   recount-<label>-table.json       WIDE_NET §2 aggregate         (jq/aggregate.jq)
 #   recount-<label>-e5worklist.json  post-finished interrupts      (jq/e5-worklist.jq, GUIDE-05 §4 scope)
-#   recount-<label>-errors.jsonl     tasks that failed to fetch/parse (only written on failure)
+#   recount-<label>-errors.jsonl     tasks that failed to fetch/parse (always created; empty when nothing failed)
 #   recount-<label>-meta.json        run metadata (api, project, window, counts)
 #   stdout                           the §2 table + E5 worklist, for the run log
+#
+# Crash safety: per-task rows accumulate in temp staging files and are moved
+# into place only after the fetch loop finishes, so killing the script
+# mid-run can never leave a truncated recount-<label>.jsonl beside a
+# meta/table from an older run of the same label.
 #
 # Failure behaviour (deliberate, so a partial run is loud, never silent):
 #   - the task list itself unreachable/invalid/empty -> exit 1, no outputs written
@@ -29,6 +34,8 @@ main() {
   require_commands curl jq date mktemp
   local label="${1:-}"
   [ -n "$label" ] || die "usage: fleet-recount.sh <before|after|...> [task-dir]"
+  [ $# -le 2 ] || die "usage: fleet-recount.sh <before|after|...> [task-dir] — unexpected extra argument '$3'"
+  validate_label "$label"
   local task_dir="${2:-$(pwd)}"
   local api_base="${KAINBAIN_API_BASE:-http://192.168.1.206:3100}"
   local project_id="${KAINBAIN_PROJECT_ID:-0fd41821-d8a5-4e49-bc2e-28ce8c739a0a}"
@@ -54,32 +61,39 @@ main() {
   log "task list ok: $n tasks"
 
   # 2. per-task fetch + aggregate row. One bad task never aborts the loop.
+  # Rows accumulate in staging files first (see header: crash safety).
   local jsonl="$task_dir/recount-$label.jsonl" errors="$task_dir/recount-$label-errors.jsonl"
   local table="$task_dir/recount-$label-table.json" worklist="$task_dir/recount-$label-e5worklist.json"
-  : > "$jsonl"
-  : > "$errors"
-  local ok=0 failed=0 t raw row_tmp
-  row_tmp="$(mktemp)"
+  local jsonl_stage errors_stage row_tmp
+  jsonl_stage="$(mktemp)"; errors_stage="$(mktemp)"; row_tmp="$(mktemp)"
+  : > "$jsonl_stage"
+  : > "$errors_stage"
+  local ok=0 failed=0 t raw
+  # ids are validated UUIDs above, so unquoted splitting here is safe.
+  # shellcheck disable=SC2086
   for t in $ids; do
     raw="$raw_dir/$t.json"
     if api_get_json "$api_base/tasks/$t?projectId=$project_id" "$raw" \
        && jq -e 'type == "object" and ((.history // []) | type == "array")' "$raw" >/dev/null 2>&1 \
        && jq -c -f "$SCRIPT_DIR/jq/per-task.jq" "$raw" > "$row_tmp" 2>/dev/null; then
-      cat "$row_tmp" >> "$jsonl"
+      cat "$row_tmp" >> "$jsonl_stage"
       ok=$((ok + 1))
     else
       failed=$((failed + 1))
       rm -f "$raw"
-      printf '{"task":"%s","error":"fetch or parse failed"}\n' "$t" >> "$errors"
+      printf '{"task":"%s","error":"fetch or parse failed"}\n' "$t" >> "$errors_stage"
       log "WARN: task $t failed to fetch/parse — recorded in recount-$label-errors.jsonl, continuing"
     fi
   done
   rm -f "$row_tmp"
+  write_atomic "$jsonl" "$jsonl_stage" || die "cannot publish $jsonl — previous file (if any) left untouched"
+  write_atomic "$errors" "$errors_stage" || die "cannot publish $errors — $jsonl was published, rerun to regenerate"
+  rm -f "$jsonl_stage" "$errors_stage"
   log "fetched $ok tasks, $failed failed"
 
   # 3. aggregates (atomic writes), printed to stdout for the run log too.
-  jq -s -f "$SCRIPT_DIR/jq/aggregate.jq" "$jsonl" > "$table.tmp" && mv "$table.tmp" "$table"
-  jq -s -f "$SCRIPT_DIR/jq/e5-worklist.jq" "$jsonl" > "$worklist.tmp" && mv "$worklist.tmp" "$worklist"
+  jq -s -f "$SCRIPT_DIR/jq/aggregate.jq" "$jsonl" > "$table.tmp.$$" && mv "$table.tmp.$$" "$table"
+  jq -s -f "$SCRIPT_DIR/jq/e5-worklist.jq" "$jsonl" > "$worklist.tmp.$$" && mv "$worklist.tmp.$$" "$worklist"
   jq -n --arg label "$label" --arg api "$api_base" --arg project "$project_id" \
       --arg started "$started" --arg finished "$(date -u +%FT%TZ)" \
       --argjson ok "$ok" --argjson failed "$failed" \
