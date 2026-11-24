@@ -634,8 +634,9 @@ describe('SystemSettingsContent', () => {
     // fields for it — only a pointer that routes hunters to the real home.
     const pointer = screen.getByTestId('system-settings-docs-repo-pointer');
     expect(pointer).toBeInTheDocument();
-    expect(pointer).toHaveTextContent(/per-project, not a system setting/i);
-    expect(screen.getByRole('link', { name: /Project Settings/i })).toHaveAttribute(
+    expect(pointer).toHaveTextContent(/per-project, not a/i);
+    expect(screen.getByText(/Separate Docs Repository/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open files & repos/i })).toHaveAttribute(
       'href',
       '#/settings/files-repos',
     );

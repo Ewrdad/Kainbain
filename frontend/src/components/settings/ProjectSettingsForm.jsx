@@ -687,6 +687,9 @@ export function ProjectSettingsForm({
             projectId={projectId}
             toggleHideProject={toggleHideProject}
             docsRepoUrl={docsRepoUrl}
+            docsRepoLocalPath={docsRepoLocalPath}
+            onDocsRepoUrlChange={touch(setDocsRepoUrl)}
+            onDocsRepoLocalPathChange={touch(setDocsRepoLocalPath)}
             onJumpToFilesRepos={
               typeof onJumpToDocsRepo === 'function'
                 ? onJumpToDocsRepo

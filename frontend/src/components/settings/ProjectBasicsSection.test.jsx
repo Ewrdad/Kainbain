@@ -147,9 +147,11 @@ describe('ProjectBasicsSection', () => {
     expect(onDismissMismatch).toHaveBeenCalled();
   });
 
-  it('shows the docs repo summary as Off without a jump target by default', () => {
+  it('shows the editable docs-repo fields and a summary as Off by default', () => {
     renderWithKainBain(<ProjectBasicsSection {...baseProps} />);
     expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('Off');
+    expect(screen.getByLabelText(/Separate Docs Repository URL/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Docs Repository Local Path/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /files & repos/i })).not.toBeInTheDocument();
   });
 
@@ -163,8 +165,11 @@ describe('ProjectBasicsSection', () => {
       />,
     );
     expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('On');
-    expect(screen.getByText('https://git.example.com/me/docs.git')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /manage in files & repos/i }));
+    expect(screen.getByText(/https:\/\/git\.example\.com\/me\/docs\.git/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Separate Docs Repository URL/i)).toHaveValue(
+      'https://git.example.com/me/docs.git',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /open files & repos/i }));
     expect(onJumpToFilesRepos).toHaveBeenCalled();
   });
 });

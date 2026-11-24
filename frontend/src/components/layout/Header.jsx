@@ -311,10 +311,6 @@ export function Header() {
   const [newProjGitUrl, setNewProjGitUrl] = useState('');
   const [newProjDocsRepoUrl, setNewProjDocsRepoUrl] = useState('');
   const [newProjDocsRepoPath, setNewProjDocsRepoPath] = useState('');
-  // Expanded by default (like import): the separate-docs-repo option must be
-  // visible without hunting for it — a collapsed disclosure hid it so well
-  // that reviewers could not find the setting at all.
-  const [createAdvancedOpen, setCreateAdvancedOpen] = useState(true);
   const [createError, setCreateError] = useState('');
   const [isRegisteringProject, setIsRegisteringProject] = useState(false);
   const [adoptPath, setAdoptPath] = useState('');
@@ -322,10 +318,6 @@ export function Header() {
   const [adoptKainbainDir, setAdoptKainbainDir] = useState('');
   const [adoptDocsRepoUrl, setAdoptDocsRepoUrl] = useState('');
   const [adoptDocsRepoPath, setAdoptDocsRepoPath] = useState('');
-  // Expanded by default on import (like create): shared/public repos are
-  // exactly where KainBain traces must stay out, so the separate-docs-repo
-  // option must be visible without hunting for it.
-  const [adoptAdvancedOpen, setAdoptAdvancedOpen] = useState(true);
   const [adoptError, setAdoptError] = useState('');
 
   // MARK: toolbar-collapse sync (task 34793321)
@@ -361,14 +353,8 @@ export function Header() {
   // Onboarding empty state (canvas tree) opens these dialogs by event —
   // the dialog state lives here, outside the canvas tree.
   useEffect(() => {
-    const openCreate = () => {
-      setCreateAdvancedOpen(true);
-      setIsCreatingProject(true);
-    };
-    const openAdopt = () => {
-      setAdoptAdvancedOpen(true);
-      setIsRegisteringProject(true);
-    };
+    const openCreate = () => setIsCreatingProject(true);
+    const openAdopt = () => setIsRegisteringProject(true);
     window.addEventListener(OPEN_CREATE_PROJECT_EVENT, openCreate);
     window.addEventListener(OPEN_ADOPT_PROJECT_EVENT, openAdopt);
     return () => {
@@ -403,7 +389,6 @@ export function Header() {
   const closeCreateProjectModal = () => {
     setIsCreatingProject(false);
     setCreateError('');
-    setCreateAdvancedOpen(true);
   };
 
   /***
@@ -415,8 +400,6 @@ export function Header() {
   const switchToAdoptProjectModal = () => {
     setIsCreatingProject(false);
     setCreateError('');
-    setCreateAdvancedOpen(true);
-    setAdoptAdvancedOpen(true);
     setIsRegisteringProject(true);
   };
 
@@ -449,7 +432,6 @@ export function Header() {
       setNewProjGitUrl('');
       setNewProjDocsRepoUrl('');
       setNewProjDocsRepoPath('');
-      setCreateAdvancedOpen(true);
       setIsCreatingProject(false);
       setIsProjectDropdownOpen(false);
     } catch (err) {
@@ -467,7 +449,6 @@ export function Header() {
   const closeAdoptProjectModal = () => {
     setIsRegisteringProject(false);
     setAdoptError('');
-    setAdoptAdvancedOpen(true);
   };
 
   /***
@@ -506,7 +487,6 @@ export function Header() {
       setAdoptKainbainDir('');
       setAdoptDocsRepoUrl('');
       setAdoptDocsRepoPath('');
-      setAdoptAdvancedOpen(true);
       setIsRegisteringProject(false);
       setIsProjectDropdownOpen(false);
     } catch (err) {
@@ -658,13 +638,11 @@ export function Header() {
                 selectProject={selectProject}
                 onClose={() => setIsProjectDropdownOpen(false)}
                 onCreateProject={() => {
-                  setCreateAdvancedOpen(true);
                   setIsCreatingProject(true);
                   setIsProjectDropdownOpen(false);
                 }}
                 onAdoptProject={() => {
                   setAdoptError('');
-                  setAdoptAdvancedOpen(true);
                   setIsRegisteringProject(true);
                   setIsProjectDropdownOpen(false);
                 }}
@@ -821,36 +799,23 @@ export function Header() {
               />
             </div>
 
-            {/* Advanced: separate docs repo (expanded by default, directly
-                after Project Name so it is in the first viewport). The toggle
-                names the option so it stays findable when collapsed. */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setCreateAdvancedOpen((open) => !open)}
-                aria-expanded={createAdvancedOpen}
-                aria-controls="create-project-advanced"
-                className="text-[11px] font-bold uppercase tracking-widest text-text-muted hover:text-on-surface cursor-pointer flex items-center gap-1"
-              >
-                <span
-                  className={`material-symbols-outlined text-base transition-transform ${createAdvancedOpen ? 'rotate-90' : ''}`}
-                  aria-hidden="true"
-                >
-                  chevron_right
-                </span>
+            {/* Separate docs repo: always visible directly after Project Name
+                so it is in the first viewport. No disclosure button — a
+                collapsed Advanced hid this so well reviewers could not find
+                the setting at all (Cant see settings in the Ui). */}
+            <div id="create-project-advanced">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-text-muted">
                 Advanced options: separate docs repo
-              </button>
-              {createAdvancedOpen && (
-                <div id="create-project-advanced" className="mt-3">
-                  <DocsRepoFields
-                    docsRepoUrl={newProjDocsRepoUrl}
-                    setDocsRepoUrl={setNewProjDocsRepoUrl}
-                    docsRepoLocalPath={newProjDocsRepoPath}
-                    setDocsRepoLocalPath={setNewProjDocsRepoPath}
-                    showLocalPath
-                  />
-                </div>
-              )}
+              </p>
+              <div className="mt-3">
+                <DocsRepoFields
+                  docsRepoUrl={newProjDocsRepoUrl}
+                  setDocsRepoUrl={setNewProjDocsRepoUrl}
+                  docsRepoLocalPath={newProjDocsRepoPath}
+                  setDocsRepoLocalPath={setNewProjDocsRepoPath}
+                  showLocalPath
+                />
+              </div>
             </div>
 
             <div>
@@ -964,37 +929,23 @@ export function Header() {
               </p>
             </div>
 
-            {/* Advanced: separate docs repo (expanded by default on import,
-                directly after Project Directory so it is in the first
-                viewport). The toggle names the option so it stays findable
-                when collapsed. */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setAdoptAdvancedOpen((open) => !open)}
-                aria-expanded={adoptAdvancedOpen}
-                aria-controls="adopt-project-advanced"
-                className="text-[11px] font-bold uppercase tracking-widest text-text-muted hover:text-on-surface cursor-pointer flex items-center gap-1"
-              >
-                <span
-                  className={`material-symbols-outlined text-base transition-transform ${adoptAdvancedOpen ? 'rotate-90' : ''}`}
-                  aria-hidden="true"
-                >
-                  chevron_right
-                </span>
+            {/* Separate docs repo: always visible directly after Project
+                Directory so it is in the first viewport on import. No
+                disclosure button — a collapsed toggle hid this so well
+                reviewers could not find the setting at all. */}
+            <div id="adopt-project-advanced">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-text-muted">
                 Advanced options: separate docs repo
-              </button>
-              {adoptAdvancedOpen && (
-                <div id="adopt-project-advanced" className="mt-3">
-                  <DocsRepoFields
-                    docsRepoUrl={adoptDocsRepoUrl}
-                    setDocsRepoUrl={setAdoptDocsRepoUrl}
-                    docsRepoLocalPath={adoptDocsRepoPath}
-                    setDocsRepoLocalPath={setAdoptDocsRepoPath}
-                    showLocalPath
-                  />
-                </div>
-              )}
+              </p>
+              <div className="mt-3">
+                <DocsRepoFields
+                  docsRepoUrl={adoptDocsRepoUrl}
+                  setDocsRepoUrl={setAdoptDocsRepoUrl}
+                  docsRepoLocalPath={adoptDocsRepoPath}
+                  setDocsRepoLocalPath={setAdoptDocsRepoPath}
+                  showLocalPath
+                />
+              </div>
             </div>
 
             <div>

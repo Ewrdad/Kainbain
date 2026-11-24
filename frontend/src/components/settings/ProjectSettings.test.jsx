@@ -281,7 +281,7 @@ test('an unchanged docs repo is not re-sent on save (no re-provisioning)', async
   expect(api.updateProject.mock.calls[0][1]).not.toHaveProperty('docsRepo');
 });
 
-test('the Project tab summarizes the docs repo and jumps to Files & Repos', async () => {
+test('the Project tab shows editable docs-repo fields directly (no extra jump required)', async () => {
   renderWithKainBain(<ProjectSettings />, {
     projects,
     activeProjectId: 'p1',
@@ -289,12 +289,14 @@ test('the Project tab summarizes the docs repo and jumps to Files & Repos', asyn
   });
   // The model picker renders once model discovery resolves.
   await screen.findByLabelText('Default AI Model');
-  // Landing tab shows the Off summary with a jump (not the fields themselves).
+  // Landing tab now renders the editable fields inline — reviewers who stopped
+  // at the summary and never opened Files & Repos missed the setting entirely.
   expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('Off');
-  expect(
-    screen.queryByLabelText('Separate Docs Repository URL (optional)'),
-  ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /configure in files & repos/i }));
+  expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toBeInTheDocument();
+  // Both the banner heading and the input label contain the phrase; at
+  // least two elements must be visible so text search finds the setting.
+  expect(screen.getAllByText(/Separate Docs Repository/).length).toBeGreaterThanOrEqual(2);
+  fireEvent.click(screen.getByRole('button', { name: /open files & repos/i }));
   expect(screen.getByText('Multi-Location Paths & Repositories')).toBeInTheDocument();
   expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toBeInTheDocument();
 });
@@ -306,7 +308,7 @@ test('the Project tab jump highlights the docs repo URL field', async () => {
     selectProject: vi.fn(),
   });
   await screen.findByLabelText('Default AI Model');
-  fireEvent.click(screen.getByRole('button', { name: /configure in files & repos/i }));
+  fireEvent.click(screen.getByRole('button', { name: /open files & repos/i }));
   expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toBeInTheDocument();
   await waitFor(() => {
     expect(
@@ -327,8 +329,15 @@ test('the Project tab summary names the docs repo URL when enabled', async () =>
   });
   await screen.findByLabelText('Default AI Model');
   expect(screen.getByTestId('docs-repo-summary-state')).toHaveTextContent('On');
-  expect(screen.getByText('git@github.com:me/proj-docs.git')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /manage in files & repos/i }));
+  // The inline field on the landing tab itself carries the value — the URL
+  // text is inside a <code> node so getByText would split it; value check
+  // proves it without brittle text matching.
+  expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toBeInTheDocument();
+  expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toHaveValue(
+    'git@github.com:me/proj-docs.git',
+  );
+  expect(screen.getByDisplayValue('git@github.com:me/proj-docs.git')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /open files & repos/i }));
   expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toHaveValue(
     'git@github.com:me/proj-docs.git',
   );

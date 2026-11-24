@@ -49,6 +49,9 @@ const ACCENT_PRESETS = [
  * @param {string} props.projectId - Active project identifier.
  * @param {Function} props.toggleHideProject - Hide/archive toggle.
  * @param {string} [props.docsRepoUrl] - Draft separate docs-repo URL ('' = off).
+ * @param {string} [props.docsRepoLocalPath] - Draft docs-repo local checkout path.
+ * @param {Function} [props.onDocsRepoUrlChange] - Called with the next URL value.
+ * @param {Function} [props.onDocsRepoLocalPathChange] - Called with the next local path.
  * @param {Function} [props.onJumpToFilesRepos] - Jumps to the Files & Repos tab.
  ***/
 export function ProjectBasicsSection({
@@ -82,6 +85,9 @@ export function ProjectBasicsSection({
   projectId,
   toggleHideProject,
   docsRepoUrl = '',
+  docsRepoLocalPath = '',
+  onDocsRepoUrlChange = null,
+  onDocsRepoLocalPathChange = null,
   onJumpToFilesRepos = null,
 }) {
   const docsRepoEnabled = typeof docsRepoUrl === 'string' && docsRepoUrl.trim() !== '';
@@ -107,40 +113,89 @@ export function ProjectBasicsSection({
         />
       </div>
 
-      {/* Separate docs repo summary: the setting lives at the TOP of
-          Files & Repos — this row keeps its state visible on the landing
-          tab with a primary jump button (the muted button read as
-          decoration and was missed). Placed directly under Project Name
-          so it shows in the first viewport of the landing tab. */}
-      <div className="flex items-center justify-between gap-3 p-3 bg-surface-container border border-border-standard rounded-sm">
-        <div className="min-w-0">
-          <span className="text-xs font-bold uppercase text-text-high block">
-            Separate Docs Repository:{' '}
-            <span data-testid="docs-repo-summary-state" className="text-primary">
+      {/* Separate docs repo: always visible and editable on the landing tab
+          (not just a summary + jump). Reviewers who open Settings stopped at
+          the summary and never saw an input, so the URL + local path are
+          rendered here directly — same shared draft as Files & Repos. The
+          full block lives at the TOP of Files & Repos as well. */}
+      <div className="border border-border-standard rounded-sm bg-surface-deep p-4 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-bold uppercase tracking-wide text-text-high flex items-center gap-2">
+            <span className="text-primary">📚</span> Separate Docs Repository
+            <span data-testid="docs-repo-summary-state" className="text-primary font-bold">
               {docsRepoEnabled ? 'On' : 'Off'}
             </span>
           </span>
-          <span className="text-[10px] text-text-muted block truncate">
-            {docsRepoEnabled ? (
-              <>
-                KainBain docs and state live in{' '}
-                <code className="font-mono text-primary">{docsRepoUrl.trim()}</code>
-              </>
-            ) : (
-              'KainBain docs and state live inside the main repo.'
-            )}
-          </span>
+          {typeof onJumpToFilesRepos === 'function' && (
+            <button
+              id="project-docs-repo-jump"
+              type="button"
+              onClick={onJumpToFilesRepos}
+              className="shrink-0 px-2 py-1 rounded-sm text-[10px] font-bold uppercase cursor-pointer transition-all border border-border-standard text-text-muted hover:text-on-surface hover:border-primary"
+            >
+              Open Files & Repos
+            </button>
+          )}
         </div>
-        {typeof onJumpToFilesRepos === 'function' && (
-          <button
-            id="project-docs-repo-jump"
-            type="button"
-            onClick={onJumpToFilesRepos}
-            className="shrink-0 px-3 py-1.5 rounded-sm text-xs font-bold uppercase cursor-pointer transition-all bg-primary text-on-primary hover:brightness-110"
+        <p className="text-[11px] text-text-muted">
+          {docsRepoEnabled ? (
+            <>
+              KainBain docs and state live in{' '}
+              <code className="font-mono text-primary break-all">{docsRepoUrl.trim()}</code> and
+              task branches (<code className="font-mono text-primary">kb/&lt;taskId&gt;</code>) stay
+              in sync across both repos.
+            </>
+          ) : (
+            <>
+              Disabled — KainBain docs and state live inside the main repo. Set the URL below to
+              move all new docs/state into a separate (usually private) repo — stealth mode.
+            </>
+          )}
+        </p>
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="project-docs-repo-url-input"
+            className="text-xs font-bold uppercase text-text-muted tracking-wider"
           >
-            {docsRepoEnabled ? 'Manage in Files & Repos' : 'Configure in Files & Repos'}
-          </button>
-        )}
+            Separate Docs Repository URL (optional)
+          </label>
+          <input
+            id="project-docs-repo-url-input"
+            type="text"
+            value={docsRepoUrl}
+            onChange={(e) => onDocsRepoUrlChange?.(e.target.value)}
+            className="p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface"
+            placeholder="https://git.example.com/me/my-repo-kainbain-docs.git"
+            data-testid="project-docs-repo-url-input"
+          />
+          <p className="text-[10px] text-text-muted">
+            A separate private repo for all KainBain docs and state. The main repo then stays free
+            of KainBain files. Clear the field and save to disable.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="project-docs-repo-path-input"
+            className="text-xs font-bold uppercase text-text-muted tracking-wider"
+          >
+            Docs Repository Local Path (optional)
+          </label>
+          <input
+            id="project-docs-repo-path-input"
+            type="text"
+            value={docsRepoLocalPath}
+            onChange={(e) => onDocsRepoLocalPathChange?.(e.target.value)}
+            disabled={!docsRepoUrl.trim()}
+            className={`p-2.5 bg-surface-container border border-border-standard rounded-sm text-xs font-mono outline-none focus:border-primary transition-colors text-on-surface ${
+              !docsRepoUrl.trim() ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            placeholder="Defaults to <project-dir>-kainbain-docs"
+            data-testid="project-docs-repo-path-input"
+          />
+          <p className="text-[10px] text-text-muted">
+            Absolute path where the docs repo is checked out on this machine.
+          </p>
+        </div>
       </div>
 
       {/* Agent harness + default model (one wired control: the harness

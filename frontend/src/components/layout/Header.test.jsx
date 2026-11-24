@@ -507,7 +507,7 @@ test('adopt modal omits blank optional fields and shows a registration error inl
   expect(await screen.findByRole('alert')).toHaveTextContent(/does not exist/);
 });
 
-test('create project modal shows the docs repo fields by default (Advanced expanded)', () => {
+test('create project modal shows the docs repo fields always visible (no disclosure)', () => {
   const createProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'X' });
   renderWithKainBain(<Header />, {
     projects,
@@ -517,16 +517,15 @@ test('create project modal shows the docs repo fields by default (Advanced expan
     setIsProjectDropdownOpen: vi.fn(),
   });
   fireEvent.click(screen.getByText('+ New Project'));
-  const toggle = screen.getByRole('button', { name: /advanced options/i });
-  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // No disclosure button: the heading names the option and the fields are
+  // always rendered — a collapsed toggle hid them so well reviewers could
+  // not find the setting (Cant see settings in the Ui).
+  expect(screen.getByText(/Advanced options: separate docs repo/i)).toBeInTheDocument();
   expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
   expect(screen.getByLabelText('Docs Repo Local Path (optional)')).toBeInTheDocument();
-  // The toggle names the option so it stays findable when collapsed.
-  fireEvent.click(toggle);
-  expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  expect(toggle).toHaveTextContent(/separate docs repo/i);
-  expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
-  expect(screen.queryByLabelText('Docs Repo Local Path (optional)')).not.toBeInTheDocument();
+  expect(screen.getByText(/Separate Docs Repository \(optional\)/i)).toBeInTheDocument();
+  // Fields are in the first viewport directly after Project Name.
+  expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeVisible();
 });
 
 test('create project modal forwards the advanced docs repo URL', () => {
@@ -576,7 +575,7 @@ test('create project modal forwards the advanced docs repo local path', () => {
   });
 });
 
-test('adopt modal shows the docs repo fields by default (Advanced expanded on import)', () => {
+test('adopt modal shows the docs repo fields always visible on import (no disclosure)', () => {
   const registerProject = vi.fn().mockResolvedValue({ id: 'proj-9', name: 'Adopted' });
   renderWithKainBain(<Header />, {
     projects,
@@ -586,13 +585,12 @@ test('adopt modal shows the docs repo fields by default (Advanced expanded on im
     setIsProjectDropdownOpen: vi.fn(),
   });
   fireEvent.click(screen.getByText('+ Add Existing Project…'));
-  const toggle = screen.getByRole('button', { name: /advanced options/i });
-  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  // Import is where shared/public repos must keep KainBain traces out, so
+  // the fields are always rendered directly after Project Directory.
+  expect(screen.getByText(/Advanced options: separate docs repo/i)).toBeInTheDocument();
   expect(screen.getByLabelText('Docs Repository URL (optional)')).toBeInTheDocument();
   expect(screen.getByLabelText('Docs Repo Local Path (optional)')).toBeInTheDocument();
-  fireEvent.click(toggle);
-  expect(toggle).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.queryByLabelText('Docs Repository URL (optional)')).not.toBeInTheDocument();
+  expect(screen.getByText(/Separate Docs Repository \(optional\)/i)).toBeInTheDocument();
 });
 
 test('adopt modal forwards docs repo URL and optional local path from the Advanced section', async () => {
