@@ -297,7 +297,8 @@ else
   check_eq "T12 missing password file exit code" "66" "$?"
   grep -q "password file" "$WORK/ssh.txt" && ok "T12 clear message, password never printed" || bad "T12 message unclear: $(cat "$WORK/ssh.txt")"
 fi
-if grep -qE "$(head -c 4 "$HOME/.passwrd" 2>/dev/null)" "$WORK/ssh.txt" 2>/dev/null; then bad "T12 output contains password material"; else ok "T12 no password material in output"; fi
+pw_prefix="$(head -c 4 "$HOME/.passwrd" 2>/dev/null || true)"
+if [ -n "$pw_prefix" ] && grep -qF "$pw_prefix" "$WORK/ssh.txt" 2>/dev/null; then bad "T12 output contains password material"; else ok "T12 no password material in output"; fi
 if "$BIN_DIR/server2-ssh.sh" > /dev/null 2>&1; then bad "T12 no-args should fail"; else check_eq "T12 no-args exit code" "64" "$?"; fi
 
 # cleanup mock servers
