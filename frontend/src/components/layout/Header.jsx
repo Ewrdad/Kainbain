@@ -361,8 +361,14 @@ export function Header() {
   // Onboarding empty state (canvas tree) opens these dialogs by event —
   // the dialog state lives here, outside the canvas tree.
   useEffect(() => {
-    const openCreate = () => setIsCreatingProject(true);
-    const openAdopt = () => setIsRegisteringProject(true);
+    const openCreate = () => {
+      setCreateAdvancedOpen(true);
+      setIsCreatingProject(true);
+    };
+    const openAdopt = () => {
+      setAdoptAdvancedOpen(true);
+      setIsRegisteringProject(true);
+    };
     window.addEventListener(OPEN_CREATE_PROJECT_EVENT, openCreate);
     window.addEventListener(OPEN_ADOPT_PROJECT_EVENT, openAdopt);
     return () => {
@@ -397,6 +403,7 @@ export function Header() {
   const closeCreateProjectModal = () => {
     setIsCreatingProject(false);
     setCreateError('');
+    setCreateAdvancedOpen(true);
   };
 
   /***
@@ -408,6 +415,8 @@ export function Header() {
   const switchToAdoptProjectModal = () => {
     setIsCreatingProject(false);
     setCreateError('');
+    setCreateAdvancedOpen(true);
+    setAdoptAdvancedOpen(true);
     setIsRegisteringProject(true);
   };
 
@@ -458,6 +467,7 @@ export function Header() {
   const closeAdoptProjectModal = () => {
     setIsRegisteringProject(false);
     setAdoptError('');
+    setAdoptAdvancedOpen(true);
   };
 
   /***
@@ -648,11 +658,13 @@ export function Header() {
                 selectProject={selectProject}
                 onClose={() => setIsProjectDropdownOpen(false)}
                 onCreateProject={() => {
+                  setCreateAdvancedOpen(true);
                   setIsCreatingProject(true);
                   setIsProjectDropdownOpen(false);
                 }}
                 onAdoptProject={() => {
                   setAdoptError('');
+                  setAdoptAdvancedOpen(true);
                   setIsRegisteringProject(true);
                   setIsProjectDropdownOpen(false);
                 }}
@@ -809,35 +821,9 @@ export function Header() {
               />
             </div>
 
-            <div>
-              <label
-                htmlFor="new-project-remote-input"
-                className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-2"
-              >
-                Git Remote URL
-              </label>
-              <input
-                id="new-project-remote-input"
-                type="text"
-                value={newProjGitUrl}
-                onChange={(e) => setNewProjGitUrl(e.target.value)}
-                placeholder="e.g. git@github.com:me/my-repo.git"
-                className="w-full p-2.5 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors font-mono"
-              />
-              <p className="mt-1 text-[11px] text-text-muted">
-                New projects need a fetchable git remote (unless the server configured one).{' '}
-                <button
-                  type="button"
-                  onClick={switchToAdoptProjectModal}
-                  className="underline hover:text-on-surface cursor-pointer"
-                >
-                  No remote yet — adopt a local repo instead
-                </button>
-              </p>
-            </div>
-
-            {/* Advanced: separate docs repo (expanded by default). The
-                toggle names the option so it stays findable when collapsed. */}
+            {/* Advanced: separate docs repo (expanded by default, directly
+                after Project Name so it is in the first viewport). The toggle
+                names the option so it stays findable when collapsed. */}
             <div>
               <button
                 type="button"
@@ -865,6 +851,33 @@ export function Header() {
                   />
                 </div>
               )}
+            </div>
+
+            <div>
+              <label
+                htmlFor="new-project-remote-input"
+                className="text-[10px] font-bold uppercase tracking-widest text-text-muted block mb-2"
+              >
+                Git Remote URL
+              </label>
+              <input
+                id="new-project-remote-input"
+                type="text"
+                value={newProjGitUrl}
+                onChange={(e) => setNewProjGitUrl(e.target.value)}
+                placeholder="e.g. git@github.com:me/my-repo.git"
+                className="w-full p-2.5 bg-surface-deep border border-border-standard rounded-sm text-sm text-on-surface outline-none focus:border-primary transition-colors font-mono"
+              />
+              <p className="mt-1 text-[11px] text-text-muted">
+                New projects need a fetchable git remote (unless the server configured one).{' '}
+                <button
+                  type="button"
+                  onClick={switchToAdoptProjectModal}
+                  className="underline hover:text-on-surface cursor-pointer"
+                >
+                  No remote yet — adopt a local repo instead
+                </button>
+              </p>
             </div>
 
             {createError && (
@@ -951,6 +964,39 @@ export function Header() {
               </p>
             </div>
 
+            {/* Advanced: separate docs repo (expanded by default on import,
+                directly after Project Directory so it is in the first
+                viewport). The toggle names the option so it stays findable
+                when collapsed. */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setAdoptAdvancedOpen((open) => !open)}
+                aria-expanded={adoptAdvancedOpen}
+                aria-controls="adopt-project-advanced"
+                className="text-[11px] font-bold uppercase tracking-widest text-text-muted hover:text-on-surface cursor-pointer flex items-center gap-1"
+              >
+                <span
+                  className={`material-symbols-outlined text-base transition-transform ${adoptAdvancedOpen ? 'rotate-90' : ''}`}
+                  aria-hidden="true"
+                >
+                  chevron_right
+                </span>
+                Advanced options: separate docs repo
+              </button>
+              {adoptAdvancedOpen && (
+                <div id="adopt-project-advanced" className="mt-3">
+                  <DocsRepoFields
+                    docsRepoUrl={adoptDocsRepoUrl}
+                    setDocsRepoUrl={setAdoptDocsRepoUrl}
+                    docsRepoLocalPath={adoptDocsRepoPath}
+                    setDocsRepoLocalPath={setAdoptDocsRepoPath}
+                    showLocalPath
+                  />
+                </div>
+              )}
+            </div>
+
             <div>
               <label
                 htmlFor="adopt-project-name-input"
@@ -983,39 +1029,6 @@ export function Header() {
                 placeholder=".kainbain"
                 className="w-full p-2.5 bg-surface-deep border border-border-standard rounded-sm text-xs text-on-surface outline-none focus:border-primary transition-colors font-mono"
               />
-            </div>
-
-            {/* Advanced: separate docs repo (expanded by default on
-                import) — the natural place on an import, since shared/public
-                repos are exactly where KainBain traces must stay out. The
-                toggle names the option so it stays findable when collapsed. */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setAdoptAdvancedOpen((open) => !open)}
-                aria-expanded={adoptAdvancedOpen}
-                aria-controls="adopt-project-advanced"
-                className="text-[11px] font-bold uppercase tracking-widest text-text-muted hover:text-on-surface cursor-pointer flex items-center gap-1"
-              >
-                <span
-                  className={`material-symbols-outlined text-base transition-transform ${adoptAdvancedOpen ? 'rotate-90' : ''}`}
-                  aria-hidden="true"
-                >
-                  chevron_right
-                </span>
-                Advanced options: separate docs repo
-              </button>
-              {adoptAdvancedOpen && (
-                <div id="adopt-project-advanced" className="mt-3">
-                  <DocsRepoFields
-                    docsRepoUrl={adoptDocsRepoUrl}
-                    setDocsRepoUrl={setAdoptDocsRepoUrl}
-                    docsRepoLocalPath={adoptDocsRepoPath}
-                    setDocsRepoLocalPath={setAdoptDocsRepoPath}
-                    showLocalPath
-                  />
-                </div>
-              )}
             </div>
 
             {adoptError && (

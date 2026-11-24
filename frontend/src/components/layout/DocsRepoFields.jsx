@@ -28,6 +28,9 @@ export function DocsRepoFields({
 }) {
   return (
     <div className="space-y-4 border border-border-standard rounded-sm bg-surface-deep p-4">
+      <p className="text-[11px] font-bold uppercase tracking-widest text-text-high flex items-center gap-2">
+        <span aria-hidden="true">📚</span> Separate Docs Repository (optional)
+      </p>
       <div>
         <label
           htmlFor="docs-repo-url-input"
