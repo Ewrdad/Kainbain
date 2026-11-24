@@ -67,5 +67,6 @@ bash bin/tests/run-tests.sh                                       # kit self-tes
 ```
 
 Kit regression pin: T1/T10 reproduce `recount-before-table.json` from
-`raw/before/*.json` exactly (suite log `raw/tests-run-20261123T115031Z.log`,
-`RESULT: 71 passed, 0 failed`).
+`raw/before/*.json` exactly (suite logs `raw/tests-run-20261123T*.log`,
+latest `raw/tests-run-20261123T122700Z.log`, each
+`RESULT: 71 passed, 0 failed` — incl. the T12 no-password-file fix).

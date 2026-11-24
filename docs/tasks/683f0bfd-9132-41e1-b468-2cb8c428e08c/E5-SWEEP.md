@@ -117,6 +117,32 @@ code ticket is created.** The 046a6391 rollout (runner-v0.2.1) is expected to
 convert the 20 deterministic cases into single FAILED completions with
 `gitFailure` payloads instead of crash-loops.
 
+## Addendum — 6 newer post-`finished` interrupts (mid-1431 watch, 14:32–14:45Z)
+
+The mid-1431 recount (`recount-mid-1431-table.json`, fetched 14:32:40–14:33:06Z)
+found 6 post-`finished` interrupts newer than the canonical BEFORE (11:46:55Z),
+all bare, all on still-0.1.0 runners. Sweep: `raw/e5-sweep-mid1431-server2.txt`
+(E5 probe executed on server2 with `E5_WORK_ROOT`/`E5_UNIT`/`E5_ORIGIN_REPO`
+overrides — its `host=local` label means "ran via local bash on server2") +
+direct `journalctl --user -u kainbain-runner-server2-alpha` windows. Server2
+work root now holds only 5 `kb-*` dirs (`kb-7f6220c3` reaped again since the
+11:38Z recreate — the 413 loop keeps crashing it); all three prefixes keep
+stage-output commits on mirror origin refs (coarse PRESENT), but the journal
+window-match below is decisive where available.
+
+| interrupt ts (UTC) | runner | task | Δ from started | classification | window evidence |
+|---|---|---|---|---|---|
+| 2026-11-23T11:48:18Z | server2-alpha | 7f6220c3 | 182s | **Cause 2** — 413 | `Committed f2e66547… (pushed: true)` + `Runner failed: Backend 413 on …/complete-execution` same second |
+| 2026-11-23T11:50:46Z | server2-alpha | 7f6220c3 | 111s | **Cause 2** — 413 | `Committed f2e66547… (pushed: true)` + 413 |
+| 2026-11-23T11:56:30Z | server2-alpha | 7f6220c3 | 305s | **Cause 2** — 413 | `Committed 971a28c5… (pushed: true, base was f2e6654)` + 413 |
+| 2026-11-23T12:12:38Z | server2-alpha | 7f6220c3 | 145s | **Cause 2** — 413 | `Committed 1fb31854… (pushed: true)` + 413 |
+| 2026-11-23T12:16:09Z | local-alpha | 7f347a7a | 290s | **Evidence gap** (Cause-5-suspect, unproven) | local-alpha journal + worktree unreachable from server2 (`ssh server@192.168.1.206` → permission denied, no key auth); origin window [finished 12:16:06, +30s] has NO stage-output commit; no `kb-recovery/7f347a7a…` branch. Cannot distinguish crash-before-commit from commit-loop → no ticket trigger. The stage later completed on server2-alpha (`fbc0457e`, 12:57:25Z, pushed). |
+| 2026-11-23T13:01:05Z | server2-alpha | 44125086 | 116s | Cause 5 MERGE_CONFLICT (covered by 046a6391) | `Runner failed: merging origin/kb/44125086… into kb/44125086… conflicts (docs/tasks/44125086…/SURVEY.md) — refusing to resolve on the push path`; local stage-output `e0cde7ef` landed 13:01:04 (commit ok, push refused — same pattern as `9be2458f`); retry completed on local-alpha (`a72eb18e`, 13:07:49Z) |
+
+Ticket decision re-confirmed: the 5 classified rows are covered classes
+(MERGE_CONFLICT) or Cause 2 (413); the 1 gap row is unclassified, not an
+uncovered class. **Still no new Cause-5 code ticket.**
+
 ## Evidence gaps (explicit, never guessed)
 
 - server2-alpha journal before 2026-11-19 was fetched only as targeted windows
