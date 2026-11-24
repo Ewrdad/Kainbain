@@ -99,3 +99,38 @@
   "answers": {}
 }
 ```
+
+## Round 3
+
+```survey-json
+{
+  "round": 3,
+  "generatedAt": "2026-11-24T17:19:06.000Z",
+  "stage": "stage-question-me",
+  "questions": [
+    {
+      "id": "q7",
+      "type": "single",
+      "text": "If the system has to choose, which rule matters most?",
+      "options": [
+        "Never save one task's report onto another task's work — even if a report is lost (Recommended)",
+        "Never lose a report — even if it needs manual cleanup afterwards"
+      ],
+      "required": true,
+      "showIf": null
+    },
+    {
+      "id": "q8",
+      "type": "single",
+      "text": "When the system fixes the clash by itself and the report does get saved on the second try, should it still leave a note?",
+      "options": [
+        "Yes, leave a short note in the task history (Recommended)",
+        "No, stay quiet when the save worked"
+      ],
+      "required": false,
+      "showIf": null
+    }
+  ],
+  "answers": {}
+}
+```
