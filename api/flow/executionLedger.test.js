@@ -775,7 +775,17 @@ describe("ExecutionLedger", () => {
 			executionId,
 			reason: "Runner workdir unavailable: Worktree cap reached (~5)",
 		});
-		expect(out).toEqual({ interrupted: true, interruptCount: 1, escalated: false });
+		// Task 3b82f6ae (S1): this reason is a capacity refusal, not a runner
+		// death — interruptCount stays 0 and the refusal lands on
+		// capacityRefusalCount instead; the reason is still recorded below.
+		expect(out).toEqual({
+			interrupted: true,
+			interruptCount: 0,
+			escalated: false,
+			capacityRefusal: true,
+			capacityRefusalCount: 1,
+			lastCapacityRefusalRunnerId: "r1",
+		});
 		const actions = ctx.taskStore.getTask().history.map((h) => String(h.action));
 		expect(actions.some((a) => a.includes("lease dropped"))).toBe(true);
 		expect(

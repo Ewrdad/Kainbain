@@ -1,6 +1,7 @@
 import { expect, test, describe } from "vitest";
 import { ClaimStore } from "../claimStore.js";
 import { scanClaimableTasks } from "./scanClaimableTasks.js";
+import { CAPACITY_REFUSAL_HIDE_MS } from "../scheduler/capacityRefusalHide.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -248,5 +249,118 @@ describe("scanClaimableTasks", () => {
 				(c) => c.taskId,
 			),
 		).toEqual(["starved-older", "starved", "fresh-far"]);
+	});
+});
+
+/***
+ * MARK: scanClaimableTasks re-dispatch backoff + refusal hide (task 3b82f6ae)
+ * @description Fleet-path half of S1: a task+stage inside its re-dispatch
+ *   backoff window (3+ consecutive resumes, 30s doubling to 5min) is NOT
+ *   offered to any runner until the delay elapses — otherwise the
+ *   embedded-scheduler fix would be bypassed by an instant fleet re-claim.
+ *   And a task is hidden from the runner that just capacity-refused it for
+ *   ~2min (`opts.runnerId`), so the same still-full runner cannot re-claim
+ *   within milliseconds; every other runner still sees it.
+ ***/
+describe("scanClaimableTasks backoff + refusing-runner hide (task 3b82f6ae)", () => {
+	const NOW = Date.parse("2026-11-23T12:00:00.000Z");
+	const iso = (ms) => new Date(ms).toISOString();
+	const agent = { id: "s1", name: "S1", type: "agent" };
+	const project = { id: "p1", name: "p1", cwd: "/tmp", stages: [{ ...agent }] };
+
+	function deps(tasks) {
+		return {
+			projectStore: { listProjects: () => [project] },
+			taskStore: {
+				listTasks: () => tasks,
+				isTaskBlocked: () => ({ blocked: false }),
+			},
+			claimStore: new ClaimStore({ stateFile: tmpClaimState() }),
+		};
+	}
+	const t = (id, over = {}) => ({
+		id,
+		status: "in_stage",
+		currentStageId: "s1",
+		updatedAt: iso(NOW - 60_000),
+		...over,
+	});
+
+	test("a backed-off in_stage task is not offered until the delay elapses", () => {
+		const backedOff = t("t-backed-off", {
+			consecutiveResumes: 3,
+			consecutiveResumeStage: "s1",
+			lastResumedAt: iso(NOW - 1_000), // 30s backoff, 29s remaining
+		});
+		expect(scanClaimableTasks(deps([backedOff]), { now: NOW }).map((c) => c.taskId)).toEqual([]);
+		// A task below the streak threshold is never delayed.
+		const early = t("t-early", {
+			consecutiveResumes: 2,
+			consecutiveResumeStage: "s1",
+			lastResumedAt: iso(NOW - 1_000),
+		});
+		expect(scanClaimableTasks(deps([early]), { now: NOW }).map((c) => c.taskId)).toEqual(["t-early"]);
+		// Once 30s have passed since the last resume, the task is offered again.
+		expect(
+			scanClaimableTasks(deps([{ ...backedOff, lastResumedAt: iso(NOW - 31_000) }]), { now: NOW }).map(
+				(c) => c.taskId,
+			),
+		).toEqual(["t-backed-off"]);
+		// Backoff applies with no injected clock too (wall clock path).
+		expect(
+			scanClaimableTasks(deps([t("t-now", {
+				consecutiveResumes: 3,
+				consecutiveResumeStage: "s1",
+				lastResumedAt: iso(Date.now() - 1_000),
+			})])).map((c) => c.taskId),
+		).toEqual([]);
+	});
+
+	test("a task is hidden from the refusing runner for ~2min, visible to others", () => {
+		const refused = t("t-refused", {
+			lastCapacityRefusal: { runnerId: "r-full", at: iso(NOW - 1_000) },
+		});
+		// The still-full runner does not see it…
+		expect(
+			scanClaimableTasks(deps([refused]), { now: NOW, runnerId: "r-full" }).map((c) => c.taskId),
+		).toEqual([]);
+		// …every other runner (and a scan with no runner id) still does.
+		expect(
+			scanClaimableTasks(deps([refused]), { now: NOW, runnerId: "r-other" }).map((c) => c.taskId),
+		).toEqual(["t-refused"]);
+		expect(scanClaimableTasks(deps([refused]), { now: NOW }).map((c) => c.taskId)).toEqual([
+			"t-refused",
+		]);
+		// After the hide window the refusing runner sees it again.
+		expect(
+			scanClaimableTasks(deps([refused]), {
+				now: NOW + CAPACITY_REFUSAL_HIDE_MS + 1,
+				runnerId: "r-full",
+			}).map((c) => c.taskId),
+		).toEqual(["t-refused"]);
+	});
+
+	test("backoff and hide compose: a backed-off task stays hidden from everyone until the delay", () => {
+		const both = t("t-both", {
+			consecutiveResumes: 4, // 60s backoff
+			consecutiveResumeStage: "s1",
+			lastResumedAt: iso(NOW - 1_000),
+			lastCapacityRefusal: { runnerId: "r-full", at: iso(NOW - 500) },
+		});
+		expect(scanClaimableTasks(deps([both]), { now: NOW, runnerId: "r-full" })).toEqual([]);
+		expect(scanClaimableTasks(deps([both]), { now: NOW, runnerId: "r-other" })).toEqual([]);
+		expect(
+			scanClaimableTasks(deps([{ ...both, lastResumedAt: iso(NOW - 61_000) }]), {
+				now: NOW,
+				runnerId: "r-other",
+			}).map((c) => c.taskId),
+		).toEqual(["t-both"]);
+		// Hide window expired but backoff still running → still hidden from the refuser only.
+		expect(
+			scanClaimableTasks(deps([{ ...both, lastResumedAt: iso(NOW - 61_000) }]), {
+				now: NOW + CAPACITY_REFUSAL_HIDE_MS + 1,
+				runnerId: "r-full",
+			}).map((c) => c.taskId),
+		).toEqual(["t-both"]);
 	});
 });

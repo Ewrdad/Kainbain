@@ -17,7 +17,9 @@ import { sortCentralQueue } from './sortCentralQueue.js';
  * MARK: findNextCandidateTask
  * @description Discovers the next task to run across ALL projects from the one
  *   central queue (see docs/EngineDetails/TaskQueueing.md):
- *   Rule 0: Interrupted-but-resumable tasks first (oldest interruption first).
+ *   Rule 0: Interrupted-but-resumable tasks first (oldest interruption first;
+ *     a task+stage inside its task-3b82f6ae re-dispatch backoff window is
+ *     skipped until the delay elapses, so fresh work can win instead).
  *   Rule 1: Follow-on from just-completed task — a single-use pass that is
  *     withheld when other candidates have already waited past the starvation
  *     ceiling, so a churning pipeline cannot indefinitely pre-empt older
@@ -35,10 +37,12 @@ import { sortCentralQueue } from './sortCentralQueue.js';
  * @param {Object} [opts]
  * @param {boolean} [opts.ignoreTrip=false] - Admit a candidate despite the trip (canary probe).
  * @param {Object} [opts.queue] - Central-queue policy overrides (`order`, `maxWaitMs`, `now`); omitted = config defaults.
+ * @param {number} [opts.now] - Clock override in ms since epoch, threaded to the Rule-0 backoff check (task 3b82f6ae; tests); falls back to `queue.now`, else Date.now().
+ * @param {boolean} [opts.ignoreBackoff=false] - Rule 0 also returns candidates inside their task-3b82f6ae backoff window (pending-work checks such as the queue-empty push re-check); dispatch paths must NOT set this.
  * @returns {Object|null}
   * @example findNextCandidateTask(store) => { task, projectId, … } | null
  ***/
-export function findNextCandidateTask(store, { ignoreTrip = false, queue = null } = {}) {
+export function findNextCandidateTask(store, { ignoreTrip = false, queue = null, now = null, ignoreBackoff = false } = {}) {
 	// Tier-5 containment gate: containment stops dispatch before any candidate
 	// scan so even a direct caller (route, test, reconcile) cannot bypass it.
 	if (!ignoreTrip && isTripped(store)) {
@@ -51,7 +55,20 @@ export function findNextCandidateTask(store, { ignoreTrip = false, queue = null 
 		return null;
 	}
 	// Rule 0: resume what an interruption left behind, ahead of everything.
-	const resumed = findResumedCandidate(store);
+	// Task 3b82f6ae (S1): candidates inside their re-dispatch backoff window
+	// are skipped inside findResumedCandidate, so fresh work can win here.
+	const nowMs =
+		typeof now === "number" && Number.isFinite(now)
+			? now
+			: typeof queue?.now === "number" && Number.isFinite(queue.now)
+				? queue.now
+				: undefined;
+	const resumed = findResumedCandidate(
+		store,
+		nowMs === undefined
+			? { ignoreBackoff }
+			: { now: nowMs, ignoreBackoff },
+	);
 	if (resumed) return resumed;
 
 	const candidates = [];
