@@ -1,0 +1,38 @@
+[
+  {
+    "runnerId": "local-alpha",
+    "runnerVersion": "0.1.0",
+    "recommendedVersion": "0.1.0",
+    "availableVersions": [
+      "0.1.0"
+    ],
+    "updateAvailable": false,
+    "pendingCommands": [],
+    "updateStatus": null,
+    "buildSha": "fbcf8442ee031e2edbc9f0b30195afa410296cf3"
+  },
+  {
+    "runnerId": "local-bravo",
+    "runnerVersion": "0.1.0",
+    "recommendedVersion": "0.1.0",
+    "availableVersions": [
+      "0.1.0"
+    ],
+    "updateAvailable": false,
+    "pendingCommands": [],
+    "updateStatus": null,
+    "buildSha": "fbcf8442ee031e2edbc9f0b30195afa410296cf3"
+  },
+  {
+    "runnerId": "server2-alpha",
+    "runnerVersion": "0.1.0",
+    "recommendedVersion": "0.1.0",
+    "availableVersions": [
+      "0.1.0"
+    ],
+    "updateAvailable": false,
+    "pendingCommands": [],
+    "updateStatus": null,
+    "buildSha": null
+  }
+]

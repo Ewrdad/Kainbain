@@ -1,0 +1,4 @@
+# runner convergence verdict — 2026-11-23T11:46:13Z — fix commit 046a63917d52181d00efbd4a6624bd1c53131fa4
+# converged = runnerVersion >= 0.2.x AND running build sha contains the fix commit
+NOT-CONVERGED local-alpha — runnerVersion 0.1.0 is below 0.2.0; running build fbcf8442ee031e2edbc9f0b30195afa410296cf3 does not contain the deterministic-git-failure fix commit
+NOT-CONVERGED server2-alpha — runnerVersion 0.1.0 is below 0.2.0; no build sha reported (or unknown locally) — cannot verify the fix is in the running build
