@@ -67,6 +67,26 @@ post-converge interrupts only — bare → ~0; reasons name Causes 1/3/4;
 deterministic commit failures arrive as FAILED + `gitFailure` with NO
 interrupt row. Record backend build + sibling-fix landings as confounds.
 
+## Watch note 2026-11-24T02:15Z (AFTER observation, still pre-rollout; frozen numbers above stand)
+
+- Snapshot `runners-after/…T021506Z.*` (02:15:06Z): still `0.1.0` everywhere,
+  knob `0.1.0`, `availableVersions ["0.1.0"]`, no nudges — NOT-CONVERGED;
+  backend build 637, deployed `2026-11-24T01:05:11Z` (publish-only, `headSha
+  e85d88a3…`, no restart). Tag/`version.json` re-verified (`runner-v0.2.1`
+  contains `046a6391`; HEAD `runner/version.json` reads `0.2.1` after merge
+  `cd9b26a2`).
+- AFTER recount `recount-after-*` (02:15:08–37Z): 149 interrupts (103/46),
+  70 reasoned (all cap), 79 bare, 35 post-`finished` (22 tasks), 49 escalated,
+  0 server-restart, 0 `gitFailure`. Total unchanged due to history churn;
+  7 net-new post-`finished` rows vs BEFORE — 5× Cause 2 413s (`7f6220c3`
+  incl. 2026-11-24T01:26:44Z), 1× covered MERGE_CONFLICT (`44125086`
+  13:01:05Z), 1× evidence gap (`7f347a7a` 12:16:09Z). See `RECOUNT-AFTER.md`
+  + `E5-SWEEP.md` §addendum. No new Cause-5 ticket.
+- Branch merged `main` (`cd9b26a2`, 0-behind, no conflicts). Kit suite
+  `95 passed, 0 failed`. See `RUN-LOG.md` 2026-11-24 entry.
+- S5 gates all **BLOCKED (not converged)** — do not quote `recount-after-*`
+  as rollout proof; the gated AFTER still waits on the knob raise.
+
 ## Watch note 2026-11-23T14:31–14:45Z (non-canonical; frozen numbers above stand)
 
 - Snapshot `runners-now/…T143103Z.*`: still `0.1.0` everywhere, knob `0.1.0`,

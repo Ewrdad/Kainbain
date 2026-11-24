@@ -1,0 +1,183 @@
+## E5 sweep host=local work_root=/home/server2/.kainbain/runner-work unit=kainbain-runner-local-alpha origin_repo=/home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c since=2026-11-19 at 2026-11-24T02:15:48Z
+== task kb-7f6220c3
+-- worktrees under /home/server2/.kainbain/runner-work:
+   worktree: /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21 (branch: kb/7f6220c3-c536-489c-b952-9858aae9ef21)
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     10a9f7c8 2026-11-23 14:28:36 +0000 Merge remote-tracking branch 'origin/kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7' into kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7
+     stage-output-commit: PRESENT in worktree HEAD history (subject ^kb/7f6220c3.*stage output)
+   origin ref: refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     10a9f7c8 2026-11-23 14:28:36 +0000 Merge remote-tracking branch 'origin/kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7' into kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+-- origin branch refs in /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (durable, survives worktree reaping):
+   refs/heads/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     10a9f7c8 2026-11-23 14:28:36 +0000 Merge remote-tracking branch 'origin/kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7' into kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7
+     356df2ce 2026-11-23 14:28:35 +0000 kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 stage-1793609583261: Runner server2-alpha stage output
+     5b53cbcd 2026-11-23 13:37:56 +0000 S1 cleanup stage: harden re-dispatch backoff, co-locate unit tests, verify red/green
+     392563df 2026-11-23 12:47:03 +0000 kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 5: Runner local-alpha stage output
+     stage-output-commit: PRESENT on refs/heads/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+   refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     10a9f7c8 2026-11-23 14:28:36 +0000 Merge remote-tracking branch 'origin/kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7' into kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7
+     356df2ce 2026-11-23 14:28:35 +0000 kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 stage-1793609583261: Runner server2-alpha stage output
+     5b53cbcd 2026-11-23 13:37:56 +0000 S1 cleanup stage: harden re-dispatch backoff, co-locate unit tests, verify red/green
+     392563df 2026-11-23 12:47:03 +0000 kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 5: Runner local-alpha stage output
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+-- journal (kainbain-runner-local-alpha, since 2026-11-19) lines matching 7f6220c3:
+   (no matching journal lines)
+VERDICT kb-7f6220c3: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+== task kb-44125086
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (durable, survives worktree reaping):
+   refs/heads/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b
+     e0cde7ef 2026-11-23 13:01:04 +0000 kb/44125086-d5aa-4bd3-a6c7-04eef809f59b stage-1792362077711: Runner server2-alpha stage output
+     65580333 2026-11-23 11:14:07 +0000 Merge kb/78eac844-250a-44d1-810e-6f047eb5a59e into main: Make in-assignment transient backend errors non-fatal to the runner
+     ca37923c 2026-11-23 11:13:52 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1787744723298: Runner server2-alpha stage output
+     c7b3633c 2026-11-23 11:11:16 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1792767028679: Runner server2-alpha stage output
+     48621808 2026-11-23 11:08:26 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1793609583261: Runner server2-alpha stage output
+     65b518e4 2026-11-23 11:06:53 +0000 Merge kb/05b5d046-9480-40e3-8ec9-c06596c51acc into main: Regression-pin boot reconcile so server-restart orphans stay at zero
+     c9b221f1 2026-11-23 11:06:38 +0000 kb/05b5d046-9480-40e3-8ec9-c06596c51acc stage-1787744723298: Runner server2-alpha stage output
+     8bab1871 2026-11-23 10:45:46 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1791398677900: Runner server2-alpha stage output
+     stage-output-commit: PRESENT on refs/heads/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b (subject ^kb/44125086.*stage output)
+   refs/remotes/origin/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b
+     a72eb18e 2026-11-23 13:07:49 +0000 kb/44125086-d5aa-4bd3-a6c7-04eef809f59b stage-1792362077711: Runner local-alpha stage output
+     8b4bfceb 2026-11-22 18:17:39 +0000 kb/44125086-d5aa-4bd3-a6c7-04eef809f59b stage-1792362077711: Runner local-alpha stage output
+     7ac148ce 2026-11-21 09:38:57 +0000 Merge kb/1cae113f-43ab-4613-801b-2de6297637fd into main: Surface runner git/commit and pre-commit hook failures clearly in the UI
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b (subject ^kb/44125086.*stage output)
+-- journal (kainbain-runner-local-alpha, since 2026-11-19) lines matching 44125086:
+   (no matching journal lines)
+VERDICT kb-44125086: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+== task kb-7f347a7a
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (durable, survives worktree reaping):
+   refs/heads/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219
+     fbc0457e 2026-11-23 12:57:25 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     ea02dc17 2026-11-22 18:17:38 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     7ac148ce 2026-11-21 09:38:57 +0000 Merge kb/1cae113f-43ab-4613-801b-2de6297637fd into main: Surface runner git/commit and pre-commit hook failures clearly in the UI
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     stage-output-commit: PRESENT on refs/heads/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 (subject ^kb/7f347a7a.*stage output)
+   refs/remotes/origin/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219
+     fbc0457e 2026-11-23 12:57:25 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     ea02dc17 2026-11-22 18:17:38 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     7ac148ce 2026-11-21 09:38:57 +0000 Merge kb/1cae113f-43ab-4613-801b-2de6297637fd into main: Surface runner git/commit and pre-commit hook failures clearly in the UI
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 (subject ^kb/7f347a7a.*stage output)
+-- journal (kainbain-runner-local-alpha, since 2026-11-19) lines matching 7f347a7a:
+   (no matching journal lines)
+VERDICT kb-7f347a7a: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+== task kb-db49d6c6
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (durable, survives worktree reaping):
+   refs/heads/kb/db49d6c6-bdd5-4600-aaea-15a71042ae20
+     1cee2608 2026-11-22 06:22:20 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1794594754686: Runner server2-alpha stage output
+     cf4209a1 2026-11-21 06:09:52 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1787744723298: Runner local-alpha stage output
+     5500fce1 2026-11-21 06:01:57 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1793806729200: Runner local-alpha stage output
+     18ebd988 2026-11-21 06:01:27 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1791398677900: Runner server2-alpha stage output
+     68191731 2026-11-21 05:29:06 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 5: Runner server2-alpha stage output
+     db7b5629 2026-11-21 05:15:50 +0000 Merge remote-tracking branch 'origin/main' into kb/db49d6c6-bdd5-4600-aaea-15a71042ae20
+     96d94246 2026-11-20 22:07:54 +0000 Merge kb/158394ab-3b43-4813-b94a-32d772a79972 into main: The alias screen condenses more than it should ![image.png](assets/image.png) As we can see here there are models names
+     bf037489 2026-11-20 22:07:34 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1787744723298: Runner server2-alpha stage output
+     stage-output-commit: PRESENT on refs/heads/kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 (subject ^kb/db49d6c6.*stage output)
+   refs/remotes/origin/kb/db49d6c6-bdd5-4600-aaea-15a71042ae20
+     1cee2608 2026-11-22 06:22:20 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1794594754686: Runner server2-alpha stage output
+     cf4209a1 2026-11-21 06:09:52 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1787744723298: Runner local-alpha stage output
+     5500fce1 2026-11-21 06:01:57 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1793806729200: Runner local-alpha stage output
+     18ebd988 2026-11-21 06:01:27 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 stage-1791398677900: Runner server2-alpha stage output
+     68191731 2026-11-21 05:29:06 +0000 kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 5: Runner server2-alpha stage output
+     db7b5629 2026-11-21 05:15:50 +0000 Merge remote-tracking branch 'origin/main' into kb/db49d6c6-bdd5-4600-aaea-15a71042ae20
+     96d94246 2026-11-20 22:07:54 +0000 Merge kb/158394ab-3b43-4813-b94a-32d772a79972 into main: The alias screen condenses more than it should ![image.png](assets/image.png) As we can see here there are models names
+     bf037489 2026-11-20 22:07:34 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1787744723298: Runner server2-alpha stage output
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 (subject ^kb/db49d6c6.*stage output)
+-- journal (kainbain-runner-local-alpha, since 2026-11-19) lines matching db49d6c6:
+   (no matching journal lines)
+VERDICT kb-db49d6c6: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+== task kb-158394ab
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (durable, survives worktree reaping):
+   refs/heads/kb/158394ab-3b43-4813-b94a-32d772a79972
+     5fd9d271 2026-11-21 22:12:44 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1794594754686: Runner server2-alpha stage output
+     bf037489 2026-11-20 22:07:34 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1787744723298: Runner server2-alpha stage output
+     c22341b6 2026-11-20 21:58:31 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 7: harden alias screen stage — full-width verified headlessly, reasoning-suffix test fixed, kept-model note wraps
+     6c40ec59 2026-11-20 21:27:11 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 5: Runner local-alpha stage output
+     60308657 2026-11-20 18:43:14 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1787744723298: Runner server2-alpha stage output
+     71adf67f 2026-11-20 18:20:09 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 6: harden alias collapsed-row components (fail-safe props) + tests
+     c9517803 2026-11-20 17:48:39 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 5: Runner local-alpha stage output
+     7fc1ab94 2026-11-20 17:12:59 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1790707081501: Runner local-alpha stage output
+     stage-output-commit: PRESENT on refs/heads/kb/158394ab-3b43-4813-b94a-32d772a79972 (subject ^kb/158394ab.*stage output)
+   refs/remotes/origin/kb/158394ab-3b43-4813-b94a-32d772a79972
+     5fd9d271 2026-11-21 22:12:44 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1794594754686: Runner server2-alpha stage output
+     bf037489 2026-11-20 22:07:34 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1787744723298: Runner server2-alpha stage output
+     c22341b6 2026-11-20 21:58:31 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 7: harden alias screen stage — full-width verified headlessly, reasoning-suffix test fixed, kept-model note wraps
+     6c40ec59 2026-11-20 21:27:11 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 5: Runner local-alpha stage output
+     60308657 2026-11-20 18:43:14 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1787744723298: Runner server2-alpha stage output
+     71adf67f 2026-11-20 18:20:09 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 6: harden alias collapsed-row components (fail-safe props) + tests
+     c9517803 2026-11-20 17:48:39 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 5: Runner local-alpha stage output
+     7fc1ab94 2026-11-20 17:12:59 +0000 kb/158394ab-3b43-4813-b94a-32d772a79972 stage-1790707081501: Runner local-alpha stage output
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/158394ab-3b43-4813-b94a-32d772a79972 (subject ^kb/158394ab.*stage output)
+-- journal (kainbain-runner-local-alpha, since 2026-11-19) lines matching 158394ab:
+   (no matching journal lines)
+VERDICT kb-158394ab: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+== task kb-1cae113f
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (durable, survives worktree reaping):
+   refs/heads/kb/1cae113f-43ab-4613-801b-2de6297637fd
+     9fb95cd4 2026-11-22 09:52:37 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1794594754686: Runner server2-alpha stage output
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     bb996858 2026-11-21 08:32:48 +0000 Merge origin/main into kb/1cae113f-43ab-4613-801b-2de6297637fd: reconcile with db49d6c6 recovery bypass
+     04927470 2026-11-21 08:29:52 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     stage-output-commit: PRESENT on refs/heads/kb/1cae113f-43ab-4613-801b-2de6297637fd (subject ^kb/1cae113f.*stage output)
+   refs/remotes/origin/kb/1cae113f-43ab-4613-801b-2de6297637fd
+     9fb95cd4 2026-11-22 09:52:37 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1794594754686: Runner server2-alpha stage output
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     bb996858 2026-11-21 08:32:48 +0000 Merge origin/main into kb/1cae113f-43ab-4613-801b-2de6297637fd: reconcile with db49d6c6 recovery bypass
+     04927470 2026-11-21 08:29:52 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/1cae113f-43ab-4613-801b-2de6297637fd (subject ^kb/1cae113f.*stage output)
+-- journal (kainbain-runner-local-alpha, since 2026-11-19) lines matching 1cae113f:
+   (no matching journal lines)
+VERDICT kb-1cae113f: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+## E5 sweep done: 6 task(s), 0 probe failure(s) at 2026-11-24T02:15:49Z

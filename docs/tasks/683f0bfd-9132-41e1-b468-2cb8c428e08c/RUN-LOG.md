@@ -135,6 +135,46 @@ record for this branch (newer BEFORE recount, fuller E5, fresh 12:22Z snapshot).
     **no new Cause-5 code ticket** (no uncovered commit-loop class found).
   - Observe-only held: zero knob changes, restarts, updates, reaps, re-runs.
 
+## 2026-11-24 run diary (UTC, post-merge + AFTER observation)
+
+- **02:15–02:16** — Branch synced with `origin/main` (merge `cd9b26a2`, 34 ahead /
+  16 behind → 0 behind, no conflicts, ort strategy). Diff brings S1 cap-refusal
+  counting + re-dispatch backoff (`e85d88a3`), S4 transient tolerance (`65580333`),
+  and S7 boot-reconcile (`65b518e4`) into this branch; no product-code delta beyond
+  those merges. Observe-only held.
+- **02:15:06** — Fresh read-only snapshot (`runners-after/runners-20261124T021506Z.*`,
+  `verdict-20261124T021506Z.{json,txt}`): **still `0.1.0` everywhere, knob `0.1.0`,
+  `availableVersions ["0.1.0"]`, no nudges** — NOT-CONVERGED both named runners
+  (local-alpha build `fbcf8442` lacks `046a6391`; server2-alpha no sha). Backend
+  build 637, deployed `2026-11-24T01:05:11Z` (publish-only, `headSha
+  e85d88a3…`, "Publish-only deploy (registry + dist) complete"; no restart —
+  Cause 6 shut). Tag re-verified: `runner-v0.2.0` NO, `runner-v0.2.1` YES,
+  `main` YES for `046a6391`; `runner/version.json` at HEAD now `0.2.1`.
+  `--require-converged` would exit 3. AFTER stays blocked on the human
+  PROD-ACTION (raise knob to `0.2.1`).
+- **02:15:08–37** — AFTER recount (`fleet-recount.sh after`, 81/81 tasks, 0 failed
+  → `recount-after-table.json`): 149 runner interrupts (103 local / 46 server2),
+  70 reasoned (all `Runner workdir unavailable:` cap strings, 0 non-cap), 79 bare,
+  118 ≤15 s (median 4 s), 23 ≥2 min, 35 post-`finished` (22 tasks), 49 escalated,
+  0 server-restart, 125 auto-resumed, 0 `gitFailure`, per-runner 103/46. Total held
+  at 149 (BEFORE 149) due to history churn — not a regression; §4.2 timestamp
+  gating still required. See `RECOUNT-AFTER.md` + `recount-after-*`.
+- **02:15:48–56** — E5 sweep (server2 host local probe, since ssh `server2`
+  needs `~/.passwrd` which is absent): `e5-sweep.sh local 7f6220c3 44125086
+  7f347a7a db49d6c6 158394ab 1cae113f` + `E5_WORK_ROOT/…/mirrors/Kainbain …
+  e5-sweep.sh local 7f6220c3 44125086 7f347a7a` → all coarse PRESENT
+  (`raw/e5-sweep-after-local.txt`, `raw/e5-sweep-after-server2-local.txt`;
+  `raw/e5-sweep-after-server2.txt` is the password-guard stub). Journal
+  window-match re-classifies the 7 new post-`finished` rows (35 total):
+  5× Cause 2 413 (`7f6220c3` 11:48–12:12 + 01:26:44), 1× covered MERGE_CONFLICT
+  (`44125086` 13:01:05), 1× evidence gap (`7f347a7a` 12:16:09, local-alpha host
+  unreachable from server2). Ticket decision re-confirmed: **no new Cause-5
+  code ticket**. Full table in `RECOUNT-AFTER.md` §E5.
+- **02:16** — Kit suite `bin/tests/run-tests.sh` → **95 passed, 0 failed**
+  (now 95 checks; 24 post-`e85d88a3` suite expanded). BEFORE-table cross-checks
+  (T1/T10) still reproduce `recount-before-table.json` exactly.
+- Observe-only held: zero knob changes, restarts, updates, reaps, re-runs.
+
 ## Effective survey decisions (answers + live-data overrides)
 
 | Q | Answer / decision |
