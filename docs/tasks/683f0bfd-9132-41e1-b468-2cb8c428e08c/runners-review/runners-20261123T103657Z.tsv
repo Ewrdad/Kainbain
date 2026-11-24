@@ -1,0 +1,10 @@
+runnerId	status	runnerVersion	buildSha	recommended	availableVersions	updateAvailable	pendingCommands	lastSeenAt
+local-1	revoked	0.1.0		0.1.0	0.1.0	false	0	
+local-pi	revoked	0.1.0		0.1.0	0.1.0	false	0	
+local-muse	revoked	0.1.0		0.1.0	0.1.0	false	0	
+local-agy	revoked	0.1.0		0.1.0	0.1.0	false	0	
+local-vibe	revoked	0.1.0		0.1.0	0.1.0	false	0	
+local-alpha	active	0.1.0	fbcf8442ee031e2edbc9f0b30195afa410296cf3	0.1.0	0.1.0	false	0	2026-11-23T10:37:00.733Z
+local-bravo	active	0.1.0	fbcf8442ee031e2edbc9f0b30195afa410296cf3	0.1.0	0.1.0	false	0	2026-11-23T10:37:07.901Z
+server2-alpha	active	0.1.0		0.1.0	0.1.0	false	0	2026-11-23T10:37:06.376Z
+test-fleet-muse	revoked	test		0.1.0	0.1.0	false	0	
