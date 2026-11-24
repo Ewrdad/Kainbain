@@ -59,7 +59,10 @@ restart/crash recoveries, "Auto-resumed after runner interrupt —
 prioritised in queue (runner {id}, reason: {reason})" for runner-path
 resumes, and "Deploy reconcile: no fresh last-result.json — resuming
 from …" for deploy reconciles. Rows written before S6 keep the old
-single string.
+single string. Route selection reads the in-memory `interruptedBy` marker
+(stamped at runner interrupt, consumed by every resume/abort/retry, never
+written to task.md): after a genuine restart there is no marker, so the
+resume always reads as the restart route it is.
 
 Deploy freshness has two proofs: a result whose `deployAttemptId` matches the
 task's marker (the engine exports it to `deploy.sh` as

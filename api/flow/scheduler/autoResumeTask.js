@@ -21,7 +21,10 @@ import { resolveResumeLabel } from './resolveResumeLabel.js';
  *   non-interrupted task is returned untouched. The history label names the
  *   recovery route (see `resolveResumeLabel`): server restart for genuine
  *   reconcile recoveries, runner interrupt (with runner id + reason) for
- *   runner-path resumes.
+ *   runner-path resumes. The runner marker is consumed (deleted) once the
+ *   label is resolved: the interruption is over, so a later crash-path
+ *   resume in this same process must read as a restart, not as this old
+ *   runner death.
  * @param {Object} store
  * @param {string} projectId
  * @param {string} taskId
@@ -45,8 +48,11 @@ export function autoResumeTask(store, projectId, taskId, projectCwd, { reason } 
 	}
 	// S6: the label names the actual recovery route — server restart for
 	// genuine reconcile recoveries, runner interrupt (with id + reason) for
-	// runner-path resumes — instead of one string for both.
+	// runner-path resumes — instead of one string for both. The marker is
+	// consumed once the label is resolved: it names the CURRENT interruption
+	// only, and the interruption ends with this flip.
 	const historyAction = resolveResumeLabel(task);
+	delete task.interruptedBy;
 	if (typeof store._recordHistory === "function") {
 		try {
 			store._recordHistory(task, historyAction, task.updatedAt);

@@ -531,6 +531,10 @@ export function summarizeStageRuns(entries = [], stages = []) {
       }
     }
     const row = { ...latest, stage: displayLabel };
+    // A re-summarized row already carries counts: drop them first so a group
+    // below the badge thresholds never inherits a stale badge.
+    delete row.tryCount;
+    delete row.resumeCount;
     // S6: infra-resume rows are re-parks, not attempts — they count into
     // `resumeCount`, never into `tryCount`, so the badge shows real tries
     // with resumes shown separately ("Tried 2 times, 4 infra resumes").
@@ -561,6 +565,7 @@ export function summarizeStageRuns(entries = [], stages = []) {
  * @example formatTryCount({ tryCount: 1 }) => null
  * @example formatTryCount({ stage: 'Plan' }) => null
  * @example formatTryCount({ tryCount: 500 }) => 'Tried 99 times'
+ * @example formatTryCount({ tryCount: 1.5 }) => null
  * @example formatTryCount({ tryCount: 2, resumeCount: 4 }) => 'Tried 2 times, 4 infra resumes'
  * @example formatTryCount({ resumeCount: 3 }) => '3 infra resumes'
  * @param {Object} [entry] - A display timeline row (see summarizeStageRuns).
@@ -569,9 +574,12 @@ export function summarizeStageRuns(entries = [], stages = []) {
 export function formatTryCount(entry) {
   const tries = Number(entry?.tryCount);
   const resumes = Number(entry?.resumeCount);
+  // Floor before the threshold, like resumes below: a fractional 1.x is one
+  // try, not two — without this it would render the nonsense "Tried 1 times".
+  const wholeTries = Number.isFinite(tries) ? Math.floor(tries) : 0;
   const tryLabel =
-    Number.isFinite(tries) && tries > 1
-      ? `Tried ${Math.min(Math.floor(tries), STAGE_RUN_TRY_COUNT_CAP)} times`
+    wholeTries > 1
+      ? `Tried ${Math.min(wholeTries, STAGE_RUN_TRY_COUNT_CAP)} times`
       : null;
   const resumeTotal = Number.isFinite(resumes) ? Math.floor(resumes) : 0;
   const resumeLabel =

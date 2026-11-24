@@ -1438,6 +1438,48 @@ describe('taskFormatters', () => {
       expect(result[0].tryCount).toBe(2);
       expect(result[0].resumeCount).toBe(1);
     });
+
+    it('matches Resumed rows with stray whitespace in the status', () => {
+      const entries = [
+        { stage: 'Plan', status: '  resumed  ', timestamp: '2026-01-02T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result[0].tryCount).toBeUndefined();
+      expect(result[0].resumeCount).toBe(1);
+    });
+
+    it('recomputes counts from the rows it sees, dropping stale ones', () => {
+      // A row that already carries counts (re-summarized, or hand-built) must
+      // never keep a badge its group does not earn: one real try earns none.
+      const once = summarizeStageRuns(
+        [
+          { stage: 'Plan', status: 'Failed', timestamp: '2026-01-02T00:00:00.000Z' },
+          { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+        ],
+        [],
+      );
+      expect(once[0].tryCount).toBe(2);
+      const twice = summarizeStageRuns(once, []);
+      expect(twice).toHaveLength(1);
+      expect(twice[0].tryCount).toBeUndefined();
+      expect(twice[0].resumeCount).toBeUndefined();
+
+      const stale = summarizeStageRuns(
+        [
+          {
+            stage: 'Plan',
+            status: 'Moved',
+            timestamp: '2026-01-01T00:00:00.000Z',
+            tryCount: 9,
+            resumeCount: 9,
+          },
+        ],
+        [],
+      );
+      expect(stale[0].tryCount).toBeUndefined();
+      expect(stale[0].resumeCount).toBeUndefined();
+    });
   });
 
   describe('formatTryCount', () => {
@@ -1455,6 +1497,12 @@ describe('taskFormatters', () => {
       expect(formatTryCount({ tryCount: 99 })).toBe('Tried 99 times');
       expect(formatTryCount({ tryCount: 2.9 })).toBe('Tried 2 times');
       expect(formatTryCount({ tryCount: '4' })).toBe('Tried 4 times');
+      // Flooring happens before the threshold: 1.x is one try, not two, so
+      // no badge — never the nonsense "Tried 1 times".
+      expect(formatTryCount({ tryCount: 1.5 })).toBeNull();
+      expect(formatTryCount({ tryCount: 1.9 })).toBeNull();
+      expect(formatTryCount({ tryCount: -3 })).toBeNull();
+      expect(formatTryCount({ resumeCount: -2 })).toBeNull();
     });
 
     it('shows infra resumes alongside real tries (S6 show-both contract)', () => {
@@ -1492,6 +1540,7 @@ describe('taskFormatters', () => {
       expect(isInfraResumeRow({ status: 'Resumed' })).toBe(true);
       expect(isInfraResumeRow({ status: 'resumed' })).toBe(true);
       expect(isInfraResumeRow({ status: 'RESUMED' })).toBe(true);
+      expect(isInfraResumeRow({ status: '  resumed  ' })).toBe(true);
       expect(isInfraResumeRow({ status: 'Failed' })).toBe(false);
       expect(isInfraResumeRow({ status: 'Retrying' })).toBe(false);
       expect(isInfraResumeRow({ status: 'Moved' })).toBe(false);

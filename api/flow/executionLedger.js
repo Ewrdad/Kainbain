@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import { git } from "../git.js";
 import { createLogProcessor } from "../agent/logStream/logProcessor.js";
 import { attachAttestationToEntry } from "../../shared/stageAttestation.js";
+import { cleanSingleLineText } from "./cleanSingleLineText.js";
 
 /***
  * MARK: MAX_RUNNER_INTERRUPTS
@@ -653,24 +654,35 @@ export class ExecutionLedger {
 			task.runnerInterruptStage = stageId;
 			task.runnerInterruptCount = interruptCount;
 			task.status = "interrupted";
-			const cleanReason =
-				typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 500) : "";
+			// Runner-supplied text lands in single-line history strings here
+			// and in the resume label, so it collapses to one bounded line
+			// first: an embedded newline would otherwise drop (or forge)
+			// history lines on the task.md round-trip.
+			const cleanReason = cleanSingleLineText({ text: reason });
+			const cleanRunnerId = cleanSingleLineText({ text: runnerId });
+			// The execution id also arrives in the request body and reaches
+			// the history line below, so it gets the same treatment (a
+			// no-lease interrupt never validates it against a hold).
+			const cleanExecutionId = cleanSingleLineText({
+				text: executionId ?? hold?.executionId ?? "?",
+			});
 			// S6: structured last-interrupt marker. `autoResumeTask` reads it
 			// (via `resolveResumeLabel`) to name the runner route in history;
 			// the crash path stamps nothing, so its resumes keep the
 			// server-restart string. In-memory only, like the G7 counters
 			// above — a restart wipes it, which correctly re-labels a
-			// post-restart resume as a restart recovery. Read-only at resume
-			// time; the next interrupt overwrites it and a stage completion
-			// clears it.
+			// post-restart resume as a restart recovery. Consumed (deleted)
+			// by every path out of `interrupted`, overwritten by the next
+			// interrupt, and cleared by stage completion — so it always
+			// names the CURRENT interruption, never a stale one.
 			task.interruptedBy = {
-				runnerId,
+				runnerId: cleanRunnerId,
 				reason: cleanReason,
 				at: new Date().toISOString(),
 			};
 			task?.history?.push({
 				timestamp: new Date().toISOString(),
-				action: `Runner ${runnerId} interrupted execution ${executionId ?? hold?.executionId ?? "?"} — lease dropped, re-queues as interrupted.${cleanReason ? ` Reason: ${cleanReason}` : ""}`,
+				action: `Runner ${cleanRunnerId || "?"} interrupted execution ${cleanExecutionId} — lease dropped, re-queues as interrupted.${cleanReason ? ` Reason: ${cleanReason}` : ""}`,
 			});
 			if (escalated) {
 				this.counters.interruptEscalations += 1;

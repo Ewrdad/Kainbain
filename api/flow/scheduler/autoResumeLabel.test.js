@@ -96,6 +96,40 @@ describe("resolveResumeLabel", () => {
 			RESTART_LABEL,
 		);
 	});
+
+	it("collapses marker text to one line, so history lines stay single-line", () => {
+		const task = interruptedTask({
+			interruptedBy: { runnerId: "  r-7\n", reason: "socket\nhangup\t-  retry" },
+		});
+		const label = resolveResumeLabel(task);
+		expect(label).toBe(`${RUNNER_BASE} (runner r-7, reason: socket hangup - retry)`);
+		expect(label).not.toMatch(/[\n\r\t]/);
+		// A forged second history line cannot survive the collapse.
+		expect(
+			resolveResumeLabel(
+				interruptedTask({
+					interruptedBy: { runnerId: "r-7", reason: "x\n- 2026-01-01: FAKE" },
+				}),
+			),
+		).toBe(`${RUNNER_BASE} (runner r-7, reason: x - 2026-01-01: FAKE)`);
+	});
+
+	it("caps an over-long reason instead of growing the label without bound", () => {
+		const label = resolveResumeLabel(
+			interruptedTask({
+				interruptedBy: { runnerId: "r-7", reason: "y".repeat(600) },
+			}),
+		);
+		expect(label).toBe(`${RUNNER_BASE} (runner r-7, reason: ${"y".repeat(500)})`);
+	});
+
+	it("reads a non-string runner id as the bare runner string (never undefined)", () => {
+		expect(
+			resolveResumeLabel(
+				interruptedTask({ interruptedBy: { runnerId: 7, reason: "socket hangup" } }),
+			),
+		).toBe(RUNNER_BASE);
+	});
 });
 
 describe("autoResumeTask label routes", () => {
@@ -151,6 +185,37 @@ describe("autoResumeTask label routes", () => {
 		expect(
 			runnerTask.timeline.find((e) => e.status === "Resumed")?.reason,
 		).toBe(`${RUNNER_BASE} (runner r-7, reason: socket hangup)`);
+	});
+
+	it("consumes the runner marker: the interruption ends with the flip", () => {
+		const task = interruptedTask({
+			interruptedBy: { runnerId: "r-7", reason: "socket hangup" },
+		});
+		const store = makeStore(task);
+		autoResumeTask(store, "p-1", "t-1", "/repo");
+		expect(task.interruptedBy).toBeUndefined();
+	});
+
+	it("reads a later crash-path resume as a restart, never as the old runner death", () => {
+		// Same-process sequence with no server restart in between: runner
+		// interrupt, auto-resume (consumes the marker), then a crash orphan
+		// collapses the task back to interrupted — the crash path stamps
+		// nothing, so the second resume must read as the restart route.
+		const task = interruptedTask({
+			interruptedBy: { runnerId: "r-7", reason: "socket hangup" },
+		});
+		const store = makeStore(task);
+		autoResumeTask(store, "p-1", "t-1", "/repo");
+		expect(task.status).toBe("in_stage");
+
+		task.status = "interrupted";
+		task.wasInterrupted = true;
+		autoResumeTask(store, "p-1", "t-1", "/repo");
+		expect(store._recordHistory).toHaveBeenLastCalledWith(
+			task,
+			RESTART_LABEL,
+			expect.any(String),
+		);
 	});
 
 	it("never rewrites already-written history rows (backward compat)", () => {
