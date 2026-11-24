@@ -111,3 +111,29 @@ passed), `npm run lint` (0 errors; touched-file warnings all pre-existing
 on untouched lines), `check:one-function` PASS (881 scanned),
 `check:jsdoc-example` PASS, `docs:check` PASS. No production files were
 changed in this re-run; only this §6 addendum was appended.
+
+## 7. Main-sync re-run (this stage)
+
+Branch was 34 commits behind `origin/main`. Merged `origin/main` in
+(commit `ae69004c`); one file conflicted:
+
+- `api/flow/executionLedger.js` — completion-clear site: merged `main`'s
+  capacity-refusal / resume-streak clears with S6's `interruptedBy` clear
+  (union of all `delete` lines, both comments kept). Interrupt-stamp site:
+  `main` side empty (base == main there); kept S6's `cleanSingleLineText`
+  sanitization plus the `task.interruptedBy = { runnerId, reason, at }`
+  stamp.
+
+`api/flow/scheduler/autoResumeTask.js` auto-merged: S6's
+`resolveResumeLabel(task)` + `delete task.interruptedBy` intact alongside
+main's S1 `consecutiveResumes` / `lastResumedAt` streak counting (they
+touch different lines; no semantic overlap). Only `resolveResumeLabel.js`
+in production code references either history string — main's new
+resume-backoff files do not parse the prefix (verified by grep), so the
+two-label contract is parser-safe.
+
+Re-verified after merge: `npm run test:api` 477 files / 7725 passed
+(3 skipped), `npm run test:frontend` 364 files / 4988 passed,
+`npm run lint` 0 errors (221 pre-existing warnings), `check:one-function`
+PASS (886 scanned), `check:jsdoc-example` PASS. No S6 production change
+was needed in this re-run; only the merge itself.
