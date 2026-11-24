@@ -36,6 +36,26 @@ export function autoResumeTask(store, projectId, taskId, projectCwd, { reason } 
 	task.wasInterrupted = false;
 	task.status = "in_stage";
 	task.updatedAt = new Date().toISOString();
+	// Task 3b82f6ae (S1): count consecutive resumes per task+stage so the
+	// scheduler can slow re-dispatch of a repeatedly interrupted task
+	// (resumeBackoff). A stage change restarts the streak at 1; completion
+	// clears it (executionLedger.completeExecution). Like the
+	// runnerInterruptCount death streak, this counter is in-memory per
+	// process (task markdown does not persist it) — a restart restarts the
+	// streak at 1, which fails safe: the backoff can only ever delay, never
+	// park, and a fresh process always gives the first resumes the fast
+	// path while the live refusal loop rebuilds the streak within seconds.
+	const resumeStageId = task.currentStageId ?? null;
+	if (
+		task.consecutiveResumeStage === resumeStageId &&
+		Number.isInteger(task.consecutiveResumes)
+	) {
+		task.consecutiveResumes += 1;
+	} else {
+		task.consecutiveResumes = 1;
+		task.consecutiveResumeStage = resumeStageId;
+	}
+	task.lastResumedAt = task.updatedAt;
 	if (typeof store._resetAutoIteration === "function") {
 		store._resetAutoIteration(task);
 	}

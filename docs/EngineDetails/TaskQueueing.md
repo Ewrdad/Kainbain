@@ -32,7 +32,12 @@ never another stage's job.
 
 ### Priority (canonical order)
 
-1. **Resumed interruptions** — oldest interruption first (Rule 0).
+1. **Resumed interruptions** — oldest interruption first (Rule 0). Caveat
+   (task 3b82f6ae): a task+stage with 3+ consecutive resumes is held back
+   by a re-dispatch backoff (30s, doubling to a 5min cap) and fresh work
+   wins meanwhile; the first resumes stay instant. On the runner fleet scan
+   a task is also hidden from the runner that just capacity-refused it for
+   ~2min.
 2. **Follow-on from the just-completed task** (Rule 1) — a single-use pass,
    *withheld* when any other candidate has waited past the starvation
    ceiling, so a churning pipeline cannot indefinitely pre-empt older
