@@ -31,7 +31,7 @@ const makeBundle = ({ name = "kainbain-runner-0.9.0-linux-x64", rootSha = "abc12
 	if (nestedFirst) {
 		// List the nested version.json first: a receipt that trusts tar's
 		// first entry (the old `head -n 1` behavior) reads the wrong file.
-		spawnSync("tar", ["-czf", tarball, "-C", stage, "runner/version.json", "--transform", `s|^runner/|${name}/runner/|`, "-C", stage, "version.json", "--transform", `s|^version.json$|${name}/version.json|`, "-C", stage, "runner/main.js", "--transform", `s|^runner/|${name}/runner/|"], { stdio: "inherit" });
+		spawnSync("tar", ["-czf", tarball, "-C", stage, "runner/version.json", "--transform", `s|^runner/|${name}/runner/|`, "-C", stage, "version.json", "--transform", `s|^version.json$|${name}/version.json|`, "-C", stage, "runner/main.js", "--transform", `s|^runner/|${name}/runner/|`], { stdio: "inherit" });
 	} else {
 		spawnSync("tar", ["-czf", tarball, "-C", sandbox, name]);
 	}
@@ -139,6 +139,12 @@ describe("bundle-receipt.sh print_bundle_receipt", () => {
 		const wrapper = fs.readFileSync(path.join(ROOT, "scripts", "package-runner.sh"), "utf8");
 		assert.match(wrapper, /lib\/bundle-receipt\.sh/, "the wrapper sources the shared receipt lib");
 		assert.match(wrapper, /print_bundle_receipt "\$OUT"/, "the wrapper prints the receipt for the produced tarball");
-		assert.doesNotMatch(wrapper, /[^a-z]sha256sum /, "no bare sha256sum call (absent on macOS) — hashing goes through node");
+		// Strip full-line comments: the header documents WHY sha256sum is
+		// avoided (absent on macOS), which must not read as a call site.
+		const code = wrapper
+			.split("\n")
+			.filter((line) => !/^\s*#/.test(line))
+			.join("\n");
+		assert.doesNotMatch(code, /[^a-z]sha256sum /, "no bare sha256sum call (absent on macOS) — hashing goes through node");
 	});
 });

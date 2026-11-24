@@ -587,6 +587,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/sync-tip-dist.test.mjs",
 				"tests/runner-release-manifest.test.mjs",
 				"tests/package-runner-conformance.test.mjs",
+				"tests/bundle-receipt.test.mjs",
 				"tests/check-runner-version-bump.test.mjs",
 				"tests/migrate-runner-to-wrapper.test.mjs",
 				"tests/install-runner-wrapper.test.mjs",

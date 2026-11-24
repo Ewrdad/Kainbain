@@ -474,3 +474,31 @@ decision + restarts with rediscovery receipts, live §6.3 UI pass,
 explicit human who/when/scope for q3 leftovers + q4 infeasibility) and
 a later agent run confirms §6.1 all-pass. Evidence in
 `run51-20261123-1305.md` (`verification-20261114.md` addendum).
+
+## Addendum 2026-11-24 ~02:30Z (run52 read-only re-verification + test repair)
+
+NOT READY (unchanged since run51/review-20261124). HEAD `6175bb90`
+(one stage-output commit atop the review's `e8a5b482`); §6.5 FULLY
+green on this HEAD: runner 526/526, dispatch 175/175, routes 193/193,
+frontend 91/91, branch-shipped root script tests 117/117 (after repairing
+two silent defects in `tests/bundle-receipt.test.mjs` — a line-34
+syntax error and a comment-blind `sha256sum` assertion — plus wiring
+the file into the `run-tests.mjs` gate; see run52 §Test repair),
+runner-adjacent root 18/18, with ENGINE-DIR-UNTOUCHED proven
+bit-identical before/after our suite block (shas unchanged since run51
+— no new external rewrite); §6.4 fixture 13/13. Live §6.1 PARTIAL:
+local-alpha fully PASS; local-bravo discovery PASS but `paused:true`
+persists (muse-ember still 2 runners); server2-alpha still FAIL
+(pre-WP-B `f430f537`, pi `ERR_MODULE_NOT_FOUND`, fresh atMs
+`1795483610483` — discovery re-ran and still fails; tarball staged
+`ac919e2a…`, no lowercase `version.json`, `cross-spawn` still absent).
+Backend build 637, `deployedAt` moved to `2026-11-24T01:05:11Z`
+(restart/redeploy, same build number). §6.2 PASS (135 models after
+legit discovery drift, zero `test-fleet`, 2 quarantined leftovers
+awaiting q3 grant). §6.3/§6.4 live pending operator; explicit human
+grant still absent (zero DELETEs issued). WP-G may proceed to its HUMAN
+dispatch decision ONLY after operator completes the run52
+recommendation list (Bundle B + bravo decision + restarts with
+rediscovery receipts, live §6.3 UI pass, explicit human who/when/scope
+for q3 leftovers + q4 infeasibility) and a later agent run confirms
+§6.1 all-pass. Evidence in `run52-20261124-0230.md`.
