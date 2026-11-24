@@ -53,8 +53,16 @@ Every auto-resume appends a `Resumed` timeline entry carrying what was
 discovered: `markers` (e.g. `deployAttemptId`, `preMergeMainSha`,
 `reviewBaseline.mergedAt`), `shas`, `lastResultAgeMs`, and the `verdict`
 (`startup-recovery (…)`, `reconcile-resume (…)`, `auto-resumed`). History
-holds the human-readable line ("Auto-resumed after server restart …" /
-"Deploy reconcile: no fresh last-result.json — resuming from …").
+holds the human-readable line, which names the recovery route (S6):
+"Auto-resumed after server restart — prioritised in queue" for genuine
+restart/crash recoveries, "Auto-resumed after runner interrupt —
+prioritised in queue (runner {id}, reason: {reason})" for runner-path
+resumes, and "Deploy reconcile: no fresh last-result.json — resuming
+from …" for deploy reconciles. Rows written before S6 keep the old
+single string. Route selection reads the in-memory `interruptedBy` marker
+(stamped at runner interrupt, consumed by every resume/abort/retry, never
+written to task.md): after a genuine restart there is no marker, so the
+resume always reads as the restart route it is.
 
 Deploy freshness has two proofs: a result whose `deployAttemptId` matches the
 task's marker (the engine exports it to `deploy.sh` as

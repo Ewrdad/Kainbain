@@ -142,6 +142,8 @@ describe.skipIf(!gitAvailable)("startup recovery resumes interrupted work", () =
 			// The scheduler's own tick dispatched the resumed stage exactly
 			// once — startup recovery never calls executeStage itself.
 			expect(runCount - before).toBe(1);
+			// S6: kill -9 orphan is the genuine restart route (no runner
+			// marker), so the resume keeps the server-restart string.
 			expect(
 				finished.history.some((h) =>
 					String(h.action || "").includes("Auto-resumed after server restart"),
