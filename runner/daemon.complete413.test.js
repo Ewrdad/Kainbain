@@ -176,6 +176,50 @@ describe("complete-execution 413 is non-retryable", () => {
 		assert.equal(out.reportTooLarge, true);
 	});
 
+	it("handles a proxy-shaped 413 (status only, no Fastify code) the same way", async () => {
+		const repo = localRepo();
+		const config = baseConfig();
+		dirs.push(config.workRoot, repo);
+		const completed = [];
+		const interrupts = [];
+		let completeCalls = 0;
+		const client = stubClient({
+			heartbeat: async () => ({ status: "active" }),
+			getProject: async () => ({ id: "p1", cwd: repo }),
+			getTask: async () => ({ id: "t1", goal: "do it", currentStageId: "s1" }),
+			claim: async () => ({ executionId: "e1", epoch: 1 }),
+			progress: async () => ({ recorded: true }),
+			logs: async () => ({ accepted: true }),
+			complete: async (args) => {
+				completeCalls += 1;
+				if (completeCalls === 1) {
+					const err = new Error("Backend 413 on /tasks/t1/complete-execution");
+					err.statusCode = 413;
+					err.code = null;
+					throw err;
+				}
+				completed.push(args);
+				return { accepted: true };
+			},
+			interrupt: async (args) => {
+				interrupts.push(args || {});
+				return { interrupted: true };
+			},
+		});
+		const out = await runSingleAssignment({
+			config,
+			client,
+			loadHarness: async () => fakeHarness(),
+			logger: quiet,
+		});
+		assert.equal(completeCalls, 2, "big report once, small failed report once");
+		assert.equal(completed.length, 1);
+		assert.equal(completed[0].outcome, "failed");
+		assert.equal(completed[0].failureKind, "report-too-large");
+		assert.equal(interrupts.length, 0, "no interrupt for a deterministic 413");
+		assert.equal(out.reportTooLarge, true);
+	});
+
 	it("pins the preserved path: 413 from a NON-complete call still interrupts + rethrows", async () => {
 		const repo = localRepo();
 		const config = baseConfig();

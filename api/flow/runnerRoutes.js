@@ -54,6 +54,7 @@ import {
 import { hashStageConfig, isWellFormedConfigHash } from "../../shared/stageAttestation.js";
 import { resolveAttestationStage } from "../work/resolveAttestationStage.js";
 import { createProjectResolvers } from "../projectResolution.js";
+import { COMPLETE_EXECUTION_BODY_LIMIT_BYTES } from "../../shared/completionLimits.js";
 
 /***
  * MARK: resolveCiTimeoutMs
@@ -243,6 +244,65 @@ export const prepareIntegrationAttempt = async ({ taskStore, projectStore, proje
 		task.mergeAttemptId = mergeAttemptId;
 	}
 	return { targetBranch, taskBranch, expectedTaskSha, expectedTargetSha, mergeAttemptId };
+};
+
+/***
+ * MARK: logOversizeCompletionAndRethrow
+ * @description Route error handler for POST /tasks/:id/complete-execution
+ *   (the 413 completion-payload loop, task d164fb3f, RESPONSE.md S2). When
+ *   Fastify refuses an oversize completion report
+ *   (`FST_ERR_CTP_BODY_TOO_LARGE`, or any HTTP 413 on this route), logs
+ *   ONE warn line carrying the task id + the refused byte size
+ *   (content-length) + the limit, so operators can see WHICH task's
+ *   report was refused and how big it was. Then rethrows the ORIGINAL
+ *   error unchanged: Fastify's handler chain falls back to the default
+ *   serializer, so every response (413 and otherwise) is byte-identical
+ *   to having no custom handler — this seam only ADDS the log line.
+ *   Never throws its own error: extraction/logging faults are swallowed
+ *   and the original refusal still propagates.
+ * @example logOversizeCompletionAndRethrow(new Error("x"), {}) // throws the same error, logs nothing
+ * @example logOversizeCompletionAndRethrow(Object.assign(new Error("too large"), { code: "FST_ERR_CTP_BODY_TOO_LARGE", statusCode: 413 }), { params: { id: "t1" }, headers: { "content-length": "99" }, log: console }) // warns { taskId: "t1", byteSize: 99, ... }, then throws
+ * @param {unknown} error - Error Fastify is handling for this route.
+ * @param {Object} [request] - Request under handling (params/headers/log read defensively).
+ * @returns {never} Always throws `error`.
+ ***/
+export const logOversizeCompletionAndRethrow = (error, request) => {
+	try {
+		const oversize =
+			error?.code === "FST_ERR_CTP_BODY_TOO_LARGE" || error?.statusCode === 413;
+		if (oversize) {
+			const paramId = request?.params?.id;
+			let taskId = typeof paramId === "string" && paramId ? paramId : null;
+			if (!taskId) {
+				try {
+					const fromUrl = String(request?.url || request?.raw?.url || "").match(
+						/\/tasks\/([^/]+)\/complete-execution/,
+					);
+					taskId = fromUrl ? decodeURIComponent(fromUrl[1]) : null;
+				} catch {
+					taskId = null;
+				}
+			}
+			const rawSize = Number(request?.headers?.["content-length"]);
+			const byteSize = Number.isFinite(rawSize) && rawSize >= 0 ? rawSize : null;
+			try {
+				request?.log?.warn?.(
+					{
+						taskId,
+						byteSize,
+						limit: COMPLETE_EXECUTION_BODY_LIMIT_BYTES,
+						route: "complete-execution",
+					},
+					"Runner completion report refused: body over the limit",
+				);
+			} catch {
+				// Logging must never break the refusal below.
+			}
+		}
+	} catch {
+		// Extraction must never swallow the original refusal below.
+	}
+	throw error;
 };
 
 /***
@@ -911,7 +971,22 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		}
 	});
 
-	app.post("/tasks/:id/complete-execution", async (request, reply) => {
+	// Raised body ceiling (task d164fb3f, RESPONSE.md S2): a finished
+	// run's completion report legitimately carries task docs + output,
+	// which exceeded Fastify's default 1 MiB and 413-looped the Runner
+	// (interrupt + rethrow + restart + full re-run, deterministically).
+	// 10 MiB accepts real reports; anything bigger is still refused with
+	// 413 AND logged with task id + size by the route error handler, so
+	// operators see which task's report was refused. ONLY this route is
+	// raised — every other route keeps the 1 MiB default (pinned by
+	// api/bodyLimit.default.test.js).
+	app.post(
+		"/tasks/:id/complete-execution",
+		{
+			bodyLimit: COMPLETE_EXECUTION_BODY_LIMIT_BYTES,
+			errorHandler: logOversizeCompletionAndRethrow,
+		},
+		async (request, reply) => {
 		let runner;
 		try {
 			runner = authedRunner(request);

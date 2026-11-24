@@ -1891,15 +1891,18 @@ export function isSkippedBinary(name) {
  * MARK: measureCompletionBytes
  * @description Measures the UTF-8 byte size of a completion report's
  *   variable envelope (`taskFiles + output` as JSON) — the quantity the
- *   backend body limit constrains. Total: unstringifiable input reads as 0.
+ *   backend body limit constrains. Total: absent or unstringifiable
+ *   input reads as 0, never throws.
  * @example measureCompletionBytes({ taskFiles: [], output: "ok" }) => 30
  * @param {Object} [args] - Envelope parts.
  * @param {Array} [args.taskFiles] - Packed task files.
  * @param {string} [args.output] - Sliced stage output.
- * @returns {number} Envelope bytes (0 when unmeasurable).
+ * @returns {number} Envelope bytes (0 for absent/unmeasurable input).
  ***/
-export function measureCompletionBytes({ taskFiles = [], output = "" } = {}) {
+export function measureCompletionBytes(args) {
+	if (args === null || args === undefined) return 0;
 	try {
+		const { taskFiles = [], output = "" } = args;
 		return Buffer.byteLength(JSON.stringify({ taskFiles, output }), "utf8");
 	} catch {
 		return 0;
@@ -1960,7 +1963,12 @@ export function collectTaskFiles({ workdir, taskId, docsDirName = null, project 
  *   `reportBytes` (UTF-8 size of the JSON report handed to the
  *   client), the `reportOutcome`, and the `reportCommitted` flag, then
  *   rethrows unchanged. Success passes the receipt through untouched.
- *   Only the two post-run report sites use this wrapper (task d164fb3f).
+ *   Every task-files-carrying report site in `executeAssignment` (the
+ *   three CI reports + the two post-run agent reports) uses this
+ *   wrapper, so ANY complete-execution 413 routes to the deterministic
+ *   small-report branch in the catch below (task d164fb3f). The small
+ *   catch-internal reports (gitFailure, failedOutcome) keep their own
+ *   fallbacks and stay unwrapped.
  * @example await completeWithPayloadTag(client, { outcome: "passed", ... }) => receipt
  * @param {Object} client - Runner backend client.
  * @param {Object} report - Completion report args for `client.complete`.
@@ -2240,7 +2248,7 @@ async function executeAssignment({
 				} catch (err) {
 					state.session = null; stopRenewal();
 					await client.progress({ taskId, projectId, executionId, epoch, stageId, event: "finished" }).catch(() => {});
-					return await client.complete({
+					return await completeWithPayloadTag(client, {
 						taskId, projectId, executionId, epoch, sha: null, branch,
 						outcome: "failed",
 						failureReason: `CI stage branch setup failed: ${err?.message || err}`,
@@ -2271,9 +2279,9 @@ async function executeAssignment({
 						const failureReason = ci.timedOut
 							? `CI command timed out after ${ci.timeoutMs}ms`
 							: `CI command failed with exit code ${ci.exitCode}`;
-						return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+						return await completeWithPayloadTag(client, { taskId, projectId, executionId, epoch, sha, branch, outcome: "failed", failureReason, ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 					}
-					return await client.complete({ taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
+					return await completeWithPayloadTag(client, { taskId, projectId, executionId, epoch, sha, branch, outcome: "passed", ...(configHash ? { configHash } : {}), committed: false, taskFiles: collectTaskFiles({ workdir, taskId, docsDirName: project?.docsDirName, project, docsWorkdir }), output: ci.output.slice(0, 20000), posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }), model: servedModel, durationMs: Date.now() - runStartedAt });
 				} finally {
 					if (ciCleanup) await ciCleanup();
 				}
@@ -2569,6 +2577,74 @@ async function executeAssignment({
 					model: servedModel,
 					durationMs: Date.now() - runStartedAt,
 				});
+			}
+			if (err?.fromComplete === true && isPayloadTooLarge(err)) {
+				// Deterministic oversize refusal (task d164fb3f, RESPONSE.md
+				// S2): the backend answered the completion report ITSELF with
+				// 413, so resending the same bytes fails the same way —
+				// report ONCE as a small FAILED completion (no task files,
+				// exact byte size + backend limit + original outcome in the
+				// reason) and RETURN. Never interrupt, never rethrow: the
+				// generic path below crash-loops under Restart=always (exit
+				// 1 -> systemd restart -> full stage re-run -> same 413,
+				// one whole run burned per lap). The `fromComplete` tag (set
+				// by completeWithPayloadTag) confines this branch to
+				// complete-execution refusals: a 413 from any OTHER call
+				// (logs, progress) keeps the generic interrupt+rethrow path.
+				// Failure modes of THIS branch, all loop-free: the small
+				// report lands (task failed, lease released); the small
+				// report fails (best-effort interrupt WITH the size reason,
+				// then return); the interrupt fails too (swallowed — the
+				// lease TTL still bounds the damage). No sub-path throws.
+				const reportBytes = Number.isFinite(err.reportBytes) ? err.reportBytes : 0;
+				const reportOutcome = typeof err.reportOutcome === "string" ? err.reportOutcome : "unknown";
+				const failureReason =
+					`Completion report too large: ${reportBytes} bytes exceeds the ` +
+					`${COMPLETE_EXECUTION_BODY_LIMIT_BYTES}-byte backend limit (original outcome: ${reportOutcome}). ` +
+					`Retry the stage to run it again.`;
+				try {
+					await structuredSender?.close();
+				} catch {
+					// Flushing is best-effort: the failure report matters more.
+				}
+				if (sendLogs) {
+					try {
+						await sendLogs(`completion report too large (${reportBytes} bytes): reporting failed`);
+					} catch {
+						// Logging is best-effort: the completion matters more.
+					}
+				}
+				if (typeof logger.error === "function") logger.error(`completion report too large: ${failureReason}`);
+				else logger.log(`completion report too large: ${failureReason}`);
+				try {
+					const receipt = await client.complete({
+						taskId: taskId,
+						projectId: projectId,
+						executionId,
+						epoch,
+						...(assignmentBranch ? { branch: assignmentBranch } : {}),
+						posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
+						model: servedModel,
+						outcome: "failed",
+						failureKind: "report-too-large",
+						failureReason,
+						...(configHash ? { configHash } : {}),
+						committed: err.reportCommitted === true,
+						durationMs: Date.now() - runStartedAt,
+					});
+					return { ...receipt, reportTooLarge: true };
+				} catch (reportErr) {
+					// The small report itself failed (lost lease, unreachable
+					// backend): best-effort interrupt WITH the size reason so
+					// the history names the cause, then still return — a
+					// reporting failure must never crash the runner either.
+					try {
+						await client.interrupt({ taskId, projectId, executionId, reason: failureReason.slice(0, 500) });
+					} catch {
+						// Interrupting is best-effort: the lease TTL still bounds the damage.
+					}
+					return { reportTooLarge: true, reportFailed: true, reason: failureReason };
+				}
 			}
 			// Flush the trailing structured batch before interrupting: the
 			// tool/error trail up to the failure point must be stored, not

@@ -294,6 +294,26 @@ bounded by rollout); empty/missing task-docs dir (existing skips kept).
       no new unlogged 413 loops; exhibit worktree untouched.
 - [ ] `VERIFICATION.md` filed in this task folder.
 
+## 7. Finals (cleanup stage, 2026-11-24)
+
+Shipped as: D1 = 10 MiB (`shared/completionLimits.js`, single source of
+truth for backend + runner); D2 = one small `failed` report
+(`failureKind: "report-too-large"`, no `taskFiles`, byte size + limit +
+original outcome in `failureReason`), then return, never rethrow; D3 =
+skip all common binary extensions; D4 = files budget 1 MiB − 64 KiB
+headroom (envelope provably under the old 1 MiB default); D5 = only the
+`complete-execution` route raised.
+
+Deliberate divergence from this task's `SURVEY.md` q4/q5 answers
+("scale cap to the limit", "raise all runner routes"): the task brief
+requires "both sides; either half breaks the loop", which only holds
+when the runner shrink alone fits the OLD default (q4's scaled cap
+would still 413 against an un-upgraded backend), and names only the
+`complete-execution` route (q5's all-routes raise widens the blast
+radius past the evidenced failure). The RED tests already in the repo
+encode the same reading. Rollout order held: backend raise deploys
+before the runner ships (see `VERIFICATION.md`).
+
 ## Appendix — seam index (verified against this checkout)
 
 - `api/index.js:116` — `fastify({ logger: true })`, no `bodyLimit`.
