@@ -12,11 +12,28 @@ import { attachAttestationToEntry } from "../../shared/stageAttestation.js";
  *   escalates (history entry + `interruptEscalations` monitor counter +
  *   `escalated` reply flag) so the death loop gets operator attention
  *   instead of spinning forever. A successful completion resets the count.
+ *   Task 3b82f6ae (S1) exclusion: capacity refusals (reason starting with
+ *   "Runner workdir unavailable:") are NOT runner deaths and never count
+ *   here — they land on `capacityRefusalCount`, which never escalates or
+ *   parks (see MAX_CAPACITY_REFUSALS_BEFORE_NOTE).
  * @example MAX_RUNNER_INTERRUPTS => 5
  ***/
 export const MAX_RUNNER_INTERRUPTS = 5;
+
+/***
+ * MARK: MAX_CAPACITY_REFUSALS_BEFORE_NOTE
+ * @description Operator-visibility note threshold for capacity refusals
+ *   (task 3b82f6ae): when one task+stage collects this many consecutive
+ *   "Runner workdir unavailable:" interrupts, the ledger pushes a history
+ *   note so operators can see the streak. Visibility ONLY — unlike
+ *   MAX_RUNNER_INTERRUPTS this bound never escalates a counter and never
+ *   parks the task; capacity refusals are infra exhaustion, not deaths.
+ * @example MAX_CAPACITY_REFUSALS_BEFORE_NOTE => 5
+ ***/
+export const MAX_CAPACITY_REFUSALS_BEFORE_NOTE = 5;
 export { formatPosture, servingModelFor } from "./runnerPosture.js";
 import { cleanReportedPosture } from "./runnerPosture.js";
+import { isCapacityRefusalReason } from "./capacityRefusal.js";
 
 /***
  * MARK: ExecutionLedger
@@ -67,6 +84,7 @@ export class ExecutionLedger {
 			fencedRejected: 0,
 			interrupts: 0,
 			interruptEscalations: 0,
+			capacityRefusals: 0,
 			divergences: 0,
 			unverifiedSha: 0,
 			verifiedSha: 0,
@@ -537,9 +555,16 @@ export class ExecutionLedger {
 		task?.history?.push(completionEntry);
 		// G7: a finished stage breaks the death loop — the next stage (or
 		// a later retry of this one after real progress) counts from zero.
+		// Task 3b82f6ae: the capacity-refusal and resume-streak counters
+		// clear with it — real progress resets every interrupt streak.
 		if (task) {
 			delete task.runnerInterruptCount;
 			delete task.runnerInterruptStage;
+			delete task.capacityRefusalCount;
+			delete task.capacityRefusalStage;
+			delete task.consecutiveResumes;
+			delete task.consecutiveResumeStage;
+			delete task.lastResumedAt;
 		}
 		this.lastStage.delete(executionId);
 		this.logNextSeq.delete(executionId);
@@ -637,6 +662,15 @@ export class ExecutionLedger {
 		}
 		claimStore.invalidate(taskId);
 		this.counters.interrupts += 1;
+		const cleanReason =
+			typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 500) : "";
+		// Task 3b82f6ae (S1): a capacity refusal ("Runner workdir
+		// unavailable: …", WORKTREE_CAP_REACHED) is infra exhaustion, not a
+		// Runner death — it must never increment `runnerInterruptCount`,
+		// escalate, or park the task as a runner-death-loop. It is counted
+		// on a separate per-task+stage `capacityRefusalCount` (visibility
+		// only) and neither increments nor resets any death streak.
+		const capacityRefusal = isCapacityRefusalReason(cleanReason);
 		// G7: consecutive interrupts per task+stage. A stage change (or a
 		// successful completion, which clears both fields) restarts the
 		// count — only a Runner dying repeatedly on the SAME stage trips
@@ -644,14 +678,36 @@ export class ExecutionLedger {
 		const stageId = task?.currentStageId ?? null;
 		const prevStage = task?.runnerInterruptStage ?? null;
 		const prevCount = Number.isInteger(task?.runnerInterruptCount) ? task.runnerInterruptCount : 0;
-		const interruptCount = prevStage === stageId ? prevCount + 1 : 1;
-		const escalated = interruptCount >= MAX_RUNNER_INTERRUPTS;
+		const interruptCount = capacityRefusal
+			? prevStage === stageId
+				? prevCount
+				: 0
+			: prevStage === stageId
+				? prevCount + 1
+				: 1;
+		const escalated = !capacityRefusal && interruptCount >= MAX_RUNNER_INTERRUPTS;
+		let capacityRefusalCount = 0;
 		if (task) {
-			task.runnerInterruptStage = stageId;
-			task.runnerInterruptCount = interruptCount;
+			if (!capacityRefusal) {
+				task.runnerInterruptStage = stageId;
+				task.runnerInterruptCount = interruptCount;
+			} else {
+				this.counters.capacityRefusals += 1;
+				const prevCapStage = task?.capacityRefusalStage ?? null;
+				const prevCapCount = Number.isInteger(task?.capacityRefusalCount)
+					? task.capacityRefusalCount
+					: 0;
+				capacityRefusalCount = prevCapStage === stageId ? prevCapCount + 1 : 1;
+				task.capacityRefusalStage = stageId;
+				task.capacityRefusalCount = capacityRefusalCount;
+				// Remember the refusing Runner so the fleet scan can hide
+				// this task from it for a short window (task 3b82f6ae q4).
+				task.lastCapacityRefusal = {
+					runnerId: typeof runnerId === "string" ? runnerId : null,
+					at: new Date().toISOString(),
+				};
+			}
 			task.status = "interrupted";
-			const cleanReason =
-				typeof reason === "string" && reason.trim() ? reason.trim().slice(0, 500) : "";
 			task?.history?.push({
 				timestamp: new Date().toISOString(),
 				action: `Runner ${runnerId} interrupted execution ${executionId ?? hold?.executionId ?? "?"} — lease dropped, re-queues as interrupted.${cleanReason ? ` Reason: ${cleanReason}` : ""}`,
@@ -661,6 +717,15 @@ export class ExecutionLedger {
 				task?.history?.push({
 					timestamp: new Date().toISOString(),
 					action: `Runner deaths escalated: ${interruptCount} consecutive interrupts on stage ${stageId ?? "?"} (bound ${MAX_RUNNER_INTERRUPTS}) — needs operator attention, auto re-queue continues.`,
+				});
+			}
+			if (capacityRefusal && capacityRefusalCount === MAX_CAPACITY_REFUSALS_BEFORE_NOTE) {
+				// Visibility only (task 3b82f6ae q1/q5): operators see the
+				// capacity streak, but it never escalates a counter and
+				// never parks the task.
+				task?.history?.push({
+					timestamp: new Date().toISOString(),
+					action: `Capacity refusals noted: ${capacityRefusalCount} consecutive "Runner workdir unavailable" refusals on stage ${stageId ?? "?"} (note threshold ${MAX_CAPACITY_REFUSALS_BEFORE_NOTE}) — runner(s) full, NOT runner deaths; this streak never parks the task.`,
 				});
 			}
 		}
@@ -673,6 +738,17 @@ export class ExecutionLedger {
 				this.stagePrompt.delete(id);
 				this.stageServing.delete(id);
 			}
+		}
+		if (capacityRefusal) {
+			return {
+				interrupted: true,
+				interruptCount,
+				escalated,
+				capacityRefusal: true,
+				capacityRefusalCount,
+				lastCapacityRefusalRunnerId:
+					typeof runnerId === "string" ? runnerId : null,
+			};
 		}
 		return { interrupted: true, interruptCount, escalated };
 	}
