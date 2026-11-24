@@ -37,6 +37,7 @@ import { PathsAndReposSection } from './PathsAndReposSection';
  * @param {string} [props.section] - Visible tab ('project'|'aliases'|'files-repos'|'addresses').
  * @param {Function} [props.onDirtyChange] - Called with true/false as edits are made or saved.
  * @param {Function} [props.onRequestSection] - Requests a tab switch (the Project tab's docs-repo summary jumps to Files & Repos through it).
+ * @param {Function} [props.onJumpToDocsRepo] - Preferred docs-repo jump (switch + highlight); falls back to onRequestSection when absent.
  * @example <ProjectSettingsForm project={project} projectId="p1" onProjectUpdated={select} section="aliases" onDirtyChange={setDirty} />
  ***/
 export function ProjectSettingsForm({
@@ -46,6 +47,7 @@ export function ProjectSettingsForm({
   section = 'project',
   onDirtyChange,
   onRequestSection = null,
+  onJumpToDocsRepo = null,
 }) {
   // Fail-safe: an unknown section id renders the project tab instead of a
   // blank page. The allowlist is shared with the tab bar (see
@@ -686,9 +688,11 @@ export function ProjectSettingsForm({
             toggleHideProject={toggleHideProject}
             docsRepoUrl={docsRepoUrl}
             onJumpToFilesRepos={
-              typeof onRequestSection === 'function'
-                ? () => onRequestSection('files-repos')
-                : null
+              typeof onJumpToDocsRepo === 'function'
+                ? onJumpToDocsRepo
+                : typeof onRequestSection === 'function'
+                  ? () => onRequestSection('files-repos')
+                  : null
             }
           />
           <RetryTimeoutsSection

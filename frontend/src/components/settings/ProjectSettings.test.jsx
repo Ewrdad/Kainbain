@@ -299,6 +299,22 @@ test('the Project tab summarizes the docs repo and jumps to Files & Repos', asyn
   expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toBeInTheDocument();
 });
 
+test('the Project tab jump highlights the docs repo URL field', async () => {
+  renderWithKainBain(<ProjectSettings />, {
+    projects,
+    activeProjectId: 'p1',
+    selectProject: vi.fn(),
+  });
+  await screen.findByLabelText('Default AI Model');
+  fireEvent.click(screen.getByRole('button', { name: /configure in files & repos/i }));
+  expect(screen.getByLabelText('Separate Docs Repository URL (optional)')).toBeInTheDocument();
+  await waitFor(() => {
+    expect(
+      document.getElementById('project-docs-repo-url-input')?.classList.contains('ring-2'),
+    ).toBe(true);
+  });
+});
+
 test('the Project tab summary names the docs repo URL when enabled', async () => {
   const projectWithDocsRepo = {
     ...projects[0],

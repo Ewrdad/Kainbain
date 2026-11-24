@@ -228,6 +228,21 @@ export function ProjectSettings() {
     setHighlightTarget({ id: entry.elementId, at: highlightSeqRef.current });
   };
 
+  /***
+   * MARK: handleJumpToDocsRepo
+   * @description Project-tab summary jump: switches to Files & Repos and
+   *   highlights the Separate Docs Repository URL field (same ring+scroll
+   *   as a search jump) so the field is not buried below the fold — the
+   *   landing row advertises it but the field itself sits halfway down the
+   *   tab. Suppressed when the unsaved-edits guard blocks the switch.
+   * @example handleJumpToDocsRepo()
+   ***/
+  const handleJumpToDocsRepo = () => {
+    if (!handleSectionChange('files-repos')) return;
+    highlightSeqRef.current += 1;
+    setHighlightTarget({ id: 'project-docs-repo-url-input', at: highlightSeqRef.current });
+  };
+
   // Scrolls the search target into view and highlights it briefly. Guarded
   // for test DOMs without `scrollIntoView`, and no-ops when the target id
   // is not on the active tab (e.g. a conditional field). Cleanup removes the
@@ -344,6 +359,7 @@ export function ProjectSettings() {
               section={effectiveSection}
               onDirtyChange={setFormDirty}
               onRequestSection={handleSectionChange}
+              onJumpToDocsRepo={handleJumpToDocsRepo}
             />
           </div>
         )}
