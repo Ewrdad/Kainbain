@@ -87,6 +87,22 @@ interrupt row. Record backend build + sibling-fix landings as confounds.
 - S5 gates all **BLOCKED (not converged)** — do not quote `recount-after-*`
   as rollout proof; the gated AFTER still waits on the knob raise.
 
+## Watch note 2026-11-24T02:40Z (AFTER2 observation, still pre-rollout; frozen numbers above stand)
+
+- Snapshot `runners-after/…T024024Z.*` (02:40:24Z): still `0.1.0` everywhere,
+  knob `0.1.0`, `availableVersions ["0.1.0"]`, no nudges — NOT-CONVERGED;
+  backend build 637, deployed `2026-11-24T01:05:11Z` (publish-only, no
+  restart).
+- AFTER2 recount `recount-after2-*` (02:40:27–55Z): 149 interrupts (102/47),
+  70 reasoned (all cap), 79 bare, 36 post-`finished` (22 tasks), 49 escalated,
+  0 server-restart, 0 `gitFailure`. Per-task counts identical to AFTER;
+  1 net-new post-`finished` row (`7f6220c3` 2026-11-24T02:38:01Z, bare,
+  Cause 2 413 — 8th consecutive). See `RECOUNT-AFTER2.md`. No new Cause-5
+  ticket (third consecutive sweep). Kit suite 95/95. Stage review
+  `STAGE-REVIEW-20261124.md`: PASS.
+- S5 gates all **BLOCKED (not converged)** — do not quote `recount-after2-*`
+  as rollout proof; the gated AFTER still waits on the knob raise.
+
 ## Watch note 2026-11-23T14:31–14:45Z (non-canonical; frozen numbers above stand)
 
 - Snapshot `runners-now/…T143103Z.*`: still `0.1.0` everywhere, knob `0.1.0`,

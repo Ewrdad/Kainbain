@@ -175,6 +175,31 @@ record for this branch (newer BEFORE recount, fuller E5, fresh 12:22Z snapshot).
   (T1/T10) still reproduce `recount-before-table.json` exactly.
 - Observe-only held: zero knob changes, restarts, updates, reaps, re-runs.
 
+- **02:40–02:42** — Third observation window (post-`UPGRADE-SAFETY` stage,
+  docs-only): fresh read-only snapshot (`runners-after/runners-20261124T024024Z.*`,
+  `verdict-20261124T024024Z.{json,txt}`): **still `0.1.0` everywhere, knob `0.1.0`,
+  `availableVersions ["0.1.0"]`, no nudges** — NOT-CONVERGED both named runners
+  (local-alpha build `fbcf8442` lacks `046a6391`; server2-alpha no sha). Backend
+  build 637, deployed `2026-11-24T01:05:11Z` (unchanged since AFTER; publish-only,
+  no restart). AFTER3 stays blocked on the human PROD-ACTION (raise knob to `0.2.1`).
+- **02:40:27–55** — AFTER2 recount (`fleet-recount.sh after2`, 81/81 tasks, 0 failed
+  → `recount-after2-table.json`): 149 runner interrupts (102 local / 47 server2),
+  70 reasoned (all `Runner workdir unavailable:` cap strings, 0 non-cap), 79 bare,
+  117 ≤15 s (median 4 s), 24 ≥2 min, 36 post-`finished` (22 tasks), 49 escalated,
+  0 server-restart, 126 auto-resumed, 0 `gitFailure`. Total held at 149; per-task
+  counts identical to AFTER (history churn only). See `RECOUNT-AFTER2.md`.
+- **02:41:10** — E5 sweep for the 1 new post-`finished` row (N8 `7f6220c3`
+  2026-11-24T02:38:01Z server2-alpha): coarse PRESENT (`33a558a5` origin 02:37:45);
+  journal-decisive `Committed 33a558a5… (pushed: true)` + `Runner failed: Backend
+  413 on …/complete-execution` same second → **Cause 2** (8th consecutive 413).
+  Evidence: `raw/e5-sweep-after2-server2-local.txt` +
+  `raw/journal-server2-alpha-after2-window.txt`. Ticket decision re-confirmed
+  (third consecutive sweep): **no new Cause-5 code ticket**.
+- **02:42** — Kit suite `bin/tests/run-tests.sh` → **95 passed, 0 failed**.
+  Stage review `STAGE-REVIEW-20261124.md` (KB Code Standards, branch vs
+  `origin/main`): docs-only diff, zero JS, kit documented + tested → PASS.
+- Observe-only held: zero knob changes, restarts, updates, reaps, re-runs.
+
 ## Effective survey decisions (answers + live-data overrides)
 
 | Q | Answer / decision |
