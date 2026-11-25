@@ -15,6 +15,9 @@ vi.mock('../../services/api', () => ({
     listTaskImages: vi.fn(),
     uploadTaskImage: vi.fn(),
     deleteTaskImage: vi.fn(),
+    listTaskAttachments: vi.fn(),
+    uploadTaskAttachment: vi.fn(),
+    deleteTaskAttachment: vi.fn(),
   },
 }));
 
@@ -103,6 +106,7 @@ describe('TaskReviewPage glasses mode', () => {
     window.localStorage.clear();
     api.getTaskReview.mockResolvedValue(structuredClone(baseReview));
     api.listTaskImages.mockResolvedValue({ images: [] });
+    api.listTaskAttachments.mockResolvedValue({ attachments: [] });
     setGlassesViewportOverride(null);
   });
 

@@ -274,16 +274,33 @@ describe("syncTaskDocs", () => {
 		fs.rmSync(workdir, { recursive: true, force: true });
 	});
 
+	it("delivers non-image attachments into the worktree alongside screenshots", async () => {
+		const primary = fs.mkdtempSync(path.join(os.tmpdir(), "kb-primary-"));
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		fs.mkdirSync(path.join(primary, "docs", "tasks", "t1", "assets"), { recursive: true });
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "shot.png"), "png-bytes");
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "out.log"), "log-bytes");
+		const copied = await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1" });
+		assert.equal(copied, 2);
+		assert.equal(
+			fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "assets", "out.log"), "utf8"),
+			"log-bytes",
+		);
+		fs.rmSync(primary, { recursive: true, force: true });
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
 	it("reports the synced asset count through the optional stats collector", async () => {
 		const primary = fs.mkdtempSync(path.join(os.tmpdir(), "kb-primary-"));
 		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
 		fs.mkdirSync(path.join(primary, "docs", "tasks", "t1", "assets"), { recursive: true });
 		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "idea-1.md"), "idea");
 		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "shot.png"), "png");
+		fs.writeFileSync(path.join(primary, "docs", "tasks", "t1", "assets", "out.log"), "log");
 		const stats = {};
 		const copied = await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "t1", stats });
-		assert.equal(copied, 2);
-		assert.equal(stats.assets, 1);
+		assert.equal(copied, 3);
+		assert.equal(stats.assets, 2);
 		const emptyStats = {};
 		assert.equal(
 			await syncTaskDocs({ primaryCwd: primary, workdir, taskId: "missing", stats: emptyStats }),
@@ -329,7 +346,25 @@ describe("writeClaimTaskAssets", () => {
 		fs.rmSync(workdir, { recursive: true, force: true });
 	});
 
-	it("rejects traversal, non-image, and oversized entries without throwing", async () => {
+	it("writes claim-shipped non-image attachments the worktree lacks", async () => {
+		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
+		const written = await writeClaimTaskAssets({
+			workdir,
+			taskId: "t1",
+			assets: [
+				{ name: "out.log", size: 3, contentBase64: Buffer.from("log").toString("base64") },
+				{ name: "shot.png", size: 1, contentBase64: "eA==" },
+			],
+		});
+		assert.equal(written, 2);
+		assert.equal(
+			fs.readFileSync(path.join(workdir, "docs", "tasks", "t1", "assets", "out.log"), "utf8"),
+			"log",
+		);
+		fs.rmSync(workdir, { recursive: true, force: true });
+	});
+
+	it("rejects traversal, disallowed-type, and oversized entries without throwing", async () => {
 		const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-work-"));
 		const written = await writeClaimTaskAssets({
 			workdir,
@@ -337,7 +372,8 @@ describe("writeClaimTaskAssets", () => {
 			assets: [
 				{ name: "../escape.png", size: 1, contentBase64: "eA==" },
 				{ name: "sub/nested.png", size: 1, contentBase64: "eA==" },
-				{ name: "notes.txt", size: 1, contentBase64: "eA==" },
+				{ name: "evil.sh", size: 1, contentBase64: "eA==" },
+				{ name: "Shot.PNG", size: 1, contentBase64: "eA==" },
 				{ name: "ok.png", size: 1, contentBase64: "" },
 				{ name: "ok.png", size: 1 },
 				null,
@@ -345,6 +381,7 @@ describe("writeClaimTaskAssets", () => {
 		});
 		assert.equal(written, 0);
 		assert.ok(!fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "escape.png")));
+		assert.ok(!fs.existsSync(path.join(workdir, "docs", "tasks", "t1", "assets", "evil.sh")));
 		assert.equal(await writeClaimTaskAssets({ workdir, taskId: "t1", assets: [] }), 0);
 		assert.equal(await writeClaimTaskAssets({ workdir, taskId: "t1" }), 0);
 		assert.equal(await writeClaimTaskAssets({}), 0);

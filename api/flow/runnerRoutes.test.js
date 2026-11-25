@@ -1117,7 +1117,7 @@ describe("Runner Routes Integration", () => {
 		expect(again.assigned).toBe(false);
 	});
 
-	it("claim ships the task's image assets as base64 for remote Runners", async () => {
+	it("claim ships the task's attachments as base64 for remote Runners", async () => {
 		const credential = await onboard("assets-claim-1");
 		const taskRes = await app.inject({
 			method: "POST",
@@ -1129,7 +1129,8 @@ describe("Runner Routes Integration", () => {
 		const assetsDir = path.join(path.dirname(findTaskMarkdown(tempProjectsRoot, target)), "assets");
 		fs.mkdirSync(assetsDir, { recursive: true });
 		fs.writeFileSync(path.join(assetsDir, "shot.png"), Buffer.from([1, 2, 3]));
-		fs.writeFileSync(path.join(assetsDir, "notes.txt"), "not shipped");
+		fs.writeFileSync(path.join(assetsDir, "notes.txt"), "shipped too");
+		fs.writeFileSync(path.join(assetsDir, "run.sh"), "never shipped");
 		/* eslint-enable security/detect-non-literal-fs-filename */
 		const claim = await app.inject({
 			method: "POST",
@@ -1139,10 +1140,13 @@ describe("Runner Routes Integration", () => {
 		});
 		expect(claim.statusCode).toBe(200);
 		const lease = JSON.parse(claim.payload);
-		expect(lease.taskAssets.map((entry) => entry.name)).toEqual(["shot.png"]);
+		expect(lease.taskAssets.map((entry) => entry.name)).toEqual(["shot.png", "notes.txt"]);
 		expect(lease.taskAssets[0].size).toBe(3);
 		expect(Buffer.from(lease.taskAssets[0].contentBase64, "base64")).toEqual(
 			Buffer.from([1, 2, 3]),
+		);
+		expect(Buffer.from(lease.taskAssets[1].contentBase64, "base64").toString("utf8")).toBe(
+			"shipped too",
 		);
 	});
 

@@ -15,6 +15,9 @@ vi.mock('../../services/api', () => ({
     listTaskImages: vi.fn(),
     uploadTaskImage: vi.fn(),
     deleteTaskImage: vi.fn(),
+    listTaskAttachments: vi.fn(),
+    uploadTaskAttachment: vi.fn(),
+    deleteTaskAttachment: vi.fn(),
   },
 }));
 
@@ -108,6 +111,7 @@ describe('TaskReviewPage', () => {
     window.localStorage.clear();
     api.getTaskReview.mockResolvedValue(structuredClone(baseReview));
     api.listTaskImages.mockResolvedValue({ images: [] });
+    api.listTaskAttachments.mockResolvedValue({ attachments: [] });
   });
 
   afterEach(() => {
@@ -936,6 +940,7 @@ describe('TaskReviewPage reports tab', () => {
     window.localStorage.clear();
     api.getTaskReview.mockResolvedValue(structuredClone(baseReview));
     api.listTaskImages.mockResolvedValue({ images: [] });
+    api.listTaskAttachments.mockResolvedValue({ attachments: [] });
   });
 
   afterEach(() => {
@@ -1254,6 +1259,7 @@ describe('TaskReviewPage filtered task files hint', () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     api.listTaskImages.mockResolvedValue({ images: [] });
+    api.listTaskAttachments.mockResolvedValue({ attachments: [] });
   });
 
   it('shows the reserved empty-state copy when only task files changed', async () => {

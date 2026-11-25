@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { InfoTooltip } from '../common/InfoTooltip';
 import { TaskImageAttach } from './TaskImageAttach';
-import { appendImagesMarkdown } from '../../services/taskImages';
+import { appendAttachmentsMarkdown } from '../../services/taskImages';
 import { isNewlyCreatedTask, resolveDefaultGoalMode } from './goalDefaultMode';
 
 // Per-surface styling kept identical to the two former inline copies of this
@@ -159,7 +159,7 @@ export function TaskGoalSection({
    * MARK: insertImagesMarkdown
    * @description Appends a whole upload batch's markdown references at the end
    *   of the controlled goal text in ONE `onTitleChange` call via the shared
-   *   `appendImagesMarkdown` fold (same contract the reject dialogs use), then
+   *   `appendAttachmentsMarkdown` fold (same contract the reject dialogs use), then
    *   moves the caret to the end. A single call per gesture is what makes
    *   multi-select safe: N rapid per-file updates would each close over the
    *   same stale `title` and overwrite each other, keeping only the last
@@ -170,7 +170,7 @@ export function TaskGoalSection({
   const insertImagesMarkdown = (images) => {
     if (!Array.isArray(images) || images.length === 0) return;
     const current = latestTitleRef.current;
-    const next = appendImagesMarkdown(current, images);
+    const next = appendAttachmentsMarkdown(current, images);
     if (next === current) return;
     onTitleChange?.(next);
     // Focus + caret-at-end land after React re-renders with the new value.

@@ -902,6 +902,31 @@ export const ENDPOINTS = [
 		body: null,
 	},
 	{
+		method: "POST",
+		path: "/projects/:id/tasks/:taskId/attachments",
+		purpose: "Upload one file of any allowed type (`file` field) into the task's `assets/` folder.",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/projects/:id/tasks/:taskId/attachments",
+		purpose: "List the task's attachments (images plus all other allowed types, each with a `kind`).",
+		body: null,
+	},
+	{
+		method: "GET",
+		path: "/projects/:id/tasks/:taskId/attachments/:name",
+		purpose:
+			"Serve one attachment header-safe (`inline` for images/text/pdf, `attachment` download for everything else — always html/svg — plus `nosniff`). Errors carry a `reason` code (`unknown-project`, `invalid-task-id`, `task-not-found`, `path-traversal`, `invalid-attachment-name`, `attachment-not-found`).",
+		body: null,
+	},
+	{
+		method: "DELETE",
+		path: "/projects/:id/tasks/:taskId/attachments/:name",
+		purpose: "Delete one attachment.",
+		body: null,
+	},
+	{
 		method: "GET",
 		path: "/projects/:id/tasks/:taskId/review",
 		purpose: "Get the task review state.",

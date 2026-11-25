@@ -12,6 +12,9 @@ import { resolveStagesForTask } from "../flow/taskScheduler.js";
 import { normalizeSurveyFileName, readSurvey, resolveQuestionMeOutputFile, resolveSurveyPath, saveSurveyAnswers, withSurveyFileWriteLock } from "./taskSurvey.js";
 import { stageHasQuestionMe, unansweredRequired } from "../../shared/survey.js";
 import { ensureSurveyImages, persistChosenSurveyImages, resolveImageGenProvider } from "../imageGen/surveyImages.js";
+import { ingestOutOfTaskRefs } from "./taskAssets.js";
+import { commitTaskAssets } from "./commitTaskAssets.js";
+import { config } from "../config.js";
 
 /***
  * MARK: surveyOutputFileForRequest
@@ -135,7 +138,11 @@ export async function registerTaskWorkRoutes(app, deps) {
 		// skill verifies the stored goal against its draft file byte-for-byte,
 		// so create never trims or re-wraps (PATCH trims edge whitespace by
 		// its own rule below — compare against the trimmed draft after a
-		// patch, as the skill text already notes).
+		// patch, as the skill text already notes). The one exception is
+		// attachment ingest: goals referencing out-of-task files are
+		// rewritten to the stored `assets/<name>` refs, and the response
+		// reports the mapping in `ingestedAttachments` for the skill to
+		// verify against (see the create-task skill ordering note).
 		const { title: cleanTitle } = resolveTaskTitleAndGoal({ title, goal: taskGoal });
 		return {
 			title: cleanTitle,
@@ -320,6 +327,47 @@ export async function registerTaskWorkRoutes(app, deps) {
 				});
 			}
 
+				// Attachment ingest: out-of-task files the goal references are
+				// copied into the task's `assets/` folder and the goal
+				// rewritten to the stored names BEFORE curation, so the
+				// prompt and every Runner resolve them. Goals without such
+				// refs pass through byte-identical (the create-task skill
+				// contract); ingested goals report the mapping in
+				// `ingestedAttachments` for the skill to verify against.
+				let ingestedAttachments = [];
+				try {
+					const ingest = ingestOutOfTaskRefs({
+						projectCwd: ctx.project?.cwd,
+						taskId: task.id,
+						markdown: task.goal,
+						docsProject: ctx.project,
+						maxFileBytes: config.taskAttachmentMaxBytes,
+						maxPerTask: config.taskAttachmentMaxPerTask,
+					});
+					if (ingest.ingested.length > 0) {
+						task = taskStore.updateTask(
+							ctx.id,
+							task.id,
+							{ goal: ingest.markdown, body: ingest.markdown },
+							ctx.project?.cwd,
+						);
+						ingestedAttachments = ingest.ingested;
+						taskStore._recordHistory?.(
+							task,
+							`Attached ${ingest.ingested.length} file(s) to the task folder: ${ingest.ingested.map((entry) => entry.name).join(", ")}`,
+						);
+						await commitTaskAssets({
+							projectCwd: ctx.project?.cwd,
+							taskId: task.id,
+							branch: task.branch,
+							docsProject: ctx.project,
+							names: ingest.ingested.map((entry) => entry.name),
+						});
+					}
+				} catch {
+					// Best-effort: the task is created regardless.
+				}
+
 				const finalPrompt = promptEngine.curatePrompt(task, ctx.stage, {
 					project: ctx.project,
 					projectName: ctx.project?.name,
@@ -388,6 +436,7 @@ export async function registerTaskWorkRoutes(app, deps) {
 				return {
 					...task,
 					curatedPrompt: finalPrompt,
+					...(ingestedAttachments.length > 0 ? { ingestedAttachments } : {}),
 				};
 			},
 		);
@@ -436,8 +485,29 @@ export async function registerTaskWorkRoutes(app, deps) {
 			if (typeof request.body?.title === "string" && request.body.title.trim()) {
 			updates.title = _sanitizeTaskTitle(request.body.title);
 			}
+			// Attachment ingest (see the create handler): out-of-task files
+			// the new goal references land in `assets/` and the goal is
+			// rewritten to the stored names before persisting.
+			let ingestedAttachments = [];
 			if (typeof request.body?.goal === "string" && request.body.goal.trim()) {
-				updates.goal = request.body.goal.trim();
+				let nextGoal = request.body.goal.trim();
+				try {
+					const ingest = ingestOutOfTaskRefs({
+						projectCwd: project?.cwd,
+						taskId: task.id,
+						markdown: nextGoal,
+						docsProject: project,
+						maxFileBytes: config.taskAttachmentMaxBytes,
+						maxPerTask: config.taskAttachmentMaxPerTask,
+					});
+					if (ingest.ingested.length > 0) {
+						nextGoal = ingest.markdown;
+						ingestedAttachments = ingest.ingested;
+					}
+				} catch {
+					// Best-effort: the goal update proceeds regardless.
+				}
+				updates.goal = nextGoal;
 				updates.body = updates.goal;
 			}
 			if (typeof request.body?.status === "string") {
@@ -477,6 +547,24 @@ export async function registerTaskWorkRoutes(app, deps) {
 			});
 			}
 			taskStore._recordHistory(updated, request.actor?.kind === "api-key" ? `Task details edited by api-key:${request.actor.name}` : "Task details edited");
+			if (ingestedAttachments.length > 0) {
+				try {
+					taskStore._recordHistory?.(
+						updated,
+						`Attached ${ingestedAttachments.length} file(s) to the task folder: ${ingestedAttachments.map((entry) => entry.name).join(", ")}`,
+					);
+					await commitTaskAssets({
+						projectCwd: project?.cwd,
+						taskId: updated.id,
+						branch: updated.branch,
+						docsProject: project,
+						names: ingestedAttachments.map((entry) => entry.name),
+					});
+				} catch {
+					// Best-effort: the update already landed.
+				}
+				return { ...updated, ingestedAttachments };
+			}
 			return updated;
 		},
 	);

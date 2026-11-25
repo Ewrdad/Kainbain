@@ -23,6 +23,7 @@ import {
 	writeTaskImage,
 	deleteTaskImage,
 } from "../work/taskAssets.js";
+import { commitTaskAssets } from "../work/commitTaskAssets.js";
 import { config as appConfig } from "../config.js";
 
 /***
@@ -38,7 +39,7 @@ import { config as appConfig } from "../config.js";
  * @param {Object} body - Error payload.
  * @returns {Object} The Fastify reply.
  ***/
-function sendImageError(reply, status, body) {
+export function sendImageError(reply, status, body) {
 	return reply.header("cache-control", "no-store").status(status).send(body);
 }
 
@@ -55,7 +56,7 @@ function sendImageError(reply, status, body) {
  * @param {Object} reply - Fastify reply.
  * @returns {{project: Object, taskId: string, projectCwd: string}|null}
  ***/
-function resolveTaskContext(deps, request, reply) {
+export function resolveTaskContext(deps, request, reply) {
 	const { resolveAndGuardProject, projectStore, taskStore } = deps;
 	// Pre-set before any guard can send: the shared project resolver may
 	// answer 404 itself (unknown project id), and that error must also be
@@ -240,6 +241,18 @@ export default async function taskImagesRoutes(app, { deps }) {
 				safeName,
 			);
 			const relPath = writeTaskImage(ctx.projectCwd, ctx.taskId, finalName, buffer, ctx.project);
+			// Ingest-time commit assurance: the bytes become branch content
+			// promptly instead of sitting untracked until the next stage
+			// auto-commit. Best-effort and never a gate (non-repo checkouts
+			// and wrong-branch trees simply resolve uncommitted).
+			await commitTaskAssets({
+				projectCwd: ctx.projectCwd,
+				taskId: ctx.taskId,
+				branch: taskStore.getTask?.(request.params.id, ctx.taskId)?.branch,
+				docsProject: ctx.project,
+				names: [finalName],
+				logger: request.log,
+			});
 			return reply.status(201).send({
 				name: finalName,
 				path: relPath,

@@ -82,7 +82,7 @@ viewer renders markdown beautifully, supporting:
 - **Fenced code blocks** with syntax highlighting
 - **Mermaid diagrams** (flowcharts, sequence diagrams, class diagrams, etc.)
 - **Tables** for structured data
-- **Images** (local assets or absolute URLs)
+- **Images** (local assets or absolute URLs) and **file attachments** (logs, docs, archives, media via `[label](assets/<name>)` links)
 - **Bold**, *italic*, and `inline code` formatting
 
 **Example of a well-formatted ticket draft:**
@@ -149,9 +149,10 @@ graph TD
 ```
 
 Headings, bullet lists, tables, fenced code blocks, ` ```mermaid ` diagrams,
-and `![name](assets/name)` image references are all supported by the task goal
-view — prefer a well-structured document over a paragraph. A broken diagram
-degrades to readable source rather than a blank hole.
+`![name](assets/name)` image references, and `[label](assets/name)` file
+links are all supported by the task goal view — prefer a well-structured
+document over a paragraph. A broken diagram degrades to readable source
+rather than a blank hole.
 
 ### Stage 2 — Send the draft via the API
 
@@ -188,15 +189,21 @@ Rules while sending:
   formatter derives display titles from the goal's first line
   (`formatTaskTitleFirstLine`: first line, leading `# ` stripped, falls back to
   `Untitled Task`), so the first line must stay on one line.
-- **Images follow create → upload → patch ordering.** A task id does not exist
-  until after `POST /tasks`, so if a draft references local images, create the
+- **Attachments follow create → upload → patch ordering.** A task id does not exist
+  until after `POST /tasks`, so if a draft references local files, create the
   task with text-only refs first, then `POST /projects/<projectId>/tasks/<taskId>/images`
-  for each image, and only after every upload succeeds `PATCH /tasks/<taskId>`
-  with a `goal` that contains the returned `assets/<name>` references. Never
-  guess filenames; reuse the names returned by the upload response. Absolute
-  URLs pass through unchanged. Note: `PATCH /tasks/:id` trims leading/trailing
-  whitespace from the goal (create does not) — after an image-ref patch, compare
-  against the trimmed draft, not the raw file bytes.
+  for each image and `POST /projects/<projectId>/tasks/<taskId>/attachments`
+  for each other file (logs, docs, archives, media), and only after every upload
+  succeeds `PATCH /tasks/<taskId>` with a `goal` that contains the returned
+  `assets/<name>` references (`![alt](assets/<name>)` for images,
+  `[label](assets/<name>)` for other files). Never guess filenames; reuse the
+  names returned by the upload response. Absolute URLs pass through unchanged.
+  (A goal that names out-of-task files directly is also ingested-and-rewritten
+  server-side at create/update time, with the mapping reported in the response's
+  `ingestedAttachments` — but upload-then-patch stays the deterministic path.)
+  Note: `PATCH /tasks/:id` trims leading/trailing whitespace from the goal
+  (create does not) — after an attachment-ref patch, compare against the
+  trimmed draft, not the raw file bytes.
 - `idempotencyKey` is REQUIRED: derive it deterministically, e.g.
   `sha256(finding-summary + targetStage + currentTaskId).slice(0, 32)` — a
   retry of the same finding must not create a second ticket.
@@ -214,7 +221,7 @@ confirm `currentStageId` matches the target stage, that `blockedBy` matches the
 decision recorded for that finding (ids or `[]`), that the goal's first line is
 the mandated title, and that the fetched `goal` equals the draft file written
 in Stage 1 — byte-for-byte for a plain create, or against the edge-trimmed
-draft after an image-ref `PATCH` (see the note above). Report every created
+draft after an attachment-ref `PATCH` (see the note above). Report every created
 ticket id, title, stage, and blocker ids (`blockers: none` when empty) in the
 stage report so operators can audit the fan-out.
 

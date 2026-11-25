@@ -143,3 +143,59 @@ describe('FailureMessage image references', () => {
     }
   });
 });
+
+describe('FailureMessage file references', () => {
+  const messageWithLog = 'The run failed.\n\n[run log](assets/out.log)\n';
+
+  test('renders asset file refs as download chips when task context is provided', () => {
+    render(<FailureMessage message={messageWithLog} projectId="p1" taskId="t1" />);
+    const strip = screen.getByTestId('failure-message-files');
+    expect(strip).toBeInTheDocument();
+    const chip = screen.getByRole('link', { name: /download out\.log/i });
+    expect(chip.getAttribute('href')).toContain('/projects/p1/tasks/t1/attachments/out.log');
+    // The readable reference text still shows alongside the chip.
+    expect(strip.parentElement.textContent).toContain('[run log](assets/out.log)');
+    // File refs never join the thumbnail strip.
+    expect(screen.queryByTestId('failure-message-images')).not.toBeInTheDocument();
+  });
+
+  test('omits file chips without task context (readable reference degrades gracefully)', () => {
+    render(<FailureMessage message={messageWithLog} />);
+    expect(screen.queryByTestId('failure-message-files')).not.toBeInTheDocument();
+    expect(screen.getByText(/\[run log\]\(assets\/out\.log\)/)).toBeInTheDocument();
+  });
+
+  test('ignores external file URLs', () => {
+    render(
+      <FailureMessage
+        message={'See [log](https://example.com/out.log)'}
+        projectId="p1"
+        taskId="t1"
+      />,
+    );
+    expect(screen.queryByTestId('failure-message-files')).not.toBeInTheDocument();
+  });
+
+  test('renders a twice-pasted file only once', () => {
+    render(
+      <FailureMessage
+        message={'See [o](assets/o.log)\n\n[o](assets/o.log)\n'}
+        projectId="p1"
+        taskId="t1"
+      />,
+    );
+    expect(screen.getAllByRole('link', { name: /download o\.log/i })).toHaveLength(1);
+  });
+
+  test('renders image and file strips side by side for a mixed message', () => {
+    render(
+      <FailureMessage
+        message={'Boom\n\n![shot.png](assets/shot.png)\n\n[run log](assets/out.log)\n'}
+        projectId="p1"
+        taskId="t1"
+      />,
+    );
+    expect(screen.getByTestId('failure-message-images')).toBeInTheDocument();
+    expect(screen.getByTestId('failure-message-files')).toBeInTheDocument();
+  });
+});

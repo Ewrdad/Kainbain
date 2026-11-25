@@ -214,7 +214,7 @@ describe("taskAssets helpers", () => {
 			).toEqual({ ref: "assets/My Shot.PNG", name: "My Shot.PNG", present: true });
 		});
 
-		it("detects non-image files literally but never via canonicalisation", () => {
+		it("detects non-image files literally and via canonicalisation", () => {
 			fs.mkdirSync(taskAssetDir(tempRoot, "task-mixed"), { recursive: true });
 			fs.writeFileSync(
 				path.join(taskAssetDir(tempRoot, "task-mixed"), "notes.txt"),
@@ -223,10 +223,15 @@ describe("taskAssets helpers", () => {
 			expect(
 				resolveAssetRef(tempRoot, "task-mixed", "assets/notes.txt").present,
 			).toBe(true);
-			// Serve-side canonicalisation only matches image extensions, so a
-			// drifted non-image ref stays missing (the route 400s on it).
+			// Serve parity covers every allowed attachment extension: the
+			// attachments route canonicalises `Notes.TXT` to `notes.txt`
+			// instead of 404ing, so curation must not warn on it either.
 			expect(
 				resolveAssetRef(tempRoot, "task-mixed", "assets/Notes.TXT").present,
+			).toBe(true);
+			// Disallowed extensions still never canonicalise to present.
+			expect(
+				resolveAssetRef(tempRoot, "task-mixed", "assets/Run.SH").present,
 			).toBe(false);
 		});
 
@@ -320,15 +325,19 @@ describe("taskAssets helpers", () => {
 	});
 
 	describe("collectTaskAssetPayload", () => {
-		it("ships on-disk images as sorted base64 entries, images only", () => {
+		it("ships on-disk attachments as base64 entries, images first", () => {
 			writeTaskImage(tempRoot, "task-payload", "b.png", Buffer.from([1, 2, 3]));
 			writeTaskImage(tempRoot, "task-payload", "a.png", Buffer.from([4]));
 			fs.writeFileSync(
 				path.join(taskAssetDir(tempRoot, "task-payload"), "notes.txt"),
-				"not shipped",
+				"shipped",
 			);
 			const payload = collectTaskAssetPayload(tempRoot, "task-payload");
-			expect(payload.map((entry) => entry.name)).toEqual(["a.png", "b.png"]);
+			expect(payload.map((entry) => entry.name)).toEqual([
+				"a.png",
+				"b.png",
+				"notes.txt",
+			]);
 			expect(payload[0]).toEqual({
 				name: "a.png",
 				size: 1,
