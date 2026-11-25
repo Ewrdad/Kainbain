@@ -868,7 +868,9 @@ export class AttachmentIngestError extends Error {
  *   safe deterministic name: sanitize → extension-allowlist → caps → dedupe
  *   → write. Never overwrites (`out.log` becomes `out-2.log`). Bytes arrive
  *   either as `sourceBytes` (Buffer) or via `sourcePath` (read here, so
- *   route handlers stay thin). Throws `AttachmentIngestError` with a reason
+ *   route handlers stay thin; a `sourcePath` is size-gated from its stat
+ *   BEFORE the read, so an oversized file is rejected without being
+ *   loaded into memory). Throws `AttachmentIngestError` with a reason
  *   code on invalid names, disallowed types, oversized files, and full
  *   tasks; throws `Error` on unusable locations or non-buffer input.
  * @example ingestAttachment({ projectCwd: '/repo', taskId: 't1', sourceBytes: Buffer.from('x'), originalName: 'Out.LOG' }) => { name: 'out.log', relPath: 'assets/out.log', size: 1 }
@@ -902,17 +904,29 @@ export function ingestAttachment({
 	if (!isAllowedAttachmentExt(safeName)) {
 		throw new AttachmentIngestError("attachment-type-not-allowed", originalName);
 	}
-	let buffer = sourceBytes;
-	if (!Buffer.isBuffer(buffer) && typeof sourcePath === "string" && sourcePath) {
-		/* eslint-disable security/detect-non-literal-fs-filename */
-		buffer = fs.readFileSync(sourcePath);
-		/* eslint-enable security/detect-non-literal-fs-filename */
-	}
-	if (!Buffer.isBuffer(buffer)) throw new Error("Invalid task attachment bytes");
 	const perFile =
 		Number.isFinite(maxFileBytes) && maxFileBytes > 0
 			? Math.floor(maxFileBytes)
 			: 10 * 1024 * 1024;
+	let buffer = sourceBytes;
+	if (!Buffer.isBuffer(buffer) && typeof sourcePath === "string" && sourcePath) {
+		/* eslint-disable security/detect-non-literal-fs-filename */
+		// Size gate BEFORE reading: an oversized sourcePath is rejected
+		// without pulling the whole file into memory first. An unstatable
+		// path falls through to the read, which reports the real I/O error.
+		let sourceSize = null;
+		try {
+			sourceSize = fs.statSync(sourcePath).size;
+		} catch {
+			sourceSize = null;
+		}
+		if (sourceSize !== null && sourceSize > perFile) {
+			throw new AttachmentIngestError("attachment-too-large", originalName, perFile);
+		}
+		buffer = fs.readFileSync(sourcePath);
+		/* eslint-enable security/detect-non-literal-fs-filename */
+	}
+	if (!Buffer.isBuffer(buffer)) throw new Error("Invalid task attachment bytes");
 	if (buffer.length > perFile) {
 		throw new AttachmentIngestError("attachment-too-large", originalName, perFile);
 	}
@@ -1090,8 +1104,10 @@ export function resolveOutOfTaskRef(projectCwd, taskId, ref, docsProject) {
  *   forms (`./assets/x`, task-folder prefixes, absolute paths into the
  *   assets dir) normalize to the canonical form when the bytes exist;
  *   refs resolving directly inside the task's own `assets/` dir map
- *   without a copy; unresolvable, oversized, disallowed, or over-cap refs
- *   keep their text and are reported in `skipped` (never silently dropped).
+ *   without a copy; unresolvable, oversized (size-gated from the stat
+ *   BEFORE the file is read, so a huge ref cannot exhaust memory),
+ *   disallowed, or over-cap refs keep their text and are reported in
+ *   `skipped` (never silently dropped).
  *   Best-effort per ref and never throws: failures isolate to one entry.
  * @example ingestOutOfTaskRefs({ projectCwd: '/repo', taskId: 't1', markdown: 'See [l](/tmp/o.log)' }).ingested => [{ from: '/tmp/o.log', to: 'assets/o.log', name: 'o.log', size: 1 }]
  * @param {Object} opts
@@ -1117,6 +1133,10 @@ export function ingestOutOfTaskRefs({
 	}
 	const assetsDir = taskAssetDir(projectCwd, taskId, docsProject);
 	if (!assetsDir) return outcome;
+	const perFile =
+		Number.isFinite(maxFileBytes) && maxFileBytes > 0
+			? Math.floor(maxFileBytes)
+			: 10 * 1024 * 1024;
 	let assetsReal;
 	try {
 		assetsReal = fs.existsSync(assetsDir) ? fs.realpathSync(assetsDir) : assetsDir;
@@ -1179,6 +1199,20 @@ export function ingestOutOfTaskRefs({
 				size: 0,
 				direct: true,
 			});
+			continue;
+		}
+		// Size gate BEFORE reading: a failure report or goal naming a
+		// multi-GB file must be skipped without loading it into memory.
+		let sourceSize = null;
+		try {
+			/* eslint-disable security/detect-non-literal-fs-filename */
+			sourceSize = fs.statSync(source).size;
+			/* eslint-enable security/detect-non-literal-fs-filename */
+		} catch {
+			sourceSize = null;
+		}
+		if (sourceSize !== null && sourceSize > perFile) {
+			outcome.skipped.push({ ref: bare, reason: "attachment-too-large" });
 			continue;
 		}
 		let stored;

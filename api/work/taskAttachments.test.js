@@ -237,6 +237,24 @@ describe("taskAttachments helpers", () => {
 			expect(stored.relPath).toBe("assets/from-path.txt");
 		});
 
+		it("rejects an oversized sourcePath from its stat before reading", () => {
+			const src = path.join(tempRoot, "from-path-big.log");
+			fs.writeFileSync(src, Buffer.alloc(11, 7));
+			expect(() =>
+				ingestAttachment({
+					projectCwd: tempRoot,
+					taskId: "task-ingest-path-big",
+					sourcePath: src,
+					originalName: "from-path-big.log",
+					maxFileBytes: 10,
+				}),
+			).toThrowError(
+				expect.objectContaining({ code: "attachment-too-large", limit: 10 }),
+			);
+			// Nothing was written: the cap fired before any write.
+			expect(fs.existsSync(taskAssetDir(tempRoot, "task-ingest-path-big"))).toBe(false);
+		});
+
 		it("rejects disallowed types with a reason code", () => {
 			expect(() =>
 				ingestAttachment({
@@ -569,6 +587,9 @@ describe("taskAttachments helpers", () => {
 					{ ref: big, reason: "attachment-too-large" },
 					{ ref: evil, reason: "attachment-type-not-allowed" },
 				]);
+				// The oversized ref was size-gated before its read: no bytes
+				// landed in the task folder at all.
+				expect(fs.existsSync(taskAssetDir(tempRoot, "task-skip"))).toBe(false);
 			} finally {
 				fs.rmSync(srcDir, { recursive: true, force: true });
 			}
