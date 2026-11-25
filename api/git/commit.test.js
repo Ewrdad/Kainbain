@@ -10,6 +10,7 @@ import {
 	DEFAULT_GIT_AUTHOR_NAME,
 	DEFAULT_GIT_AUTHOR_EMAIL,
 	ensureGitIdentity,
+	assertBranchAffinity,
 	commitAllIfNeeded,
 	commitEngineSnapshots,
 } from "./commit.js";
@@ -331,6 +332,54 @@ describe("commitAllIfNeeded", () => {
 			"-m",
 			"# Heading\nprompt body",
 		]);
+	});
+});
+
+describe("assertBranchAffinity (T9)", () => {
+	beforeEach(() => {
+		spawnMock.mockReset();
+	});
+
+	it("resolves with the branch name when HEAD matches the expected branch", async () => {
+		spawnMock.mockImplementation((cmd, args) => {
+			if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {
+				return fakeChildFromResponse({ stdout: "kb/mine\n" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		await expect(assertBranchAffinity("/repo", "kb/mine")).resolves.toBe("kb/mine");
+	});
+
+	it("throws GitBranchMismatchError with the byte-identical guard message on mismatch", async () => {
+		spawnMock.mockImplementation((cmd, args) => {
+			if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {
+				return fakeChildFromResponse({ stdout: "kb/other-task\n" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		await expect(assertBranchAffinity("/repo", "kb/mine")).rejects.toMatchObject({
+			name: "GitBranchMismatchError",
+			expectedBranch: "kb/mine",
+			actualBranch: "kb/other-task",
+			message:
+				"Refusing to commit on the wrong branch: expected 'kb/mine' but the working tree is on 'kb/other-task'. " +
+				"A concurrent task likely moved HEAD; re-run the stage so it can re-establish its branch.",
+		});
+	});
+
+	it("fails closed when HEAD cannot be read (unreadable HEAD is a mismatch)", async () => {
+		spawnMock.mockImplementation((cmd, args) => {
+			if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {
+				return fakeChildFromResponse({ code: 128, stderr: "fatal: bad HEAD" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		await expect(assertBranchAffinity("/repo", "kb/mine")).rejects.toMatchObject({
+			name: "GitBranchMismatchError",
+			expectedBranch: "kb/mine",
+			actualBranch: null,
+		});
+		await expect(assertBranchAffinity("/repo", "kb/mine")).rejects.toThrow("'unknown'");
 	});
 });
 

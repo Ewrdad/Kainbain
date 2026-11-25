@@ -1,16 +1,23 @@
 // Domain: The Work — post-stage finalisation of a task branch.
 import fs from "node:fs";
 import {
+	branchExists,
+	checkoutBranch,
 	commitAllIfNeeded,
+	currentBranch,
 	drainDirtyTreeRecoveries,
 	drainGitLockRecoveries,
 	formatDirtyTreeRecoveryNotice,
 	formatGitLockRecoveryNotice,
+	getWorkingTreeStatus,
+	GitBranchMismatchError,
 	isGitRepository,
 	pushBranchIfRemote,
 	returnToDefaultBranch,
 	resolveSha,
 } from "../git.js";
+import { resolveDocsDirName } from "../docsPath.js";
+import { resolveKainbainDirName } from "../kainbainDir.js";
 import { resolveTaskBranch, syncMainToRemoteBestEffort } from "./taskBranches.js";
 import { resolveTaskBaseBranch } from "./taskBaseBranch.js";
 import { resolveTaskCwd } from "./taskWorkspace.js";
@@ -464,6 +471,264 @@ export async function finalizeTaskBranch(
 }
 
 /***
+ * MARK: _failedStageOwnPathPrefixes
+ * @description The repo-relative prefixes that count as PROVABLY this task's
+ *   own failed-stage output when a HEAD-contention recovery decides whether
+ *   the dirty tree may be carried across a re-checkout: the task's own docs
+ *   folder (`<docsDirName>/tasks/<taskId>/…` — stage reports and assets) plus
+ *   the engine state dir (`<kainbainDirName>/…`, regenerated store state, not
+ *   any task's work). Anything else dirty is treated as possibly a sibling
+ *   task's work and fails closed. Pure, no I/O.
+ * @example _failedStageOwnPathPrefixes({ id: 't1' }, null) => ['docs/tasks/t1/', '.kainbain/']
+ * @param {Object} task - Task entity (reads `id`).
+ * @param {Object|null} [project] - Project record hint for custom dir names.
+ * @returns {Array<string>}
+ * @private
+ ***/
+function _failedStageOwnPathPrefixes(task, project) {
+	const docsDir = resolveDocsDirName(project || {});
+	const stateDir = resolveKainbainDirName(project || {});
+	const taskId = String(task?.id || "").trim();
+	return [
+		taskId ? `${docsDir}/tasks/${taskId}/` : `${docsDir}/tasks/`,
+		`${stateDir}/`,
+	];
+}
+
+/***
+ * MARK: _isProvablyOwnFailedStagePath
+ * @description Pure predicate: true when a repo-relative dirty path lives
+ *   under one of the owning prefixes from _failedStageOwnPathPrefixes (the
+ *   trailing-slash form or the bare parent dir both match). Normalises
+ *   backslashes and git's quoting the same way the status parser consumers do.
+ * @example _isProvablyOwnFailedStagePath('docs/tasks/t1/report.md', ['docs/tasks/t1/', '.kainbain/']) => true
+ * @example _isProvablyOwnFailedStagePath('src/app.js', ['docs/tasks/t1/', '.kainbain/']) => false
+ * @param {string} p - Repo-relative dirty path from git status.
+ * @param {Array<string>} prefixes - Owning prefixes (trailing slash).
+ * @returns {boolean}
+ * @private
+ ***/
+function _isProvablyOwnFailedStagePath(p, prefixes) {
+	const norm = String(p || "").replace(/\\/g, "/").replace(/["']/g, "");
+	if (!norm) return false;
+	return prefixes.some((prefix) => {
+		const parent = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+		return norm === parent || norm.startsWith(prefix);
+	});
+}
+
+/***
+ * MARK: _formatFailedStageCommitUnrecoverable
+ * @description Builds the actionable, error-severity history entry used when a
+ *   failed-stage report could NOT be committed and recovery was refused. It
+ *   always names the stage, the owning (expected) branch, the branch HEAD is
+ *   actually on, the uncommitted report path(s) of this task, the concrete
+ *   reason recovery was refused, the manual remediation, and the explicit
+ *   statement that no commit was made on ANY branch (acceptance: the dropped
+ *   report surfaces as an actionable error instead of a quiet skip).
+ * @example _formatFailedStageCommitUnrecoverable({ stageLabel: 'Dev', branch: 'kb/t1', actualBranch: 'kb/t2', reason: '…', reportPaths: ['docs/tasks/t1/report.md'], execCwd: '/repo' })
+ *   => "Error: failed-stage report for 'Dev' could NOT be committed — … No commit was made on any branch."
+ * @param {Object} args
+ * @param {string} args.stageLabel
+ * @param {string} args.branch - Owning (expected) branch.
+ * @param {string|null} args.actualBranch - Branch HEAD is on now.
+ * @param {string} args.reason - Why recovery was refused.
+ * @param {Array<string>} args.reportPaths - This task's uncommitted report/asset paths.
+ * @param {string} args.execCwd - Shared checkout path for the remediation command.
+ * @returns {string}
+ * @private
+ ***/
+function _formatFailedStageCommitUnrecoverable({
+	stageLabel,
+	branch,
+	actualBranch,
+	reason,
+	reportPaths,
+	execCwd,
+}) {
+	const paths =
+		Array.isArray(reportPaths) && reportPaths.length > 0
+			? `${reportPaths.slice(0, 10).join(", ")}${reportPaths.length > 10 ? ` (+${reportPaths.length - 10} more)` : ""}`
+			: "the stage report file(s) under this task's docs folder";
+	return (
+		`Error: failed-stage report for '${stageLabel}' could NOT be committed — ${reason}. ` +
+		`Expected branch: '${branch}'; HEAD is on '${actualBranch || "unknown"}'. ` +
+		`Action: run 'git status' on the shared checkout ('${execCwd}'); commit or set aside any foreign changes; ` +
+		`then re-run the stage or manually commit the report file(s) ${paths} onto '${branch}'. ` +
+		`No commit was made on any branch.`
+	);
+}
+
+/***
+ * MARK: _recoverFailedStageCommitAfterHeadMove
+ * @description HEAD-contention recovery for the failed-stage auto-commit: when
+ *   `commitAllIfNeeded` refused with a GitBranchMismatchError because a
+ *   concurrent task moved the shared checkout onto a sibling branch, this
+ *   re-establishes the OWNING branch and retries the commit EXACTLY once.
+ *   Every step fails closed — the `expectedBranch` guard is never weakened and
+ *   no commit is ever made on a sibling branch:
+ *     1. re-read state (HEAD, branch existence, full dirty paths);
+ *     2. refuse (returning an unrecoverable detail) when the owning branch no
+ *        longer exists, when HEAD already moved BACK to the owning branch
+ *        (flapping HEAD — recorded, never papered over with a blind retry), or
+ *        when the tree holds dirt outside this task's own report/asset paths
+ *        (a sibling's work may be present);
+ *     3. otherwise check out the owning branch strictly: `recovery: "off"`
+ *        (never stash), never create, and `snapshotCommit: false` so no
+ *        snapshot commit can land on the sibling branch that currently holds
+ *        HEAD;
+ *     4. re-verify after the switch (HEAD on the owning branch, no foreign
+ *        dirt appeared mid-recovery);
+ *     5. retry `commitAllIfNeeded` with the identical subject/opts once; any
+ *        retry failure (including a second mismatch) is unrecoverable.
+ *   Never throws — every failure becomes `{ unrecoverable: true, detail }` so
+ *   `commitFailedStageWork` can record the actionable error entry and still
+ *   return null without blocking failure routing.
+ * @example await _recoverFailedStageCommitAfterHeadMove({ task, execCwd, branch, subject, stageLabel, commitOpts, mismatch })
+ *   => { commitRes: { committed: true, hash }, note: 'Note: HEAD had moved …' } | { unrecoverable: true, detail }
+ * @param {Object} args
+ * @param {Object} args.task - Task entity (id, projectId).
+ * @param {string} args.execCwd - Directory the failed commit ran in.
+ * @param {string} args.branch - Owning branch to re-establish.
+ * @param {string} args.subject - Identical commit subject for the retry.
+ * @param {string} args.stageLabel - Stage name for the error entry.
+ * @param {Object} args.commitOpts - `{ noCode, project }` for the retry.
+ * @param {GitBranchMismatchError} args.mismatch - The original refusal.
+ * @returns {Promise<{commitRes: Object, note: string}|{unrecoverable: boolean, detail: string}>}
+ * @private
+ ***/
+async function _recoverFailedStageCommitAfterHeadMove({
+	task,
+	execCwd,
+	branch,
+	subject,
+	stageLabel,
+	commitOpts,
+	mismatch,
+}) {
+	const project = commitOpts?.project || null;
+	const ownPrefixes = _failedStageOwnPathPrefixes(task, project);
+	const isOwn = (p) => _isProvablyOwnFailedStagePath(p, ownPrefixes);
+	const reportPathsOf = (status) => (status?.dirtyPaths || []).filter(isOwn);
+	const foreignPathsOf = (status) => (status?.dirtyPaths || []).filter((p) => !isOwn(p));
+	const readState = async () => {
+		const [nowBranch, exists, status] = await Promise.all([
+			currentBranch(execCwd).catch(() => null),
+			branchExists(execCwd, branch),
+			getWorkingTreeStatus(execCwd, { ignorePaths: [], project }).catch(() => null),
+		]);
+		return { nowBranch, exists, status };
+	};
+	const fail = (reason, state) => ({
+		unrecoverable: true,
+		detail: _formatFailedStageCommitUnrecoverable({
+			stageLabel,
+			branch,
+			actualBranch: state?.nowBranch || mismatch?.actualBranch || null,
+			reason,
+			reportPaths: reportPathsOf(state?.status),
+			execCwd,
+		}),
+	});
+
+	const actualBranch =
+		typeof mismatch?.actualBranch === "string" && mismatch.actualBranch
+			? mismatch.actualBranch
+			: await currentBranch(execCwd).catch(() => null);
+
+	// Step 1–2: re-read and fail closed, in order. An unreadable status is
+	// itself a fail-closed condition — "unknown dirt" is never treated as
+	// "no foreign dirt".
+	const state = await readState();
+	if (!state.status) {
+		return fail(
+			`the working-tree status could not be read, so foreign dirt cannot be ruled out`,
+			state,
+		);
+	}
+	if (!state.exists) {
+		return fail(
+			`the owning branch '${branch}' no longer exists (deleted mid-flight), so there is no safe branch to commit onto`,
+			state,
+		);
+	}
+	if (state.nowBranch === branch) {
+		return fail(
+			`HEAD moved back to the owning branch '${branch}' while the mismatch was being handled (flapping HEAD); a blind auto-retry is refused so the race stays visible`,
+			state,
+		);
+	}
+	const foreign = foreignPathsOf(state.status);
+	if (foreign.length > 0) {
+		return fail(
+			`HEAD is on sibling branch '${state.nowBranch || actualBranch || "unknown"}' (a concurrent task moved it) and the tree holds uncommitted work outside this task's own report/asset paths (${foreign.slice(0, 5).join(", ")}${foreign.length > 5 ? ` (+${foreign.length - 5} more)` : ""}), so an automatic checkout would risk mixing branches`,
+			state,
+		);
+	}
+
+	// Step 3: re-establish the owning branch, strictly. `recovery: "off"` —
+	// a dirty tree here means something changed under us, so refuse loudly
+	// instead of stashing. `snapshotCommit: false` — the commit-then-switch
+	// backstop would snapshot-commit onto the sibling branch that currently
+	// holds HEAD; the report must land only on the owning branch. The branch
+	// was proven to exist above, so checkoutBranch never creates.
+	try {
+		await checkoutBranch(execCwd, branch, {
+			recovery: "off",
+			snapshotCommit: false,
+			...(task?.id ? { taskId: task.id } : {}),
+			...(project ? { project } : {}),
+		});
+	} catch (checkoutErr) {
+		return fail(
+			`re-establishing the owning branch '${branch}' was refused (${checkoutErr?.message || checkoutErr}); committing on '${state.nowBranch || actualBranch || "unknown"}' is never attempted`,
+			state,
+		);
+	}
+
+	// Step 4: post-switch re-verify — HEAD on the owning branch and no foreign
+	// dirt appeared between the check and the switch.
+	const after = await readState();
+	if (!after.status) {
+		return fail(
+			`the working-tree status could not be re-read after the recovery checkout, so foreign dirt cannot be ruled out`,
+			after,
+		);
+	}
+	if (after.nowBranch !== branch) {
+		return fail(
+			`HEAD is on '${after.nowBranch || "unknown"}' after the recovery checkout (expected '${branch}'); the race is still live`,
+			after,
+		);
+	}
+	const afterForeign = foreignPathsOf(after.status);
+	if (afterForeign.length > 0) {
+		return fail(
+			`the tree gained uncommitted work outside this task's own report/asset paths during the recovery checkout (${afterForeign.slice(0, 5).join(", ")}${afterForeign.length > 5 ? ` (+${afterForeign.length - 5} more)` : ""}); refusing to commit`,
+			after,
+		);
+	}
+
+	// Step 5: retry the commit exactly once, identical subject and opts.
+	try {
+		const commitRes = await commitAllIfNeeded(execCwd, subject, {
+			expectedBranch: branch,
+			noCode: commitOpts?.noCode === true,
+			...(project ? { project } : {}),
+		});
+		return {
+			commitRes,
+			note: `Note: HEAD had moved to '${actualBranch || state.nowBranch || "unknown"}' (concurrent task); re-established '${branch}' and committed on retry`,
+		};
+	} catch (retryErr) {
+		return fail(
+			`the single retry after re-establishing '${branch}' failed (${retryErr?.message || retryErr})`,
+			after,
+		);
+	}
+}
+
+/***
  * MARK: commitFailedStageWork
  * @description Best-effort auto-commit of partial work when a work stage
  *   fails, so the failed attempt's changes cannot be silently absorbed into
@@ -471,9 +736,23 @@ export async function finalizeTaskBranch(
  *   the task branch with a `... (failed)` message suffix, bounding the
  *   failed attempt's commit range: a retry then measures only its own work.
  *   Never throws and never blocks failure routing: when there is nothing
- *   to commit, git is unavailable, or the tree is on an unexpected branch,
- *   it records a warning and returns null. Callers route the original
+ *   to commit, git is unavailable, or the commit fails for a non-branch
+ *   reason, it records a warning and returns null. Callers route the original
  *   failure unchanged.
+ *   HEAD contention: when the branch-affinity guard refuses because a
+ *   concurrent task moved the shared checkout onto a sibling branch
+ *   (GitBranchMismatchError), the owning branch is re-established and the
+ *   commit retried EXACTLY once (see
+ *   _recoverFailedStageCommitAfterHeadMove). A successful retry records the
+ *   usual success entry plus a short note that HEAD had moved. When recovery
+ *   is not provably safe — owning branch deleted, flapping HEAD, or a dirty
+ *   tree holding work outside this task's own report/asset paths — an
+ *   error-severity history entry names both branches, the uncommitted report
+ *   paths, and the manual remediation, and states that no commit was made on
+ *   any branch. The `expectedBranch` guard itself is never weakened: no
+ *   commit ever lands on a sibling task's branch. (The historical "re-run
+ *   the stage" advice no longer applies on this path — a failed stage has no
+ *   re-run coming.)
  * @example await commitFailedStageWork(store, task, '/repo', { stageName: 'Dev' })
  *   => { committed: true, hash: 'abc…' } | null
  * @param {Object} taskStore - TaskStore instance (cwd resolution, markdown save).
@@ -525,6 +804,7 @@ export async function commitFailedStageWork(taskStore, task, projectCwd, opts = 
 		const built = buildStageCommitMessage(task, stageLabel);
 		const subject = `${built.subject} ... (failed)`;
 		let commitRes = null;
+		let recoveryNote = null;
 		try {
 			commitRes =
 				typeof commitAllIfNeeded === "function"
@@ -535,17 +815,66 @@ export async function commitFailedStageWork(taskStore, task, projectCwd, opts = 
 						})
 					: { committed: false, hash: null };
 		} catch (commitErr) {
-			try {
-				if (Array.isArray(task.history)) {
-					task.history.push({
-						timestamp: new Date().toISOString(),
-						action: `Warning: failed-stage auto-commit after '${stageLabel}' skipped (${commitErr?.message || commitErr})`,
+			const isBranchMismatch =
+				commitErr instanceof GitBranchMismatchError ||
+				commitErr?.name === "GitBranchMismatchError";
+			if (isBranchMismatch) {
+				// HEAD contention: a concurrent task moved the shared checkout
+				// onto a sibling branch. Re-establish the owning branch and
+				// retry the commit exactly once — failing closed into an
+				// actionable error entry when recovery is not provably safe.
+				// The guard is never weakened: no commit lands on a sibling.
+				let recovery = null;
+				try {
+					recovery = await _recoverFailedStageCommitAfterHeadMove({
+						task,
+						execCwd,
+						branch,
+						subject,
+						stageLabel,
+						commitOpts: { noCode: opts.noCode === true, project },
+						mismatch: commitErr,
 					});
+				} catch {
+					recovery = null;
 				}
-			} catch {
-				// History is audit-only; routing continues regardless.
+				if (recovery && recovery.commitRes) {
+					commitRes = recovery.commitRes;
+					recoveryNote = recovery.note || null;
+				} else {
+					const detail =
+						recovery?.detail ||
+						`Error: failed-stage report for '${stageLabel}' could NOT be committed — HEAD is on another branch (${commitErr?.actualBranch || "unknown"}) and recovery was not attempted. Expected branch: '${branch}'. No commit was made on any branch.`;
+					try {
+						if (Array.isArray(task.history)) {
+							task.history.push({
+								timestamp: new Date().toISOString(),
+								action: detail,
+							});
+						}
+					} catch {
+						// History is audit-only; routing continues regardless.
+					}
+					try {
+						_appendProcessLog(task, `[ERROR] ${detail}`);
+					} catch {
+						// Process log is audit-only; routing continues regardless.
+					}
+					return null;
+				}
+			} else {
+				try {
+					if (Array.isArray(task.history)) {
+						task.history.push({
+							timestamp: new Date().toISOString(),
+							action: `Warning: failed-stage auto-commit after '${stageLabel}' skipped (${commitErr?.message || commitErr})`,
+						});
+					}
+				} catch {
+					// History is audit-only; routing continues regardless.
+				}
+				return null;
 			}
-			return null;
 		}
 		if (commitRes?.committed === true) {
 			try {
@@ -568,6 +897,21 @@ export async function commitFailedStageWork(taskStore, task, projectCwd, opts = 
 				}
 			} catch {
 				// Audit writes never block failure routing.
+			}
+			// HEAD-contention recovery succeeded: leave the short note so the
+			// race that moved HEAD stays visible in the task history.
+			if (recoveryNote) {
+				try {
+					if (Array.isArray(task.history)) {
+						task.history.push({
+							timestamp: new Date().toISOString(),
+							action: recoveryNote,
+						});
+					}
+					_appendProcessLog(task, `[GIT] ${recoveryNote}`);
+				} catch {
+					// Audit writes never block failure routing.
+				}
 			}
 			// File operations end pushed: publish the failed attempt's commit
 			// now, so the retry (or a second writer after a restart) merges

@@ -1422,6 +1422,7 @@ describe("git front-door surface contract", () => {
 		"SWEEPABLE_DIR_PREFIXES",
 		"abortMerge",
 		"abortSquashMerge",
+		"assertBranchAffinity",
 		"assessDirtyTree",
 		"branchExists",
 		"buildGitConflictDiagnostics",
@@ -1473,7 +1474,7 @@ describe("git front-door surface contract", () => {
 		"withCheckedOutBranch",
 	];
 
-	it("exports exactly the 63 canonical public symbols", () => {
+	it("exports exactly the 64 canonical public symbols", () => {
 		expect(Object.keys(gitHelpers).sort()).toEqual(EXPECTED_EXPORTS);
 	});
 

@@ -50,7 +50,11 @@ export class GitMergeConflictError extends GitError {
  *   `2e6a3521`'s auto-commit landed on `kb/04170d74` and produced a spurious
  *   merge conflict in `TaskReviewPage.jsx`). Callers pass `expectedBranch`
  *   only at points where the branch is a hard precondition, and decide
- *   themselves whether a mismatch is fatal or a warn-only skip.
+ *   themselves whether a mismatch is fatal or a warn-only skip. The
+ *   failed-stage auto-commit (`commitFailedStageWork`) is the one caller with
+ *   a recovery path: on a mismatch it re-establishes the owning branch and
+ *   retries once, failing closed into an actionable error entry when the tree
+ *   is not provably its own — the guard itself is never weakened or bypassed.
  * @example try { await commitAllIfNeeded(cwd, 'msg', { expectedBranch: 'kb/1' }) } catch (e) { e instanceof GitBranchMismatchError }
  ***/
 export class GitBranchMismatchError extends GitError {

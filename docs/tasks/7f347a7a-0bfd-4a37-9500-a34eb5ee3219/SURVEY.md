@@ -60,7 +60,26 @@
       }
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Go back to the task's own branch and try saving once more (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Show a clear error that needs action, so the missing report is visible (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Only failed-step reports for now (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
 
@@ -96,7 +115,20 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q6": {
+      "selected": [
+        "Only stop future reports from being lost (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "In the task history log as an error entry (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
 
@@ -131,6 +163,19 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q7": {
+      "selected": [
+        "Never save one task's report onto another task's work — even if a report is lost (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "Yes, leave a short note in the task history (Recommended)"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```

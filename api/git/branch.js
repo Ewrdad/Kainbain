@@ -50,6 +50,13 @@ async function commitSnapshotsBeforeSwitch(projectCwd, branch, current, opts = {
  * @param {string} branch
  * @param {Object} [opts]
  * @param {boolean} [opts.checkClean=true] - Enforce the clean-tree guard.
+ * @param {boolean} [opts.snapshotCommit=true] - Run the commit-then-switch
+ *   snapshot backstop before switching. Pass `false` only when the caller has
+ *   already proven the tree holds nothing but engine-owned paths that must
+ *   NOT be committed onto the CURRENT branch (e.g. failed-stage report
+ *   recovery re-establishing the owning branch while a sibling holds HEAD):
+ *   the default backstop snapshot-commits onto the branch that is checked out
+ *   right now, which would land those files on the sibling's branch.
  * @param {Object} [opts.project] - Project record; its `kainbainDirName`/`docsDirName`
  *   are threaded into the clean-tree guard.
  * @returns {Promise<{switched: boolean}>}
@@ -61,7 +68,12 @@ export async function checkoutBranch(projectCwd, branch, opts = {}) {
 	// Commit-then-switch: our own just-written snapshots must be committed
 	// before git's checkout safety sees them (the guard below ignores them
 	// by design). Real dirt is never staged and still refuses loudly.
-	await commitSnapshotsBeforeSwitch(projectCwd, branch, current, opts);
+	// Skippable only when the caller owns the dirt question itself (see
+	// opts.snapshotCommit above) — the default keeps every existing caller
+	// on the byte-identical behaviour.
+	if (opts.snapshotCommit !== false) {
+		await commitSnapshotsBeforeSwitch(projectCwd, branch, current, opts);
+	}
 	if (opts.checkClean !== false) {
 		await requireCleanWorkingTree(projectCwd, {
 			...opts,

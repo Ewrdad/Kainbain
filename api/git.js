@@ -67,6 +67,7 @@ export {
 	DEFAULT_GIT_AUTHOR_NAME,
 	DEFAULT_GIT_AUTHOR_EMAIL,
 	ensureGitIdentity,
+	assertBranchAffinity,
 	commitAllIfNeeded,
 	discardChangesOutsideDocs,
 	isDocPath,

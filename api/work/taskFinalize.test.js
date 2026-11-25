@@ -783,3 +783,245 @@ describe.skipIf(!gitAvailable)("commitFailedStageWork against a real repository"
 		}
 	});
 });
+
+// Step-5 contention harness: a two-branch repo where the task branch is
+// checked out (the "stage running") and HEAD is then moved to a sibling
+// branch, deterministically reproducing the shared-checkout race of the
+// cf4b6847 case study (2026-11-20). Real git, throwaway temp dirs only.
+describe.skipIf(!gitAvailable)("commitFailedStageWork under HEAD contention (shared checkout)", () => {
+	function setupContentionRepo(name) {
+		const repo = fs.mkdtempSync(path.join(os.tmpdir(), `kainbain-head-${name}-`));
+		initRepo(repo);
+		const store = fakeStore();
+		const task = fakeTask(`failed-${name}`);
+		const siblingBranch = `kb/sibling-${name}`;
+		return { repo, store, task, siblingBranch };
+	}
+
+	// Creates the task branch and the sibling branch, then leaves the tree
+	// checked out on the task branch (the stage's own checkout).
+	async function prepareHeadContention({ repo, store, task, siblingBranch }) {
+		await ensureTaskBranch(store, task, repo);
+		task.branch = resolveTaskBranch(task);
+		await ensureBranchCheckedOut(repo, siblingBranch, { baseBranch: "main" });
+		await ensureBranchCheckedOut(repo, task.branch, { baseBranch: "main" });
+		return task.branch;
+	}
+
+	// Simulates the concurrent task moving HEAD mid-stage.
+	const moveHeadToSibling = (repo, siblingBranch) => run(repo, "checkout", siblingBranch);
+
+	// Writes a failed-stage report under the task's own docs folder — the
+	// dirt the recovery is allowed to carry across the re-checkout.
+	function writeFailedStageReport(repo, task, name = "stage-failure-20261124.md") {
+		const dir = path.join(repo, "docs", "tasks", task.id);
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(path.join(dir, name), `# Failed stage report\n\n${task.id}\n`);
+		return `docs/tasks/${task.id}/${name}`;
+	}
+
+	function teardown(repo) {
+		try {
+			run(repo, "worktree", "prune");
+		} catch {
+			// ignore — plain repos have no worktrees
+		}
+		try {
+			fs.rmSync(repo, { recursive: true, force: true });
+		} catch {
+			// ignore
+		}
+	}
+
+	it("T1: re-establishes the owning branch and commits the failed-stage report when only own report dirt exists", async () => {
+		const ctx = setupContentionRepo("t1");
+		const { repo, store, task, siblingBranch } = ctx;
+		try {
+			const branch = await prepareHeadContention(ctx);
+			const reportPath = writeFailedStageReport(repo, task);
+			moveHeadToSibling(repo, siblingBranch);
+			expect(await currentBranch(repo)).toBe(siblingBranch);
+			const siblingTipBefore = run(repo, "rev-parse", siblingBranch).trim();
+
+			const res = await commitFailedStageWork(store, task, repo, {
+				stageName: "automated test 2",
+			});
+
+			// Acceptance 1 (happy path): the report landed on the OWNING branch.
+			expect(res?.committed).toBe(true);
+			expect(res?.hash).toBeTruthy();
+			expect(await currentBranch(repo)).toBe(branch);
+			expect(run(repo, "log", "-1", "--format=%s", branch)).toContain("... (failed)");
+			expect(run(repo, "ls-tree", "-r", "--name-only", branch)).toContain(reportPath);
+			// Acceptance 2: the sibling branch tip never moved and carries no report.
+			expect(run(repo, "rev-parse", siblingBranch).trim()).toBe(siblingTipBefore);
+			expect(run(repo, "ls-tree", "-r", "--name-only", siblingBranch)).not.toContain(reportPath);
+			// History: success entry plus the short recovery note (survey q8).
+			const actions = task.history.map((h) => h.action);
+			expect(
+				actions.some((a) => a.includes("Auto-committed partial work") && a.includes(branch)),
+			).toBe(true);
+			expect(
+				actions.some(
+					(a) =>
+						a.includes("HEAD had moved to") &&
+						a.includes(siblingBranch) &&
+						a.includes("re-established") &&
+						a.includes(branch),
+				),
+			).toBe(true);
+			expect(actions.some((a) => a.startsWith("Error:"))).toBe(false);
+			expect(logText(task)).toContain("HEAD had moved to");
+		} finally {
+			teardown(repo);
+		}
+	});
+
+	it("T2: fails closed with an actionable error entry when the tree holds foreign dirt", async () => {
+		const ctx = setupContentionRepo("t2");
+		const { repo, store, task, siblingBranch } = ctx;
+		try {
+			const branch = await prepareHeadContention(ctx);
+			const reportPath = writeFailedStageReport(repo, task);
+			// A sibling task's uncommitted work in the shared tree.
+			fs.writeFileSync(path.join(repo, "sibling-work.txt"), "sibling in-flight\n");
+			moveHeadToSibling(repo, siblingBranch);
+			const siblingTipBefore = run(repo, "rev-parse", siblingBranch).trim();
+			const ownTipBefore = run(repo, "rev-parse", branch).trim();
+			const mainTipBefore = run(repo, "rev-parse", "main").trim();
+
+			const res = await commitFailedStageWork(store, task, repo, { stageName: "Dev" });
+
+			expect(res).toBeNull();
+			// No checkout happened: HEAD is still on the sibling branch.
+			expect(await currentBranch(repo)).toBe(siblingBranch);
+			const errEntry = task.history.find((h) =>
+				h.action.startsWith("Error: failed-stage report"),
+			);
+			expect(errEntry).toBeTruthy();
+			// Names both branches, the foreign path, the uncommitted report
+			// path, the remediation, and the explicit nothing-was-committed.
+			expect(errEntry.action).toContain(branch);
+			expect(errEntry.action).toContain(siblingBranch);
+			expect(errEntry.action).toContain("sibling-work.txt");
+			expect(errEntry.action).toContain(reportPath);
+			expect(errEntry.action).toContain("git status");
+			expect(errEntry.action).toContain("No commit was made on any branch");
+			expect(logText(task)).toContain("[ERROR]");
+			// The old warn-only skip must be gone on the failed-stage path.
+			expect(task.history.some((h) => h.action.includes("skipped"))).toBe(false);
+			// Acceptance 2: no commit landed anywhere.
+			expect(run(repo, "rev-parse", branch).trim()).toBe(ownTipBefore);
+			expect(run(repo, "rev-parse", siblingBranch).trim()).toBe(siblingTipBefore);
+			expect(run(repo, "rev-parse", "main").trim()).toBe(mainTipBefore);
+		} finally {
+			teardown(repo);
+		}
+	});
+
+	it("T3: fails closed when the owning branch was deleted mid-flight", async () => {
+		const ctx = setupContentionRepo("t3");
+		const { repo, store, task, siblingBranch } = ctx;
+		try {
+			const branch = await prepareHeadContention(ctx);
+			moveHeadToSibling(repo, siblingBranch);
+			// The owning branch disappears while HEAD is on the sibling.
+			run(repo, "branch", "-D", branch);
+			writeFailedStageReport(repo, task);
+			const siblingTipBefore = run(repo, "rev-parse", siblingBranch).trim();
+			const mainTipBefore = run(repo, "rev-parse", "main").trim();
+
+			const res = await commitFailedStageWork(store, task, repo, { stageName: "Dev" });
+
+			expect(res).toBeNull();
+			expect(await currentBranch(repo)).toBe(siblingBranch);
+			const errEntry = task.history.find((h) =>
+				h.action.startsWith("Error: failed-stage report"),
+			);
+			expect(errEntry).toBeTruthy();
+			expect(errEntry.action).toContain("no longer exists");
+			expect(errEntry.action).toContain(branch);
+			expect(errEntry.action).toContain("No commit was made on any branch");
+			expect(run(repo, "rev-parse", siblingBranch).trim()).toBe(siblingTipBefore);
+			expect(run(repo, "rev-parse", "main").trim()).toBe(mainTipBefore);
+		} finally {
+			teardown(repo);
+		}
+	});
+
+	it("T6: worktree isolation mode is unaffected — the commit lands in the task worktree", async () => {
+		const repo = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-head-wt-"));
+		initRepo(repo);
+		const store = {
+			...fakeStore(),
+			projectStore: {
+				getProject: () => ({ id: "proj-1", workspaceIsolation: "worktree" }),
+			},
+		};
+		const task = fakeTask("failed-wt");
+		try {
+			const branch = resolveTaskBranch(task);
+			task.branch = branch;
+			run(repo, "branch", branch);
+			const wtDir = path.join(repo, ".kainbain", "worktrees", task.id);
+			run(repo, "worktree", "add", wtDir, branch);
+			// A concurrent task moves HEAD on the PRIMARY checkout only.
+			const siblingBranch = "kb/sibling-wt";
+			run(repo, "branch", siblingBranch);
+			run(repo, "checkout", siblingBranch);
+			expect(await currentBranch(repo)).toBe(siblingBranch);
+			const siblingTipBefore = run(repo, "rev-parse", siblingBranch).trim();
+			// The failed stage's report dirt lives inside the worktree.
+			const reportDir = path.join(wtDir, "docs", "tasks", task.id);
+			fs.mkdirSync(reportDir, { recursive: true });
+			fs.writeFileSync(path.join(reportDir, "report-failure.md"), "# report\n");
+
+			const res = await commitFailedStageWork(store, task, repo, { stageName: "Dev" });
+
+			expect(res?.committed).toBe(true);
+			// Committed on the owning branch, from inside the worktree.
+			expect(run(wtDir, "rev-parse", "--abbrev-ref", "HEAD").trim()).toBe(branch);
+			expect(run(repo, "log", "-1", "--format=%s", branch)).toContain("... (failed)");
+			expect(run(repo, "ls-tree", "-r", "--name-only", branch)).toContain(
+				`docs/tasks/${task.id}/report-failure.md`,
+			);
+			// The primary checkout was never touched by the recovery.
+			expect(await currentBranch(repo)).toBe(siblingBranch);
+			expect(run(repo, "rev-parse", siblingBranch).trim()).toBe(siblingTipBefore);
+			// No mismatch happened, so no recovery note was recorded.
+			expect(task.history.some((h) => h.action.includes("HEAD had moved"))).toBe(false);
+			expect(task.history.some((h) => h.action.startsWith("Error:"))).toBe(false);
+		} finally {
+			teardown(repo);
+		}
+	});
+
+	it("T7: the success-path auto-commit stays a warn-only skip under HEAD contention (scope guard)", async () => {
+		const ctx = setupContentionRepo("t7");
+		const { repo, store, task, siblingBranch } = ctx;
+		try {
+			const branch = await prepareHeadContention(ctx);
+			fs.writeFileSync(path.join(repo, "work.txt"), "work\n");
+			moveHeadToSibling(repo, siblingBranch);
+			const siblingTipBefore = run(repo, "rev-parse", siblingBranch).trim();
+			const ownTipBefore = run(repo, "rev-parse", branch).trim();
+
+			const summary = await finalizeTaskBranch(store, task, repo, { stageName: "Plan" });
+
+			// The success path did NOT gain a recovery: warn-only skip, as before.
+			expect(summary.committed).toBe(false);
+			expect(summary.commitError).toContain("Refusing to commit on the wrong branch");
+			const actions = task.history.map((h) => h.action);
+			expect(
+				actions.some((a) => a.includes("Warning: auto-commit after stage 'Plan' failed")),
+			).toBe(true);
+			expect(actions.some((a) => a.startsWith("Error: failed-stage report"))).toBe(false);
+			expect(actions.some((a) => a.includes("HEAD had moved"))).toBe(false);
+			// No commit landed on any branch.
+			expect(run(repo, "rev-parse", branch).trim()).toBe(ownTipBefore);
+			expect(run(repo, "rev-parse", siblingBranch).trim()).toBe(siblingTipBefore);
+		} finally {
+			teardown(repo);
+		}
+	});
+});

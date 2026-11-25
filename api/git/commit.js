@@ -73,6 +73,37 @@ export async function ensureGitIdentity(projectCwd) {
 
 
 /***
+ * MARK: assertBranchAffinity
+ * @description The single branch-affinity guard behind every
+ *   `opts.expectedBranch` commit: refuses with a GitBranchMismatchError unless
+ *   the working tree is checked out on exactly `expectedBranch`. A failed
+ *   branch read is treated as a mismatch (fail closed) so an unreadable HEAD
+ *   can never silently accept an alien commit. Shared by `commitAllIfNeeded`
+ *   and `commitEngineSnapshots` so both throw the byte-identical error, and
+ *   exported so recovery paths can distinguish a mismatch (`instanceof
+ *   GitBranchMismatchError`, carrying `expectedBranch`/`actualBranch`) from
+ *   every other commit failure. Never weakened or bypassed: callers decide
+ *   what a mismatch means, but only ever AFTER this check passed.
+ * @example await assertBranchAffinity('/repo', 'kb/task-1') // throws GitBranchMismatchError when HEAD is elsewhere
+ * @param {string} projectCwd
+ * @param {string} expectedBranch - Branch the working tree must be on.
+ * @returns {Promise<string>} The actual branch (equal to expectedBranch on success).
+ * @throws {GitBranchMismatchError} When HEAD is on another branch or unreadable.
+ ***/
+export async function assertBranchAffinity(projectCwd, expectedBranch) {
+	const actualBranch = await currentBranch(projectCwd).catch(() => null);
+	if (actualBranch !== expectedBranch) {
+		throw new GitBranchMismatchError(
+			`Refusing to commit on the wrong branch: expected '${expectedBranch}' but the working tree is on '${actualBranch || "unknown"}'. ` +
+				`A concurrent task likely moved HEAD; re-run the stage so it can re-establish its branch.`,
+			{ expectedBranch, actualBranch },
+		);
+	}
+	return actualBranch;
+}
+
+
+/***
  * MARK: commitAllIfNeeded
  * @description Reliability fallback for the merge stage: KainBain agents work
  *   on files directly and are not guaranteed to commit, so the merge stage
@@ -98,12 +129,15 @@ export async function ensureGitIdentity(projectCwd) {
  * @param {string} [opts.body] - Optional commit body, committed verbatim after a blank line.
  * @param {string} [opts.expectedBranch] - Branch affinity guard: when set,
  *   the commit is refused with a GitBranchMismatchError unless the working
- *   tree is checked out on exactly this branch. Opt-in so interactive and
+ *   tree is checked out on exactly this branch (see assertBranchAffinity —
+ *   the guard is fail-closed and never bypassed). Opt-in so interactive and
  *   legacy callers keep the historical permissive behaviour.
  * @returns {Promise<{committed: boolean, hash: string|null}>}
  * @throws {GitBranchMismatchError} When `opts.expectedBranch` is set and the
  *   tree is on a different branch (the caller's files must not be committed
- *   onto a sibling task's branch).
+ *   onto a sibling task's branch). Callers that can recover (the failed-stage
+ *   path in `commitFailedStageWork`) catch this type specifically and retry on
+ *   the owning branch; every other caller keeps its warn-only handling.
  ***/
 export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 	if (!(await isGitRepository(projectCwd)))
@@ -132,14 +166,7 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 	// A failed branch read is treated as a mismatch (fail closed) so an
 	// unreadable HEAD can never silently accept an alien commit.
 	if (opts.expectedBranch) {
-		const actualBranch = await currentBranch(projectCwd).catch(() => null);
-		if (actualBranch !== opts.expectedBranch) {
-			throw new GitBranchMismatchError(
-				`Refusing to commit on the wrong branch: expected '${opts.expectedBranch}' but the working tree is on '${actualBranch || "unknown"}'. ` +
-					`A concurrent task likely moved HEAD; re-run the stage so it can re-establish its branch.`,
-				{ expectedBranch: opts.expectedBranch, actualBranch },
-			);
-		}
+		await assertBranchAffinity(projectCwd, opts.expectedBranch);
 	}
 
 	const status = await getWorkingTreeStatus(projectCwd, { ignorePaths: [] });
@@ -344,14 +371,7 @@ export async function commitEngineSnapshots(projectCwd, message, opts = {}) {
 	if (!(await hasCommits(projectCwd))) return { committed: false, hash: null };
 
 	if (opts.expectedBranch) {
-		const actualBranch = await currentBranch(projectCwd).catch(() => null);
-		if (actualBranch !== opts.expectedBranch) {
-			throw new GitBranchMismatchError(
-				`Refusing to commit on the wrong branch: expected '${opts.expectedBranch}' but the working tree is on '${actualBranch || "unknown"}'. ` +
-					`A concurrent task likely moved HEAD; re-run the stage so it can re-establish its branch.`,
-				{ expectedBranch: opts.expectedBranch, actualBranch },
-			);
-		}
+		await assertBranchAffinity(projectCwd, opts.expectedBranch);
 	}
 
 	// Full status (no ignores), then keep only the guard-ignored snapshot
