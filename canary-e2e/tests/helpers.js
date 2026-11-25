@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { APP_URL, API_URL } from "./urls";
+import { isInfraFlake, matchInfraFlake, markInfraFlakeError } from "./infra-flakes.mjs";
 
 /***
  * MARK: shared canary helpers
@@ -40,6 +41,19 @@ export const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
  *   specific project. One bounded reload+retry inside the standard budget
  *   heals blank-root module-burst resource windows (failed loads must be
  *   re-issued, never waited out).
+ *
+ *   Infra-flake contract (task 44125086): when the whole browser/context
+ *   dies under gate-host load, the one re-issue below runs on a dead page and
+ *   itself throws a browser-closed signature (the four 2026-11-19 red gates,
+ *   all at the re-issue line). That case cannot be healed inside this helper
+ *   — the spec's `page` binding is dead and only the Playwright runner can
+ *   launch a fresh browser — so the retry failure is rethrown MARKED
+ *   (`code = "CANARY_INFRA_FLAKE"`, `signature`, and an `[infra-flake:<id>]`
+ *   tag in the message, see ./infra-flakes.mjs) for the runner-level
+ *   quarantine lane (scripts/canary-with-quarantine.mjs), which reruns just
+ *   the signature-only failures and reports them via KAINBAIN_CANARY_QUARANTINE
+ *   + canary-quarantine.json. Any NON-flake error (dead backend, bad URL,
+ *   broken shell failing twice) rethrows unchanged and stays red.
  * @example await waitForAppReady(page)
  * @param {import("@playwright/test").Page} page
  * @param {Object} [opts] - Options.
@@ -60,9 +74,23 @@ export async function waitForAppReady(page, { readyTimeoutMs = APP_READY_TIMEOUT
 		// a genuinely broken shell fails the retry and stays red. The
 		// one-second backoff lets the resource window pass — an immediate
 		// re-issue was observed landing inside the same window.
-		if (!/ERR_INSUFFICIENT_RESOURCES|has been closed|Target closed|Page crashed|Target crashed/.test(err?.message || "")) throw err;
+		// The signature list lives in ./infra-flakes.mjs (single source of
+		// truth shared with the runner-level quarantine lane).
+		if (!isInfraFlake(err?.message || "")) throw err;
 		await new Promise((r) => setTimeout(r, 1000));
-		await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+		try {
+			await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
+		} catch (retryErr) {
+			// The re-issue can itself hit a dead browser/context under
+			// gate-host load: re-issuing on the same dead page cannot heal it
+			// (a closed browser's newContext() throws the same signature, and
+			// the spec's `page` binding cannot be rebound from inside this
+			// helper). Mark the signature so the runner lane can forgive it
+			// visibly; a non-flake retry error rethrows unchanged and stays red.
+			const signature = matchInfraFlake(retryErr?.message || "");
+			if (!signature) throw retryErr;
+			throw markInfraFlakeError(retryErr, signature);
+		}
 	}
 	await expect(page).toHaveTitle(/Kainbain/);
 	const totalBudget = Number.isFinite(readyTimeoutMs) && readyTimeoutMs > 0 ? readyTimeoutMs : APP_READY_TIMEOUT_MS;

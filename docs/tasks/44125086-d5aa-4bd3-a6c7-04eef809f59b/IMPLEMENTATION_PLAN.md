@@ -290,9 +290,79 @@ Extend `canary-e2e/README.md` with a short section:
 
 ### D3. Evidence log (append below during implementation)
 
-Implementation must append dated entries here: S0 verdict, S1 message strings, S2/M2
-decision, M3 probe outputs (fail-before + pass-after), flake-rate counts, full-gate
-run link. (Empty until implementation starts.)
+**2026-11-24 implementation entries:**
+
+- **S0 verdict:** the 8769b002 quarantine seed is NOT in this clone —
+  `git log --all --grep=8769b002` empty, no `docs/tasks/*8769*` folder, and a
+  sampled `git grep -i quarantine` over 200 commits hits only the unrelated
+  `QUARANTINE_DIR` jsdoc-example baseline. DEC-7 default applied: fresh
+  committed list at `canary-e2e/tests/infra-flakes.mjs` + baseline at
+  `canary-e2e/infra-flake-baseline.json`.
+- **S1 message strings (live Playwright 1.63 probe, canary-e2e workspace):**
+  `browser.close()`, `context.close()` and `page.close()` all make the next
+  navigation throw exactly `page.goto: Target page, context or browser has
+  been closed` (same for `page.reload:`); a DEAD browser's `newContext()`
+  throws `browser.newContext: Target page, context or browser has been
+  closed` (`isConnected() === false`), while a LIVE browser can mint a fresh
+  context after its context died. Playwright JSON report shape verified on
+  1.63: `spec.file` is testDir-relative, `spec.line/column/id` present,
+  `tests[].status === "unexpected"`, `results[].error.{message,stack}`.
+- **S2/M2 decision:** skipped M2 (in-helper context recovery). The specs hold
+  `page` as a destructured fixture binding (`async ({ page }) => …`), which a
+  helper cannot rebind; and when the whole browser died even
+  `browser.newContext()` throws. Option A chosen (mark + runner lane), per the
+  plan's recommendation — zero spec-file changes (DEC-6 honored).
+- **S3 seams:** gate-only JSON report via `KAINBAIN_CANARY_JSON_REPORT` env →
+  `playwright.config.js` appends `["json", { outputFile }]` (default reporter
+  list unchanged; reporters don't affect snapshots). Quarantine dir passed to
+  the branch as `KAINBAIN_CANARY_QUARANTINE_DIR` (branch `env:` seam in
+  run-parallel); gate re-emits the `KAINBAIN_CANARY_QUARANTINE` line from the
+  written summary after the canary phase. `KAINBAIN_FAST_GATE_RESULT` marker
+  spelling untouched.
+- **E1/E2:** `canary-e2e/tests/infra-flakes.mjs` (5 signature families,
+  tag-first classifier, `markInfraFlakeError`); `helpers.js:63` inline regex
+  replaced by `isInfraFlake` (behavior-identical); retry wrapped → marked
+  `CANARY_INFRA_FLAKE` error. `tests/infra-flakes.test.mjs`: 30 fixtures
+  (positives = the four 2026-11-19 tails + live-probe strings; negatives =
+  ERR_CONNECTION_REFUSED/INVALID_URL/ABORTED, assertion diffs, app-wait
+  timeouts, near-miss "closed" phrasings) — 51/51 green together with the
+  quarantine suite.
+- **E3/M4-M6:** `scripts/lib/canary-quarantine.mjs` + `scripts/canary-with-quarantine.mjs`
+  (preflight → run 1 + JSON → classify → failed-only rerun via `file:line`
+  filters → summary + log line). `tests/canary-quarantine.test.mjs` drives
+  `runCanaryGate` with fake playwright runs: forgiven-green, signature-only
+  rerun, mixed-stays-red (no rerun), rerun-genuine-stays-red, unclassifiable
+  crash-stays-red, green-first-run, preflight-failed — all green.
+- **Gate wiring:** `buildBranches` gained `verdictDir` (branch `env`), Canary
+  Tests branch now `node scripts/canary-with-quarantine.mjs` (25-min ceiling
+  kept, covers the rerun); `runGatePhases` re-emits the quarantine log line;
+  pins updated in `tests/run-tests.test.mjs` + `tests/deploy-gates.test.mjs`
+  (wrapper pinned to drive the same canary-e2e suite; `npm run test:canary`
+  and deploy.sh shards unchanged/strict). Harness Self-Tests list gained
+  `tests/infra-flakes.test.mjs` + `tests/canary-quarantine.test.mjs`.
+- **Full Harness Self-Tests list:** identical failure set before/after the
+  change (60 pre-existing env failures in `check-duplicate-settings` /
+  `storage-sanity` — root `node_modules` absent in this sandbox; verified by
+  stash-diff). 142/142 green across run-tests, deploy-gates, canary-*,
+  fast-gate-*.
+- **DEC resolutions (survey unanswered → defaults):** DEC-1 both staged
+  (helper marks, runner lane forgives); DEC-2 first-load marking + runner lane
+  covers the shell-wait block via final error text; DEC-3 all three surfaces
+  (log line + JSON + in-report error tag; HTML annotation via the tag, no
+  spec churn); DEC-4 run non-blocking, signature-only; DEC-5 all four
+  families; DEC-6 zero spec changes; DEC-7 fresh committed list (S0);
+  DEC-8 failed tests only; DEC-9 per-signature counts in the JSON summary +
+  committed baseline snapshot.
+- **Live end-to-end probes:** see the stage output — a probe spec that kills
+  the whole browser before `waitForAppReady` (first run only, via a /tmp
+  marker) run through `node scripts/canary-with-quarantine.mjs` on the real
+  scratch stack: run 1 fails signature-only → failed-only rerun passes →
+  exit 0 with `KAINBAIN_CANARY_QUARANTINE forgiven=1 lane="runner-rerun"
+  signatures="browser-closed:1"` + `canary-quarantine.json`; the same probe
+  plus a genuine `expect(1).toBe(2)` spec stays red with no rerun.
+- **M3 fail-before evidence:** the pre-change behavior is the four
+  2026-11-19 failure tails themselves (raw throw at helpers.js:65, red gate);
+  pass-after = the live probes above + the unit decision table.
 
 ## 8. Sequencing, effort, risks
 

@@ -33,6 +33,11 @@ npx playwright test --headed <name>  # watch it in a real browser while debuggin
   suites (regressions surface in the earliest automated stage, not at the
   merge/deploy gate). Skip it for fast sanity cycles with
   `./run-tests.sh --no-canary` or `KAINBAIN_SKIP_CANARY=1`.
+- The gate's Canary Tests branch runs `scripts/canary-with-quarantine.mjs`,
+  which executes this exact suite (preflight + `playwright test`,
+  `retries: 0` unchanged) plus the infra-flake quarantine lane below.
+  `npm run test:canary` and the `deploy.sh --prod` sharded gates keep the
+  plain strict invocation.
 - **Pre-merge (required):** keep `npm test` (or `npm run test:canary`) green.
 - **Pre-deploy (blocking):** `deploy.sh --prod` (non-fast) runs the fast
   branches as its `final-test-suite` gate (`./run-tests.sh --no-canary`) and
@@ -45,6 +50,55 @@ npx playwright test --headed <name>  # watch it in a real browser while debuggin
   failure (the #KB-0417 deploy incident). The preflight only terminates
   processes that verify as scratch-stack occupants; anything else parked on
   those ports is left alone and reported loudly.
+
+## Infra-flake quarantine lane (task 44125086)
+
+A browser/context that dies under gate-host load (`page.goto: Target page,
+context or browser has been closed` at the `waitForAppReady` retry line —
+the signature behind four red gates on 2026-11-19, task
+`cf4b6847-11eb-4d59-b39e-e31b31df1150`) used to red the whole gate even when
+139 of 140 tests passed. The lane makes that forgivable **visibly**, without
+weakening the gate for real regressions:
+
+- `tests/helpers.js` (`waitForAppReady`) re-issues a failed first load once,
+  as before. If that re-issue *also* dies with a known browser-death
+  signature, the error is rethrown **marked** (`code="CANARY_INFRA_FLAKE"`,
+  `signature`, `[infra-flake:<id>]` tag) instead of raw — no in-helper
+  recovery is possible there (the spec's `page` is dead and only the runner
+  can launch a fresh browser).
+- The gate's Canary Tests branch (`scripts/canary-with-quarantine.mjs`) runs
+  the full suite once with a gate-only JSON report, classifies every failed
+  test against `tests/infra-flakes.mjs`, and — **only when every failure
+  matches a known signature** — reruns just those tests (`file:line`
+  filters, never the whole run) once. A green rerun (or one failing again
+  solely on known signatures) forgives; **any** genuine failure at any stage
+  (dead backend, bad URL, broken shell, assertion diff, mixed flake+genuine)
+  exits non-zero immediately. `retries: 0` in `playwright.config.js` is
+  untouched — nothing is skipped silently: quarantined tests still ran.
+- Reporting (all three surfaces): a greppable
+  `KAINBAIN_CANARY_QUARANTINE forgiven=<n> lane=<lane> signatures=… tests=…`
+  log line in the gate output, `canary-quarantine.json` next to
+  `verdict.json` in the gate's `ci-fast-gate-<timestamp>/` dir (per-signature
+  counts + named tests + a snapshot of `infra-flake-baseline.json`), and the
+  `[infra-flake:<id>]` tag in the failing test's error text in the Playwright
+  HTML report.
+
+### Adding an infra-flake signature
+
+1. Add one entry to `INFRA_FLAKE_SIGNATURES` in `tests/infra-flakes.mjs`
+   (id, narrow pattern, one-line description, link to a failing log).
+2. Add one positive fixture (the exact error text) and one near-miss
+   negative fixture to `tests/infra-flakes.test.mjs`; run
+   `node --test tests/infra-flakes.test.mjs tests/canary-quarantine.test.mjs`.
+3. Add the id to `infra-flake-baseline.json` with `firstSeen` = today.
+4. Rerun the affected spec 3× (`node scripts/repeat-tests.mjs --suite
+   canary`); paste the `KAINBAIN_CANARY_QUARANTINE` line into the task/PR.
+5. Never add a pattern that matches assertion text, app-wait timeouts, or
+   HTTP 4xx/5xx / `ERR_CONNECTION_REFUSED`-class errors — the negative
+   fixtures in `tests/infra-flakes.test.mjs` are the guardrail: genuine app
+   failures must stay red. To retire a signature, delete its entry + fixtures
+   + baseline row once the per-signature counts in `canary-quarantine.json`
+   stay at zero across runs.
 
 ## Helper API (`tests/helpers.js`)
 

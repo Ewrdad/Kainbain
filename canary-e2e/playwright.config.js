@@ -189,6 +189,15 @@ try {
 // The canary suite drives a single live backend (Project A) whose session
 // tree and tasks are mutated by every test. Run serially so tests don't
 // interfere with each other's captured state.
+
+// Gate-only JSON report (task 44125086): scripts/canary-with-quarantine.mjs
+// sets KAINBAIN_CANARY_JSON_REPORT=<absolute path> so the quarantine lane can
+// classify every failed test from Playwright's machine-readable report while
+// html+list keep rendering exactly as before. Unset (every manual/dev run,
+// `npm run test:canary`, deploy.sh shards): the reporter list is unchanged.
+// Reporters never affect snapshots, so this cannot churn visual baselines.
+const gateJsonReport = process.env.KAINBAIN_CANARY_JSON_REPORT;
+
 module.exports = {
 	testDir: "./tests",
 	workers: 1,
@@ -295,5 +304,9 @@ module.exports = {
 					},
 				},
 			],
-	reporter: [["html", { open: "never" }], ["list"]],
+	reporter: [
+		...(gateJsonReport ? [["json", { outputFile: gateJsonReport }]] : []),
+		["html", { open: "never" }],
+		["list"],
+	],
 };

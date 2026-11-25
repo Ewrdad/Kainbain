@@ -72,6 +72,10 @@ import {
 	writeFastGateVerdict,
 } from "./lib/fast-gate-verdict.mjs";
 import {
+	QUARANTINE_SUMMARY_FILENAME,
+	formatQuarantineLogLine,
+} from "./lib/canary-quarantine.mjs";
+import {
 	checkDirectoryForDuplicates,
 	formatViolationsReport,
 } from "./check-duplicate-settings.mjs";
@@ -421,6 +425,7 @@ export function resolveFailFast({ argv = process.argv, env = process.env } = {})
  * @param {boolean} [opts.hasDocker] - defaults to a live daemon probe.
  * @param {boolean} [opts.hasDepcheck] - defaults to a live binary probe.
  * @param {boolean} [opts.withCanary] - include the Canary Tests branch; defaults to `true` (`npm test` keeps parity with `deploy.sh --prod`). Opt out via `--no-canary` / `KAINBAIN_SKIP_CANARY=1` (see resolveCanary).
+ * @param {string|null} [opts.verdictDir] - the gate's verdict directory; when set, the Canary Tests branch exports it as `KAINBAIN_CANARY_QUARANTINE_DIR` so the quarantine wrapper writes `canary-quarantine.json` next to `verdict.json`.
  * @param {string} [opts.nodeExec] - node binary, defaults to process.execPath.
  * @param {string} [opts.npmExec] - npm binary, defaults to the platform one.
  * @returns {{ branches: Array<Object>, skipped: Array<Object> }}
@@ -452,7 +457,7 @@ export function splitGatePhases(branches) {
 	return { fast, canary };
 }
 
-export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAvailable(), hasDepcheck = depcheckAvailable(), withCanary = true, nodeExec = process.execPath, npmExec = NPM } = {}) {
+export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAvailable(), hasDepcheck = depcheckAvailable(), withCanary = true, verdictDir = null, nodeExec = process.execPath, npmExec = NPM } = {}) {
 	const branches = [
 		{ name: "Unit Tests (api)", file: npmExec, args: ["run", "test:api"] },
 		{ name: "Unit Tests (frontend)", file: npmExec, args: ["run", "test:frontend"] },
@@ -567,6 +572,8 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/canary-preflight.test.mjs",
 				"tests/canary-lock.test.mjs",
 				"tests/canary-readiness.test.mjs",
+				"tests/infra-flakes.test.mjs",
+				"tests/canary-quarantine.test.mjs",
 				"tests/deploy-gates.test.mjs",
 				"tests/run-supervised.test.mjs",
 				"tests/run-tests.test.mjs",
@@ -616,8 +623,19 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 	if (withCanary) {
 		branches.push({
 			name: "Canary Tests",
-			file: npmExec,
-			args: ["run", "test:canary"],
+			// The quarantine wrapper runs the SAME canary-e2e suite as
+			// `npm run test:canary` (preflight + playwright test, retries: 0
+			// untouched), but on failure classifies each failed test against
+			// the infra-flake signature list (canary-e2e/tests/infra-flakes.mjs)
+			// and reruns only signature-only failures once — forgiving a pure
+			// browser-death infra flake visibly (KAINBAIN_CANARY_QUARANTINE
+			// line + canary-quarantine.json) instead of red-ing the whole
+			// gate. Genuine app failures stay red. See canary-e2e/README.md
+			// "Infra-flake quarantine lane".
+			file: nodeExec,
+			args: ["scripts/canary-with-quarantine.mjs"],
+			// The wrapper writes canary-quarantine.json next to verdict.json.
+			env: verdictDir ? { KAINBAIN_CANARY_QUARANTINE_DIR: verdictDir } : undefined,
 			lowPriority: true,
 			// Honest hung-branch ceiling (25 min): the canary branch is
 			// minutes long and its output goes quiet mid-run, so the gate's
@@ -627,7 +645,8 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			// absorbs loaded-host jitter plus a possible wait on the host-wide
 			// canary mutex (canary-e2e/canary-lock.js), which serializes suites
 			// across tasks so overlapping runs stop killing each other's
-			// scratch stacks (2026-11-03: every task failing CI).
+			// scratch stacks (2026-11-03: every task failing CI). The
+			// ceiling also covers the wrapper's one failed-tests-only rerun.
 			timeoutMs: 25 * 60 * 1000,
 		});
 	}
@@ -844,6 +863,21 @@ export async function runGatePhases({
 		canaryDecision = "ran";
 	}
 
+	// Re-emit the quarantine lane's log line into the GATE output (branch
+	// output is only printed for failures, but this line must be visible on
+	// green forgiven runs too, and it survives the engine's head+tail
+	// excerpts). No summary file (branch skipped or crashed before writing)
+	// simply prints nothing.
+	if (canaryBranches.length > 0 && canPointAtFullLogs) {
+		try {
+			const summaryPath = path.join(verdictDir, QUARANTINE_SUMMARY_FILENAME);
+			const parsed = JSON.parse(fs.readFileSync(summaryPath, "utf8"));
+			log(formatQuarantineLogLine(parsed, summaryPath));
+		} catch {
+			// No quarantine summary to re-emit — not an error.
+		}
+	}
+
 	const closingVerdict = buildFastGateVerdict({
 		fastResults: fastOutcome.verdictResults,
 		fastGateNames: FAST_GATE_BRANCH_NAMES,
@@ -902,7 +936,12 @@ async function main() {
 		process.exitCode = 1;
 		return;
 	}
-	const { branches, skipped } = buildBranches({ withCanary });
+	const { branches, skipped } = buildBranches({
+		withCanary,
+		// The Canary Tests branch exports this so the quarantine wrapper's
+		// canary-quarantine.json lands next to verdict.json.
+		verdictDir: verdictReady ? verdictSelection.dir : null,
+	});
 	for (const entry of skipped) {
 		console.log(`Running ${entry.name}... SKIP (${entry.reason})`);
 	}
