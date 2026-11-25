@@ -65,6 +65,37 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Everywhere – task description, failure reports, and comments"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Any file type (pictures, documents, logs, anything)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Fix old ones too where possible"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "Update the links automatically to point at the new saved copy"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Save it anyway – being able to open it matters most"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
