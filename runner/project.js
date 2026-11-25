@@ -5,10 +5,10 @@ import { promisify } from "node:util";
 // The Runner bundle ships api/ next to runner/, so the backend's own asset
 // guards are the single source of truth for which claim-shipped names may
 // land in the worktree — the Runner must accept exactly what the backend
-// would have stored (flat, sanitized, allowlisted image names).
+// would have stored (flat, sanitized, allowlisted attachment names).
 import {
-	isAllowedImageExt,
-	sanitizeImageName,
+	isAllowedAttachmentExt,
+	sanitizeAttachmentName,
 } from "../api/work/taskAssets.js";
 // WP2 signal: worktree evictions (§3.8 minimum). The import is cycle-free
 // (productionSignals.js imports nothing) and recording never alters the
@@ -1073,8 +1073,8 @@ export async function syncTaskDocs({ primaryCwd, primaryHome = null, workdir, de
 
 /***
  * MARK: RUNNER_TASK_ASSET_MAX_BYTES
- * @description Largest single claim-shipped image the Runner writes into a
- *   worktree (10 MiB, mirroring the backend's `taskImageMaxBytes` upload
+ * @description Largest single claim-shipped attachment the Runner writes into a
+ *   worktree (10 MiB, mirroring the backend's `taskAttachmentMaxBytes` upload
  *   cap): a corrupt or hostile payload entry past this size is skipped, so
  *   one bad entry can neither fill the disk nor wedge the stage.
  * @example RUNNER_TASK_ASSET_MAX_BYTES => 10485760
@@ -1083,16 +1083,16 @@ export const RUNNER_TASK_ASSET_MAX_BYTES = 10 * 1024 * 1024;
 
 /***
  * MARK: writeClaimTaskAssets
- * @description Writes claim-shipped task images (the backend's `taskAssets`
+ * @description Writes claim-shipped task attachments (the backend's `taskAssets`
  *   payload entries, `{ name, contentBase64 }`) into the worktree's
  *   `docs/tasks/<id>/assets/` folder. This is the remote-Runner delivery
  *   arm: `syncTaskDocs` returns 0 with no local primary checkout, so the
- *   claim bytes are the only way the screenshots reach the worktree before
- *   the first stage runs. Defense in depth on top of the backend's
- *   sanitized shipment: flat allowlisted image names only (traversal and
- *   non-image entries are skipped), strict-base64 decodes, size-capped
- *   writes, and existing worktree files are never overwritten (a local
- *   sync or the agent wins). Never throws: every entry is best-effort.
+ *   claim bytes are the only way the screenshots and files reach the worktree
+ *   before the first stage runs. Defense in depth on top of the backend's
+ *   sanitized shipment: flat allowlisted attachment names only (traversal and
+ *   disallowed-extension entries are skipped), strict-base64 decodes,
+ *   size-capped writes, and existing worktree files are never overwritten (a
+ *   local sync or the agent wins). Never throws: every entry is best-effort.
  * @example await writeClaimTaskAssets({ workdir: '/w/kb-t', taskId: 't1', assets: [{ name: 'a.png', contentBase64: '...' }] }) => 1
  * @param {Object} opts - `{ workdir, taskId, assets, docsDirName, project, destWorkdir }` (`docsDirName`/`project` optional; a valid custom docs folder name wins; `destWorkdir` overrides the target worktree — the paired docs worktree for docs-repo projects).
  * @returns {Promise<number>} Number of files written.
@@ -1106,9 +1106,9 @@ export async function writeClaimTaskAssets({ workdir, taskId, assets, docsDirNam
 		const name = typeof entry?.name === "string" ? entry.name : "";
 		const encoded = typeof entry?.contentBase64 === "string" ? entry.contentBase64 : "";
 		// Exactly what the backend would have stored: an already-sanitized
-		// flat image name. Anything else (traversal, subdirs, non-images,
-		// drifted case) is skipped rather than coerced.
-		if (!name || sanitizeImageName(name) !== name || !isAllowedImageExt(name)) continue;
+		// flat attachment name. Anything else (traversal, subdirs,
+		// disallowed extensions, drifted case) is skipped rather than coerced.
+		if (!name || sanitizeAttachmentName(name) !== name || !isAllowedAttachmentExt(name)) continue;
 		if (!encoded) continue;
 		// `Buffer.from` never throws on bad input — it silently drops
 		// non-alphabet bytes, so without this guard a corrupt entry would

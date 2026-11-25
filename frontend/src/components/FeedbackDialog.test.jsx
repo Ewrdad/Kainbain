@@ -14,6 +14,9 @@ vi.mock('../services/api', () => ({
     listTaskImages: vi.fn(),
     uploadTaskImage: vi.fn(),
     deleteTaskImage: vi.fn(),
+    listTaskAttachments: vi.fn(),
+    uploadTaskAttachment: vi.fn(),
+    deleteTaskAttachment: vi.fn(),
   },
 }));
 
@@ -22,6 +25,7 @@ import { api } from '../services/api';
 beforeEach(() => {
   vi.clearAllMocks();
   api.listTaskImages.mockResolvedValue({ images: [] });
+  api.listTaskAttachments.mockResolvedValue({ attachments: [] });
 });
 
 /**

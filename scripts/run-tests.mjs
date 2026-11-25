@@ -576,6 +576,7 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 				"tests/setup.test.mjs",
 				"tests/storage-sanity.test.mjs",
 				"tests/remediate-no-verdict-rejections.test.mjs",
+				"tests/audit-task-attachments.test.mjs",
 				"tests/entry-platform.test.mjs",
 				"tests/check-one-function-per-file.test.mjs",
 				"tests/check-jsdoc-example.test.mjs",

@@ -4,6 +4,9 @@ import { isBranchModeEnabled } from '../work/taskBranches.js';
 import { stageElapsedSeconds, clearResumedMarker, isEngineOwnerOf } from './stagePolicy.js';
 import { buildHumanRejectionContent } from '../reviewCommentFormatter.js';
 import { killProcessTreeSync } from '../utils/processTree.js';
+import { ingestOutOfTaskRefs } from '../work/taskAssets.js';
+import { commitTaskAssets } from '../work/commitTaskAssets.js';
+import { config } from '../config.js';
 
 /***
  * MARK: registerChild
@@ -129,7 +132,49 @@ export function rejectTask(
 ) {
 	const task = store.getTask(projectId, taskId);
 	if (!task) return null;
-	const cleanFeedback = String(feedback || "").trim();
+	let cleanFeedback = String(feedback || "").trim();
+	// Attachment ingest: out-of-task files the rejection feedback
+	// references are copied into the task's `assets/` folder and the
+	// feedback rewritten to the stored names BEFORE it fans out into the
+	// report, the goal appendix, and the failure context below — one hook
+	// covers all four copies. Best-effort and synchronous (bytes only);
+	// the branch commit rides fire-and-forget underneath.
+	try {
+		const ingestProject =
+			store.projectStore?.getProject?.(projectId) || null;
+		const ingestCwd =
+			projectCwd ||
+			(typeof store._resolveProjectCwd === "function"
+				? store._resolveProjectCwd(projectId, projectCwd)
+				: null) ||
+			ingestProject?.cwd;
+		const ingest = ingestOutOfTaskRefs({
+			projectCwd: ingestCwd,
+			taskId,
+			markdown: cleanFeedback,
+			docsProject: ingestProject,
+			maxFileBytes: config.taskAttachmentMaxBytes,
+			maxPerTask: config.taskAttachmentMaxPerTask,
+		});
+		if (ingest.ingested.length > 0) {
+			cleanFeedback = ingest.markdown;
+			task.history.push({
+				timestamp: new Date().toISOString(),
+				action: `Attached ${ingest.ingested.length} file(s) to the task folder: ${ingest.ingested.map((entry) => entry.name).join(", ")}`,
+			});
+			commitTaskAssets({
+				projectCwd: ingestCwd,
+				taskId,
+				branch: task.branch,
+				docsProject: ingestProject,
+				names: ingest.ingested.map((entry) => entry.name),
+			}).catch(() => {
+				// Best-effort: the rejection already carries the bytes.
+			});
+		}
+	} catch {
+		// Best-effort: the rejection proceeds with the original text.
+	}
 	const stage = stages.find(
 		(item) => String(item.id) === String(task.currentStageId),
 	);

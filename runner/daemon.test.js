@@ -225,14 +225,15 @@ describe("runSingleAssignment", () => {
 		assert.ok(fs.existsSync(path.join(config.workRoot, "kb-t1")));
 	});
 
-	it("writes claim-shipped task images into the worktree when the primary checkout has none", async () => {
+	it("writes claim-shipped task attachments into the worktree when the primary checkout has none", async () => {
 		// Remote-Runner delivery arm: the primary checkout holds no task
 		// docs (syncTaskDocs copies 0), so the claim's taskAssets bytes are
-		// the only way the screenshots reach the worktree pre-stage.
+		// the only way the screenshots and files reach the worktree pre-stage.
 		const repo = localRepo();
 		const config = baseConfig();
 		dirs.push(config.workRoot, repo);
 		const shot = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+		const log = Buffer.from("log-bytes");
 		const client = stubClient({
 			heartbeat: async () => ({ status: "active" }),
 			getProject: async () => ({ id: "p1", cwd: repo }),
@@ -242,6 +243,7 @@ describe("runSingleAssignment", () => {
 				epoch: 1,
 				taskAssets: [
 					{ name: "shot.png", size: shot.length, contentBase64: shot.toString("base64") },
+					{ name: "out.log", size: log.length, contentBase64: log.toString("base64") },
 				],
 			}),
 			progress: async () => ({ recorded: true }),
@@ -259,6 +261,10 @@ describe("runSingleAssignment", () => {
 		assert.deepEqual(
 			fs.readFileSync(path.join(config.workRoot, "kb-t1", "docs", "tasks", "t1", "assets", "shot.png")),
 			shot,
+		);
+		assert.deepEqual(
+			fs.readFileSync(path.join(config.workRoot, "kb-t1", "docs", "tasks", "t1", "assets", "out.log")),
+			log,
 		);
 	});
 

@@ -104,13 +104,14 @@ const dispatchStageConfigHash = (project, task, stage) => {
 
 /***
  * MARK: taskAssetsFor
- * @description The task's on-disk images as base64 claim-shipment entries
+ * @description The task's on-disk attachments as base64 claim-shipment entries
  *   for one Runner assignment. Remote Runners have no local primary
  *   checkout (`syncTaskDocs` returns 0 there), so these bytes are the only
- *   way the referenced screenshots reach their worktree before the first
- *   stage runs; the daemon writes entries the worktree lacks and skips the
- *   rest. Capped like vision dispatch (per-file `taskImageMaxBytes`, total
- *   `taskImageMaxAttachBytes`); tasks without images ship [].
+ *   way the referenced screenshots and files reach their worktree before the
+ *   first stage runs; the daemon writes entries the worktree lacks and skips
+ *   the rest. Capped like vision dispatch (per-file `taskAttachmentMaxBytes`,
+ *   total `taskAttachmentMaxAttachBytes`, images first); tasks without
+ *   attachments ship [].
  * @example taskAssetsFor({ cwd: '/repo' }, 't1') => [{ name: 'a.png', size: 12, contentBase64: '...' }]
  * @param {Object} project - Project record (carries `cwd`, `docsDirName`).
  * @param {string} taskId - Task whose assets ship.
@@ -118,8 +119,8 @@ const dispatchStageConfigHash = (project, task, stage) => {
  ***/
 const taskAssetsFor = (project, taskId) =>
 	collectTaskAssetPayload(project?.cwd, taskId, project, {
-		maxFileBytes: config.taskImageMaxBytes,
-		maxTotalBytes: config.taskImageMaxAttachBytes,
+		maxFileBytes: config.taskAttachmentMaxBytes,
+		maxTotalBytes: config.taskAttachmentMaxAttachBytes,
 	});
 
 /***

@@ -297,6 +297,10 @@ write-once, so bytes are immutable). Errors carry a structured `reason`
 | GET | `/projects/:id/tasks/:taskId/images` | List the task's image assets. |
 | GET | `/projects/:id/tasks/:taskId/images/:name` | Serve one image binary-safe (`inline`, `nosniff`). |
 | DELETE | `/projects/:id/tasks/:taskId/images/:name` | Delete one image asset. |
+| POST | `/projects/:id/tasks/:taskId/attachments` | Upload one file of any allowed type (`file` field) into the task's `assets/` folder. |
+| GET | `/projects/:id/tasks/:taskId/attachments` | List the task's attachments (images plus all other allowed types, each with a `kind`). |
+| GET | `/projects/:id/tasks/:taskId/attachments/:name` | Serve one attachment header-safe (`inline` for images/text/pdf, `attachment` download otherwise). |
+| DELETE | `/projects/:id/tasks/:taskId/attachments/:name` | Delete one attachment. |
 
 ## Review (`api/routes/review.js`)
 

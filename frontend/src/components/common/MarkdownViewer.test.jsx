@@ -213,6 +213,37 @@ describe('MarkdownViewer task images', () => {
     expect(screen.getByRole('img', { name: 'local' }).getAttribute('src')).toBe('assets/shot.png');
   });
 
+  it('renders task-asset link references through the attachment endpoint', () => {
+    render(
+      <MarkdownViewer content="[run log](assets/out.log)" projectId="proj-1" taskId="task-1" />,
+    );
+    const link = screen.getByRole('link', { name: 'run log' });
+    expect(link.getAttribute('href')).toBe(
+      'http://localhost:3100/projects/proj-1/tasks/task-1/attachments/out.log',
+    );
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('keeps relative link hrefs as-is without task context (legacy behavior)', () => {
+    render(<MarkdownViewer content="[run log](assets/out.log)" />);
+    expect(screen.getByRole('link', { name: 'run log' }).getAttribute('href')).toBe(
+      'assets/out.log',
+    );
+  });
+
+  it('leaves absolute http(s) link hrefs untouched with task context', () => {
+    render(
+      <MarkdownViewer
+        content="[docs](https://example.com/run.log)"
+        projectId="proj-1"
+        taskId="task-1"
+      />,
+    );
+    expect(screen.getByRole('link', { name: 'docs' }).getAttribute('href')).toBe(
+      'https://example.com/run.log',
+    );
+  });
+
   it('renders neutralized XSS image URLs as inert text, never an <img>', () => {
     const { container } = render(
       <MarkdownViewer

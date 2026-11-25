@@ -11,6 +11,8 @@
 import { ReviewStore } from "../reviewStore.js";
 import { buildTaskReview } from "../reviewAssembly.js";
 import { config } from "../config.js";
+import { ingestOutOfTaskRefs } from "../work/taskAssets.js";
+import { commitTaskAssets } from "../work/commitTaskAssets.js";
 import {
 	normalizeReportPath,
 	reportPathVariants,
@@ -121,6 +123,45 @@ export default async function reviewRoutes(app, { deps }) {
 		const reviewStore = new ReviewStore(project.cwd, project);
 		return { projectId, project, task, reviewStore };
 	}
+
+	/***
+	 * MARK: ingestReviewBody
+	 * @description Attachment ingest for one review comment/reply body:
+	 *   out-of-task files the body references land in the task's `assets/`
+	 *   folder, the body is rewritten to the stored names, and the bytes
+	 *   are commit-assured on the task branch. Bodies without such refs
+	 *   pass through untouched (same text, empty `ingested`). Never throws.
+	 * @example await ingestReviewBody(ctx, 'see [l](/tmp/o.log)') => { body: 'see [l](assets/o.log)', ingested: […] }
+	 ***/
+	const ingestReviewBody = async (ctx, body) => {
+		if (typeof body !== "string" || !body) return { body, ingested: [] };
+		let ingest;
+		try {
+			ingest = ingestOutOfTaskRefs({
+				projectCwd: ctx.project?.cwd,
+				taskId: ctx.task.id,
+				markdown: body,
+				docsProject: ctx.project,
+				maxFileBytes: config.taskAttachmentMaxBytes,
+				maxPerTask: config.taskAttachmentMaxPerTask,
+			});
+		} catch {
+			return { body, ingested: [] };
+		}
+		if (ingest.ingested.length === 0) return { body, ingested: [] };
+		try {
+			await commitTaskAssets({
+				projectCwd: ctx.project?.cwd,
+				taskId: ctx.task.id,
+				branch: ctx.task?.branch,
+				docsProject: ctx.project,
+				names: ingest.ingested.map((entry) => entry.name),
+			});
+		} catch {
+			// Best-effort: the rewritten body already carries the refs.
+		}
+		return { body: ingest.markdown, ingested: ingest.ingested };
+	};
 
 	/***
 	 * MARK: Get Task Review
@@ -269,14 +310,20 @@ export default async function reviewRoutes(app, { deps }) {
 				}
 			}
 
-			const comment = await ctx.reviewStore.addComment(ctx.task.id, payload);
+			const ingested = await ingestReviewBody(ctx, payload.body);
+			const comment = await ctx.reviewStore.addComment(ctx.task.id, {
+				...payload,
+				body: ingested.body,
+			});
 			eventBridge?.broadcastGlobal?.("REVIEW_UPDATED", {
 				projectId: ctx.projectId,
 				taskId: ctx.task.id,
 				type: "comment_added",
 				comment,
 			});
-			return comment;
+			return ingested.ingested.length > 0
+				? { ...comment, ingestedAttachments: ingested.ingested }
+				: comment;
 		},
 	);
 
@@ -311,10 +358,13 @@ export default async function reviewRoutes(app, { deps }) {
 			const ctx = await resolveReviewContext(request, reply);
 			if (!ctx) return;
 			try {
+				const ingested = await ingestReviewBody(ctx, request.body?.body);
 				const comment = await ctx.reviewStore.updateComment(
 					ctx.task.id,
 					request.params.commentId,
-					request.body,
+					typeof request.body?.body === "string"
+						? { ...request.body, body: ingested.body }
+						: request.body,
 				);
 				eventBridge?.broadcastGlobal?.("REVIEW_UPDATED", {
 					projectId: ctx.projectId,
@@ -322,7 +372,9 @@ export default async function reviewRoutes(app, { deps }) {
 					type: "comment_updated",
 					comment,
 				});
-				return comment;
+				return ingested.ingested.length > 0
+					? { ...comment, ingestedAttachments: ingested.ingested }
+					: comment;
 			} catch {
 				return reply.status(404).send({ error: "Comment not found" });
 			}
@@ -360,10 +412,13 @@ export default async function reviewRoutes(app, { deps }) {
 			const ctx = await resolveReviewContext(request, reply);
 			if (!ctx) return;
 			try {
+				const ingested = await ingestReviewBody(ctx, request.body?.body);
 				const replyData = await ctx.reviewStore.addReply(
 					ctx.task.id,
 					request.params.commentId,
-					request.body,
+					typeof request.body?.body === "string"
+						? { ...request.body, body: ingested.body }
+						: request.body,
 				);
 				eventBridge?.broadcastGlobal?.("REVIEW_UPDATED", {
 					projectId: ctx.projectId,
@@ -372,7 +427,9 @@ export default async function reviewRoutes(app, { deps }) {
 					commentId: request.params.commentId,
 					reply: replyData,
 				});
-				return replyData;
+				return ingested.ingested.length > 0
+					? { ...replyData, ingestedAttachments: ingested.ingested }
+					: replyData;
 			} catch {
 				return reply.status(404).send({ error: "Comment not found" });
 			}

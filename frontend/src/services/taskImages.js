@@ -40,6 +40,167 @@ export function resolveTaskImageUrl({ apiBase = '', projectId, taskId, src }) {
 }
 
 /***
+ * MARK: ATTACHMENT_EXTENSIONS
+ * @description Every file extension the task attachment pipeline accepts
+ *   (lowercase, without the dot): the five viewable images plus text/log/data
+ *   files, documents, archives, audio/video, and download-only web files. A
+ *   client-side mirror of the backend `ATTACHMENT_EXTENSIONS` allowlist — the
+ *   backend enforces, this only drives picker filtering and kind labels, so a
+ *   drifted client can only under-offer, never over-store. A strict superset
+ *   of the `isImageFile` five; executables and scripts stay rejected.
+ * @example ATTACHMENT_EXTENSIONS.includes('log') => true
+ * @example ATTACHMENT_EXTENSIONS.includes('sh') => false
+ ***/
+export const ATTACHMENT_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'txt',
+  'text',
+  'md',
+  'markdown',
+  'log',
+  'json',
+  'jsonl',
+  'csv',
+  'tsv',
+  'yaml',
+  'yml',
+  'diff',
+  'patch',
+  'xml',
+  'pdf',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'ppt',
+  'pptx',
+  'odt',
+  'ods',
+  'odp',
+  'rtf',
+  'zip',
+  'tar',
+  'gz',
+  'tgz',
+  'mp4',
+  'mov',
+  'webm',
+  'mp3',
+  'wav',
+  'ogg',
+  'm4a',
+  'html',
+  'htm',
+  'svg',
+  'xhtml',
+];
+
+/***
+ * MARK: isAttachmentFile
+ * @description Whether a File looks like an uploadable task attachment (any
+ *   `ATTACHMENT_EXTENSIONS` member) by extension, case-insensitive. Images
+ *   pass too — callers route those to the image endpoint first.
+ * @example isAttachmentFile(new File([], 'out.LOG')) => true
+ * @example isAttachmentFile(new File([], 'run.sh')) => false
+ * @param {File} file
+ * @returns {boolean}
+ ***/
+export function isAttachmentFile(file) {
+  if (!file || typeof file.name !== 'string') return false;
+  const ext = file.name.split('.').pop() || '';
+  return ATTACHMENT_EXTENSIONS.includes(ext.toLowerCase());
+}
+
+/***
+ * MARK: attachmentKindFor
+ * @description The listing kind for an attachment name: `image` for the
+ *   viewable five, `file` for every other allowed attachment type, null when
+ *   the extension is not allowed at all. Mirrors the backend `attachmentKind`
+ *   so the UI renders thumbnails vs download chips without a round trip.
+ * @example attachmentKindFor('shot.png') => 'image'
+ * @example attachmentKindFor('server.log') => 'file'
+ * @example attachmentKindFor('run.sh') => null
+ * @param {string} name - Stored asset name (or path; the basename classifies).
+ * @returns {string|null}
+ ***/
+export function attachmentKindFor(name) {
+  if (!name || typeof name !== 'string') return null;
+  const base = name.split('/').pop();
+  if (isImageFile({ name: base })) return 'image';
+  if (isAttachmentFile({ name: base })) return 'file';
+  return null;
+}
+
+/***
+ * MARK: resolveTaskAttachmentUrl
+ * @description Turns a markdown link src into a fetchable attachment URL. Like
+ *   `resolveTaskImageUrl` but for the header-safe attachment endpoint, which
+ *   serves every allowed type (`inline` for images/text/pdf, `attachment`
+ *   download otherwise). Relative task asset paths (`assets/<name>`, with
+ *   optional leading `./` or `/` or a fuller task-folder prefix) are
+ *   rewritten; absolute http(s) URLs pass through untouched; protocol-blocked
+ *   values also pass through UNCHANGED so the viewer's sanitizeUrl stays the
+ *   single place that neutralizes them. Without task context the src is
+ *   returned as-is (legacy behavior).
+ * @example resolveTaskAttachmentUrl({ apiBase: 'http://localhost:3100', projectId: 'p1', taskId: 't1', src: 'assets/out.log' })
+ *   => 'http://localhost:3100/projects/p1/tasks/t1/attachments/out.log'
+ * @example resolveTaskAttachmentUrl({ projectId: 'p1', taskId: 't1', src: 'https://x/y.log' }) => 'https://x/y.log'
+ * @param {Object} opts
+ * @param {string} [opts.apiBase] - The API origin ('' = same origin).
+ * @param {string} [opts.projectId]
+ * @param {string} [opts.taskId]
+ * @param {string} [opts.src] - The markdown link src.
+ * @returns {string}
+ ***/
+export function resolveTaskAttachmentUrl({ apiBase = '', projectId, taskId, src }) {
+  if (!src || typeof src !== 'string') return '';
+  const trimmed = src.trim();
+  if (!trimmed) return '';
+  // Absolute and protocol URLs are not task assets — leave them for the sanitizer.
+  if (/^(https?:)?\/\//i.test(trimmed) || /^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (!projectId || !taskId) return trimmed;
+  // Same shared grammar as the image resolver: the viewer resolves exactly
+  // what backend curation detects — the two can never drift.
+  const assetRef = normalizeAssetSrc(trimmed);
+  if (!assetRef) return trimmed;
+  const base = String(apiBase || '').replace(/\/+$/, '');
+  return `${base}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(assetRef.slice('assets/'.length))}`;
+}
+
+/***
+ * MARK: taskAttachmentRequests
+ * @description Task attachment requests (upload/list/delete) using the app's
+ *   existing connection and request helper. The sibling of
+ *   `taskImageRequests` for the generalized endpoints: uploads carry the
+ *   `file` field, listings return `{ attachments }` with a per-entry `kind`.
+ * @example const requests = taskAttachmentRequests(request); await requests.uploadTaskAttachment(projectId, taskId, file)
+ * @param {Function} request - The shared JSON request helper (FormData-aware).
+ ***/
+export function taskAttachmentRequests(request) {
+  return {
+    uploadTaskAttachment: (projectId, taskId, file) => {
+      const formData = new FormData();
+      formData.append('file', file, file?.name || 'file');
+      return request(`/projects/${projectId}/tasks/${taskId}/attachments`, {
+        method: 'POST',
+        body: formData,
+      });
+    },
+    listTaskAttachments: (projectId, taskId) => request(`/projects/${projectId}/tasks/${taskId}/attachments`),
+    deleteTaskAttachment: (projectId, taskId, name) =>
+      request(`/projects/${projectId}/tasks/${taskId}/attachments/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+      }),
+  };
+}
+
+/***
  * MARK: taskContextFromFilePath
  * @description Derives the task image context ({ projectId, taskId }) for a
  *   project-relative file path that lives inside a task folder
@@ -238,4 +399,135 @@ export function extractImageRefs(text) {
     refs.push({ alt: match[1], src });
   }
   return refs;
+}
+
+/***
+ * MARK: extractFileRefs
+ * @description Collects markdown link references (`[label](src)`, no `!`) from
+ *   a text draft, in order. The sibling of `extractImageRefs` for download
+ *   chips: image refs are excluded (leading `!` disqualifies), so the two
+ *   extractors partition a draft's references without overlap.
+ * @example extractFileRefs('See [run log](assets/out.log)') => [{ label: 'run log', src: 'assets/out.log' }]
+ * @param {string} text - Draft text to scan.
+ * @returns {Array<{label: string, src: string}>} Link references found.
+ ***/
+export function extractFileRefs(text) {
+  if (!text || typeof text !== 'string') return [];
+  const refs = [];
+  const pattern = /(!?)\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    if (match[1] === '!') continue;
+    const src = firstSrcToken(match[3]);
+    if (!src) continue;
+    refs.push({ label: match[2], src });
+  }
+  return refs;
+}
+
+/***
+ * MARK: appendAttachmentMarkdown
+ * @description Appends one stored attachment's markdown reference at the end
+ *   of a feedback/goal draft on its own new line, regardless of caret
+ *   position. Images keep the exact `appendImageMarkdown` form
+ *   (`![name](path)`); every other attachment appends a plain link
+ *   (`[name](path)`). The kind classifies from the stored name/path extension
+ *   (`attachmentKindFor`), so callers pass the same `{ name, path }` shape the
+ *   image path always used. Same sanitizing contract: the label stays on one
+ *   line inside brackets and the destination cannot contain parens, quotes, or
+ *   newlines, so a hostile stored name cannot break out of the link syntax.
+ * @example appendAttachmentMarkdown('Fix it', { name: 'out.log', path: 'assets/out.log' }) => 'Fix it\n\n[out.log](assets/out.log)\n'
+ * @param {string} text - Current draft text.
+ * @param {Object} asset - Stored asset `{ name, path }`.
+ * @returns {string} Draft with the reference appended.
+ ***/
+export function appendAttachmentMarkdown(text, asset) {
+  // Either side may be hostile while the other stays clean (real stored
+  // assets always agree), so the link form wins when the name OR the path
+  // classifies as a file; only a clean image (or an unknown shape, by the
+  // legacy default) keeps the `![...]` form.
+  if (
+    attachmentKindFor(asset?.name) !== 'file' &&
+    attachmentKindFor(asset?.path) !== 'file'
+  ) {
+    return appendImageMarkdown(text, asset);
+  }
+  const base = typeof text === 'string' ? text : '';
+  const rawPath = typeof asset?.path === 'string' ? asset.path.trim() : '';
+  if (!rawPath) return base;
+  // Label must stay on one line inside brackets: strip brackets/newlines
+  // so a hostile or pasted filename cannot break out of the link syntax.
+  const label = String(asset?.name || 'file')
+    .replace(/[\[\]\r\n]+/g, ' ')
+    .trim()
+    .slice(0, 120);
+  // The destination must stay on one line and cannot contain parens or
+  // quotes — otherwise a crafted path could close the `(...)` early and
+  // inject arbitrary markdown. Stripping is lossless for real asset paths
+  // (backend `sanitizeAttachmentName` already produces flat, safe names).
+  const dest = rawPath.replace(/[()"'\r\n]+/g, ' ').trim();
+  if (!dest) return base;
+  const snippet = `[${label || 'file'}](${dest})`;
+  if (!base) return `${snippet}\n`;
+  const prefix = base.endsWith('\n\n') ? '' : base.endsWith('\n') ? '\n' : '\n\n';
+  return `${base}${prefix}${snippet}\n`;
+}
+
+/***
+ * MARK: appendAttachmentsMarkdown
+ * @description Folds `appendAttachmentMarkdown` over a batch of stored assets
+ *   so one multi-select/paste gesture lands as sequential reference lines, in
+ *   order, via a single text update (no stale-closure accumulation loss).
+ *   Image entries keep the exact `appendImagesMarkdown` output, so switching a
+ *   caller to this fold never rewrites an existing image reference. Entries
+ *   without a usable path are skipped.
+ * @example appendAttachmentsMarkdown('Fix it', [{ name: 'a.png', path: 'assets/a.png' }, { name: 'o.log', path: 'assets/o.log' }]) => 'Fix it\n\n![a.png](assets/a.png)\n\n[o.log](assets/o.log)\n'
+ * @param {string} text - Current draft text.
+ * @param {Array<Object>} assets - Stored assets (`{ name, path }`), in link order.
+ * @returns {string} Draft with every reference appended.
+ ***/
+export function appendAttachmentsMarkdown(text, assets) {
+  if (!Array.isArray(assets) || assets.length === 0) {
+    return typeof text === 'string' ? text : '';
+  }
+  return assets.reduce((draft, asset) => appendAttachmentMarkdown(draft, asset), text);
+}
+
+/***
+ * MARK: removeAttachmentMarkdown
+ * @description Strips the markdown reference line(s) for a removed attachment
+ *   from a feedback draft. Matches both image lines (`![alt](src)`) and plain
+ *   link lines (`[label](src)`) by exact stored path first, falling back to
+ *   the asset basename so hand-edited labels still strip. Image-only drafts
+ *   strip exactly like `removeImageMarkdown`.
+ * @example removeAttachmentMarkdown('Fix it\n\n[out.log](assets/out.log)\n', 'out.log') => 'Fix it'
+ * @param {string} text - Current draft text.
+ * @param {string} name - Removed asset name (`out.log`).
+ * @param {string} [path] - Removed asset path (`assets/out.log`).
+ * @returns {string} Draft without that attachment's reference lines.
+ ***/
+export function removeAttachmentMarkdown(text, name, path) {
+  if (!text || typeof text !== 'string' || !name) return text || '';
+  const source = text;
+  const lines = source.split('\n');
+  let removed = false;
+  const kept = lines.filter((line) => {
+    const trimmed = line.trim();
+    // Tolerate an optional trailing title (`[a](x "t")`): compare on the
+    // first whitespace-separated token inside the parens.
+    const match = trimmed.match(/^!?\[([^\]]*)\]\(([^)]+)\)$/);
+    if (!match) return true;
+    const src = firstSrcToken(match[2]);
+    const drop =
+      (typeof path === 'string' && path && src === path) || src.split('/').pop() === name;
+    if (drop) removed = true;
+    return !drop;
+  });
+  if (!removed) return source;
+  // Removing a line can strand double blank lines; collapse runs of three
+  // or more newlines and drop trailing whitespace (submit trims anyway).
+  return kept
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\s+$/, '');
 }

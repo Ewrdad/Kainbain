@@ -1,5 +1,5 @@
 // Domain: The Work — task goals and board records.
-import { taskImageRequests } from '../taskImages.js';
+import { taskImageRequests, taskAttachmentRequests } from '../taskImages.js';
 /***
  * MARK: workRequests
  * @description Describes the work requests using the application's existing connection.
@@ -8,6 +8,7 @@ import { taskImageRequests } from '../taskImages.js';
 export function workRequests(request, isValidProjectId) {
   return {
     ...taskImageRequests(request),
+    ...taskAttachmentRequests(request),
     listTasks: (projectId, { includeCompleted = true } = {}) => {
     if (projectId && !isValidProjectId(projectId)) {
       console.warn(`[api.listTasks] Invalid projectId: ${projectId}`);
