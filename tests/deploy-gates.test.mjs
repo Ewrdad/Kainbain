@@ -145,13 +145,23 @@ describe("deploy / npm test parity (executable contract)", () => {
 		}
 	});
 
-	it("the canary-e2e gate command matches the gate's Canary Tests branch", () => {
-		// Both entry points must invoke the suite the same way: deploy.sh runs
-		// `npm run test:canary`, and the gate branch must spawn exactly that.
+	it("the gate's Canary Tests branch runs the quarantine wrapper over the same canary-e2e suite", () => {
+		// deploy.sh runs `npm run test:canary` (pinned below); the gate branch
+		// runs scripts/canary-with-quarantine.mjs, which drives the SAME
+		// canary-e2e Playwright suite — preflight + `playwright test` — plus
+		// the infra-flake quarantine lane (task 44125086). Pin the branch
+		// command AND the wrapper's canary-e2e wiring so the two entry points
+		// can never silently diverge into different suites.
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, withCanary: true, nodeExec: "node", npmExec: "npm" });
 		const canary = branches.find((branch) => branch.name === "Canary Tests");
-		assert.deepEqual(canary.file, "npm");
-		assert.deepEqual(canary.args, ["run", "test:canary"]);
+		assert.equal(canary.file, "node");
+		assert.deepEqual(canary.args, ["scripts/canary-with-quarantine.mjs"]);
+		/* eslint-disable security/detect-non-literal-fs-filename -- fixed repo-relative path under test */
+		const wrapperSource = fs.readFileSync(path.join(REPO_ROOT, "scripts", "canary-with-quarantine.mjs"), "utf8");
+		/* eslint-enable security/detect-non-literal-fs-filename */
+		assert.match(wrapperSource, /canary-e2e/, "wrapper must drive the canary-e2e package");
+		assert.match(wrapperSource, /playwright/i, "wrapper must invoke playwright");
+		assert.match(wrapperSource, /canary-preflight\.mjs/, "wrapper must keep the preflight step of the package's test script");
 		const body = readDeploySh();
 		// Sharded 1/2 + 2/2 over fresh stacks: both shards must delegate to
 		// the same suite (identical 135 assertions, split for memory), so pin

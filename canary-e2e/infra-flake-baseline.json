@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-24",
+  "description": "Recorded baseline of known canary infra-flake signatures (task 44125086). Source of truth for the patterns is canary-e2e/tests/infra-flakes.mjs; this file records when each signature was first seen and the evidence, so a signature can later be retired with proof the flake is gone. The gate's quarantine lane (scripts/canary-with-quarantine.mjs) snapshots this file into every canary-quarantine.json, making per-run counts diffable. To add a signature: add the entry here too — see 'Adding an infra-flake signature' in canary-e2e/README.md.",
+  "signatures": {
+    "browser-closed": {
+      "firstSeen": "2026-11-19",
+      "evidence": "docs/tasks/cf4b6847-11eb-4d59-b39e-e31b31df1150/automated-tests-failure-20261119-152819.md, -160115.md, -162951.md, -170814.md — 4 of 5 cycles failed only on 'page.goto: Target page, context or browser has been closed' at canary-e2e/tests/helpers.js:65 (whole browser/context died under gate-host load; the helper's same-page re-issue could not recover)."
+    },
+    "target-closed": {
+      "firstSeen": "2026-11-24",
+      "evidence": "Task 44125086 signature family (superset of the pre-existing helpers.js retry regex); verified live with Playwright 1.63: a closed browser/context/page throws 'Target page, context or browser has been closed' and a dead browser's newContext() throws 'browser.newContext: Target page, context or browser has been closed'."
+    },
+    "target-crashed": {
+      "firstSeen": "2026-11-24",
+      "evidence": "Task 44125086 signature family (superset of the pre-existing helpers.js retry regex)."
+    },
+    "page-crashed": {
+      "firstSeen": "2026-11-24",
+      "evidence": "Task 44125086 signature family (superset of the pre-existing helpers.js retry regex); renderer death under gate-host load."
+    },
+    "insufficient-resources": {
+      "firstSeen": "2026-11-24",
+      "evidence": "Task 44125086; net::ERR_INSUFFICIENT_RESOURCES across the vite module burst — already the one healed by the bounded re-issue in waitForAppReady (helpers.js)."
+    }
+  }
+}

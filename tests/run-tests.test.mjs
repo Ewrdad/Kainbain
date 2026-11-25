@@ -218,21 +218,48 @@ describe("buildBranches", () => {
 		assert.deepEqual(skipped, []);
 	});
 
-	it("spawns Canary Tests last as npm run test:canary", () => {
+	it("spawns Canary Tests last through the quarantine wrapper (same canary-e2e suite)", () => {
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		assert.deepEqual(
 			branches.map((branch) => branch.name),
 			[...CANONICAL_NAMES.filter((name) => name !== "Canary Tests"), "Canary Tests"],
 		);
 		const canary = branches.at(-1);
-		assert.equal(canary.file, "npm");
-		assert.deepEqual(canary.args, ["run", "test:canary"]);
+		// The wrapper (scripts/canary-with-quarantine.mjs) runs the identical
+		// canary-e2e suite as `npm run test:canary` — preflight + playwright,
+		// retries: 0 — plus the infra-flake quarantine lane (task 44125086).
+		assert.equal(canary.file, "node");
+		assert.deepEqual(canary.args, ["scripts/canary-with-quarantine.mjs"]);
+		assert.equal(canary.env, undefined, "no verdict dir passed → no quarantine-dir env override");
 		assert.equal(canary.lowPriority, true);
 		assert.equal(canary.shell, undefined, "must not use a shell");
 		// The canary branch is minutes long and quiet mid-run: it carries its
 		// own honest hung-branch ceiling (25 min, exit 124 on breach) instead
-		// of leaving a wedged suite bounded only by silence thresholds.
+		// of leaving a wedged suite bounded only by silence thresholds. The
+		// ceiling also covers the wrapper's one failed-tests-only rerun.
 		assert.equal(canary.timeoutMs, 25 * 60 * 1000);
+	});
+
+	it("exports the gate's verdict dir to the Canary Tests branch as the quarantine dir", () => {
+		const { branches } = buildBranches({
+			hasBash: true,
+			hasDocker: true,
+			hasDepcheck: true,
+			withCanary: true,
+			verdictDir: "/tmp/verdict-123",
+			nodeExec: "node",
+			npmExec: "npm",
+		});
+		const canary = branches.find((branch) => branch.name === "Canary Tests");
+		// canary-quarantine.json must land next to verdict.json.
+		assert.deepEqual(canary.env, { KAINBAIN_CANARY_QUARANTINE_DIR: "/tmp/verdict-123" });
+	});
+
+	it("harness self-tests run the infra-flake signature and quarantine-lane suites", () => {
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const selfTests = branches.find((branch) => branch.name === "Harness Self-Tests");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("infra-flakes.test.mjs")), "signature-classifier tests must stay in the gate");
+		assert.ok(selfTests.args.some((arg) => arg.endsWith("canary-quarantine.test.mjs")), "quarantine-lane tests must stay in the gate");
 	});
 });
 
