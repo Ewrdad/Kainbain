@@ -11,7 +11,8 @@ evidence behind the transient handling below.
 1. **Upload** (`POST /projects/:id/tasks/:taskId/images`, `api/routes/taskImages.js`).
    Multipart `image` file, extension allowlist (`png/jpg/jpeg/gif/webp`),
    per-file size cap and per-task count cap. The stored name is
-   `sanitizeImageName` + `dedupeImageName` (`api/work/taskAssets.js`): flat,
+   `sanitizeImageName` + `dedupeImageName` (`sanitizeImageName` lives in
+   `shared/taskAssetRefs/` and is re-exported by `api/work/taskAssets.js`): flat,
    lowercased, and never overwriting (`foo.png` → `foo-2.png`). A batch that
    finishes after the user switched tasks still lands in the origin task, but
    no reference is appended to the new draft (`TaskImageAttach.jsx` scope
@@ -118,6 +119,57 @@ plan had to be grounded in source because `assets/image.png` was absent).
   writes entries the worktree lacks (`writeClaimTaskAssets`: flat
   allowlisted names only, size-capped, never overwrites) before the first
   stage runs.
+
+## Submit-time validation: feedback cannot mint blind loops
+
+The copy-or-warn backstop above only tells downstream agents they are blind;
+it cannot recover the lost information (case study: task `cf4b6847`'s Final
+review rejection was literally `![image.png](assets/image.png)` with no bytes
+attached, and agents worked blind on the UI complaint through the
+retrospective). Human feedback is therefore validated at submit time, so a
+dangling ref can never enter the pipeline from a review box again.
+
+- **Shared single owner.** `shared/feedbackValidation/` holds the whole
+  decision — `extractAssetRefs` grammar for detection, `isImageOnlyFeedback`
+  for the image-only rule, `findMissingRefsAgainst` for presence,
+  `validateHumanFeedback` for the verdict, `stripAssetRefs` for text-only
+  recovery — so the UI pre-check and the API shell can never drift. The
+  `strict: false` flag is the single block-vs-confirm switch if the policy
+  is ever softened. The filename canonicalisation it matches against
+  (`sanitizeImageName`, `isAllowedImageExt`, `IMAGE_EXTENSIONS`) lives in
+  `shared/taskAssetRefs/` and is re-exported by `api/work/taskAssets.js`,
+  so submit-time classification is identical to upload validation and the
+  serve route's canonical fallback.
+- **UI shell: instant pre-check + blocking recovery dialog.** Every composer
+  that submits human text (board reject dialog, review-page fail modal, pass
+  guidance, follow-up/steer intervention box, review comment composer and
+  replies) pre-checks the draft against a freshly listed attachment set and
+  renders dangling refs inline, naming the files. A submit attempt while
+  invalid opens the blocking `FeedbackValidationDialog` (never a silent
+  disable) with two recovery exits: attach the missing file inline (the send
+  resumes automatically once the draft checks out) or send words-only (only
+  the dangling refs strip; prose and healthy refs stay byte-identical).
+- **API shell: authoritative 422.** The same routes refuse invalid text with
+  `422 { error, code: 'FEEDBACK_VALIDATION_FAILED', missing[], imageOnly }`,
+  naming every missing file — no client, UI or API, can bypass the check.
+  Presence is disk OR the task branch (the same two-tier rule curation warns
+  by, via `validateFeedbackForTask`), so branch-flap between upload and
+  submit can never refuse a human. A 422 re-opens the UI dialog with the
+  server-authoritative file list, closing the list-then-submit race.
+- **Image-only rule.** Feedback that carries images but fewer than
+  `MIN_FEEDBACK_PROSE_CHARS` (10) visible prose characters outside image/link
+  markup is refused until a short written description is added — a note
+  explaining what the pictures show, not an essay. Plain-text feedback,
+  however short, is never measured against this bar.
+- **What is not blocked.** External/absolute URLs are ignored exactly as
+  curation ignores them; drifted-but-servable refs (wrong case, spaces)
+  never block; healthy submissions are byte-identical. Task creation stays
+  warn-only (`feedbackWarnings` on the response): uploads land after the
+  task exists, so creation must never wedge on eventual consistency.
+- **Legacy backstop retained.** Pre-existing tasks with dead refs are never
+  re-validated on read — they still render the identical `# Missing Task
+  Assets` warning at curate time, proven by the legacy regression test and
+  the untouched `promptCuration` / `promptLayout` suites.
 
 ## Repairs
 

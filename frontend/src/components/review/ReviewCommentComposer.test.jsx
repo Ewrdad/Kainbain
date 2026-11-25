@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ReviewCommentComposer } from './ReviewCommentComposer';
 
 /***
@@ -87,8 +87,6 @@ describe('ReviewCommentComposer', () => {
  *   dangling refs and image-only drafts open the inline recovery panel;
  *   resend/strip recovery and server-422 reopen all keep the draft.
  */
-import { waitFor } from '@testing-library/react';
-
 vi.mock('../../services/api', () => ({
   api: { listTaskImages: vi.fn() },
 }));

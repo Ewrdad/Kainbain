@@ -141,6 +141,28 @@ a phantom screenshot:
 - **Self-healing.** The stored goal text is never rewritten: re-upload the
   file and the next run picks it up with no cleanup.
 
+## Sending feedback: missing files block the send
+
+Review feedback, rejection reasons, pass guidance, follow-up/steer notes, and
+review comments are checked when you press send, so a mention of a picture
+that was never attached can no longer sail into the pipeline and leave agents
+guessing at a screenshot they cannot see:
+
+- **Missing attachment.** If your text references `assets/<name>` and that
+  file is not attached to the task, the send is blocked and every missing
+  file is named. From the blocking dialog you can attach the file right
+  there (the send resumes automatically once everything checks out) or send
+  words-only — only the dead picture links are removed, your words and any
+  healthy references stay exactly as written.
+- **Pictures without words.** Feedback that is only images needs a short
+  written description (at least 10 characters) explaining what the pictures
+  show before it can be sent.
+- **What never blocks.** Links to external sites, pictures that are properly
+  attached (even if the name drifted in case or spacing), and plain-text
+  feedback always send as before. Older tasks that already contain a dead
+  reference keep showing the `# Missing Task Assets` warning to agents
+  instead — re-upload the file and the next run picks it up.
+
 ## Limits and tuning
 
 | Limit | Default | Environment variable |

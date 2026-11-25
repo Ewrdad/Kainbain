@@ -1,0 +1,365 @@
+
+> kainbain@1.0.0 lint:frontend
+> npm run lint --prefix frontend
+
+
+> frontend@1.0.0 lint
+> eslint . --cache --cache-strategy content
+
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/scripts/check-imports-declared.js
+  342:17  warning  Found readdirSync from package "node:fs" with non literal argument at index 0   security/detect-non-literal-fs-filename
+  361:19  warning  Found readdirSync from package "node:fs" with non literal argument at index 0   security/detect-non-literal-fs-filename
+  392:20  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  437:20  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/scripts/check-no-deprecations.js
+  40:12  warning  Found non-literal argument to RegExp Constructor  security/detect-non-literal-regexp
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/scripts/check-react-imports.js
+  27:23  warning  Found readdirSync from package "node:fs" with non literal argument at index 0   security/detect-non-literal-fs-filename
+  38:19  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/a11yTestHelpers.js
+  97:9   warning  Generic Object Injection Sink  security/detect-object-injection
+  99:78  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/decorativeIcons.test.js
+  30:23  warning  Found readdirSync from package "node:fs" with non literal argument at index 0   security/detect-non-literal-fs-filename
+  32:9   warning  Found statSync from package "node:fs" with non literal argument at index 0      security/detect-non-literal-fs-filename
+  63:46  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/focusVisibility.test.js
+   78:18  warning  Variable Assigned to Object Injection Sink                                      security/detect-object-injection
+  100:49  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/landmarkStructure.test.js
+  29:23  warning  Found readdirSync from package "node:fs" with non literal argument at index 0   security/detect-non-literal-fs-filename
+  31:9   warning  Found statSync from package "node:fs" with non literal argument at index 0      security/detect-non-literal-fs-filename
+  68:39  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  82:39  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/langAttributes.test.js
+  42:18  warning  Variable Assigned to Object Injection Sink                                      security/detect-object-injection
+  76:39  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/listShippedSourceFiles.js
+  25:25  warning  Found readdirSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  27:11  warning  Found statSync from package "node:fs" with non literal argument at index 0     security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/listShippedSourceFiles.test.js
+  24:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  25:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  31:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  32:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  33:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  34:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  40:5  warning  Found mkdirSync from package "node:fs" with non literal argument at index 0      security/detect-non-literal-fs-filename
+  41:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  42:5  warning  Found mkdirSync from package "node:fs" with non literal argument at index 0      security/detect-non-literal-fs-filename
+  43:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  44:5  warning  Found mkdirSync from package "node:fs" with non literal argument at index 0      security/detect-non-literal-fs-filename
+  45:5  warning  Found writeFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/targetSize.test.js
+   53:18  warning  Variable Assigned to Object Injection Sink                                      security/detect-object-injection
+   60:18  warning  Found non-literal argument to RegExp Constructor                                security/detect-non-literal-regexp
+   72:39  warning  Unsafe Regular Expression                                                       security/detect-unsafe-regex
+   91:44  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  108:7   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/a11y/uiTextConventions.test.js
+   40:23  warning  Found readdirSync from package "node:fs" with non literal argument at index 0   security/detect-non-literal-fs-filename
+   42:9   warning  Found statSync from package "node:fs" with non literal argument at index 0      security/detect-non-literal-fs-filename
+  123:42  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+  153:49  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/accessibility/AccessibilityReportDialog.jsx
+  134:35  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/accessibility/AccessibilityStatementPage.jsx
+  26:106  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/common/GoToAppLink.jsx
+   94:16  warning  Generic Object Injection Sink  security/detect-object-injection
+  107:34  warning  Generic Object Injection Sink  security/detect-object-injection
+  117:25  warning  Generic Object Injection Sink  security/detect-object-injection
+  118:68  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/common/InfoTooltip.jsx
+  291:5  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/common/MarkdownViewer.jsx
+   51:7   warning  Unsafe Regular Expression                   security/detect-unsafe-regex
+   71:18  warning  Unsafe Regular Expression                   security/detect-unsafe-regex
+  459:18  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+  468:48  warning  Function Call Object Injection Sink         security/detect-object-injection
+  469:24  warning  Function Call Object Injection Sink         security/detect-object-injection
+  488:9   warning  Unsafe Regular Expression                   security/detect-unsafe-regex
+  512:34  warning  Generic Object Injection Sink               security/detect-object-injection
+  513:25  warning  Generic Object Injection Sink               security/detect-object-injection
+  530:34  warning  Generic Object Injection Sink               security/detect-object-injection
+  530:69  warning  Generic Object Injection Sink               security/detect-object-injection
+  531:25  warning  Generic Object Injection Sink               security/detect-object-injection
+  544:15  warning  Unsafe Regular Expression                   security/detect-unsafe-regex
+  571:54  warning  Function Call Object Injection Sink         security/detect-object-injection
+  572:20  warning  Generic Object Injection Sink               security/detect-object-injection
+  591:54  warning  Function Call Object Injection Sink         security/detect-object-injection
+  592:20  warning  Generic Object Injection Sink               security/detect-object-injection
+  617:7   warning  Generic Object Injection Sink               security/detect-object-injection
+  618:22  warning  Function Call Object Injection Sink         security/detect-object-injection
+  619:8   warning  Generic Object Injection Sink               security/detect-object-injection
+  620:8   warning  Generic Object Injection Sink               security/detect-object-injection
+  621:28  warning  Function Call Object Injection Sink         security/detect-object-injection
+  622:28  warning  Function Call Object Injection Sink         security/detect-object-injection
+  623:9   warning  Generic Object Injection Sink               security/detect-object-injection
+  623:44  warning  Generic Object Injection Sink               security/detect-object-injection
+  624:8   warning  Unsafe Regular Expression                   security/detect-unsafe-regex
+  624:35  warning  Function Call Object Injection Sink         security/detect-object-injection
+  626:27  warning  Function Call Object Injection Sink         security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/common/MultiSelectDropdown.jsx
+   90:9   warning  Generic Object Injection Sink  security/detect-object-injection
+  159:48  warning  Generic Object Injection Sink  security/detect-object-injection
+  167:29  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/common/SelectDropdown.jsx
+  133:47  warning  Generic Object Injection Sink        security/detect-object-injection
+  275:30  warning  Function Call Object Injection Sink  security/detect-object-injection
+  286:51  warning  Generic Object Injection Sink        security/detect-object-injection
+  301:33  warning  Generic Object Injection Sink        security/detect-object-injection
+  321:18  warning  Generic Object Injection Sink        security/detect-object-injection
+  368:5   warning  Generic Object Injection Sink        security/detect-object-injection
+  376:5   warning  Generic Object Injection Sink        security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/layout/Header.jsx
+  149:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  242:19  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/layout/ProjectMenu.jsx
+  68:9  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/layout/QueuePopupModal.jsx
+  57:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  57:17  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/layout/VersionMismatchBanner.jsx
+  32:9   warning  Generic Object Injection Sink  security/detect-object-injection
+  32:18  warning  Generic Object Injection Sink  security/detect-object-injection
+  32:31  warning  Generic Object Injection Sink  security/detect-object-injection
+  32:38  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/logs/LogViewer.jsx
+  245:9  warning  The 'expandedIds' conditional could make the dependencies of useCallback Hook (at line 420) change on every render. To fix this, wrap the initialization of 'expandedIds' in its own useMemo() Hook  react-hooks/exhaustive-deps
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/logs/consoleStyles.test.js
+  19:10  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/logs/logCategories.js
+  129:47  warning  Generic Object Injection Sink  security/detect-object-injection
+  591:20  warning  Unsafe Regular Expression      security/detect-unsafe-regex
+  679:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  679:18  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/observability/ObservabilityDashboard.jsx
+  252:6   warning  React Hook useEffect has a missing dependency: 'engineState'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  557:18  warning  Variable Assigned to Object Injection Sink                                                                      security/detect-object-injection
+  558:5   warning  Generic Object Injection Sink                                                                                   security/detect-object-injection
+  558:22  warning  Generic Object Injection Sink                                                                                   security/detect-object-injection
+  559:5   warning  Generic Object Injection Sink                                                                                   security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/observability/ObservabilityDashboard.test.jsx
+  558:29  warning  Function Call Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/reports/ReportViewer.jsx
+  58:25  warning  Generic Object Injection Sink        security/detect-object-injection
+  62:27  warning  Generic Object Injection Sink        security/detect-object-injection
+  63:22  warning  Function Call Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/review/ReviewCommentComposer.test.jsx
+  90:1  error  '@testing-library/react' import is duplicated  no-duplicate-imports
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/review/reportAnchors.js
+   91:21  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+  100:23  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+  134:19  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+  139:19  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/settings/AccessControlSection.jsx
+  128:23  warning  Generic Object Injection Sink  security/detect-object-injection
+  139:18  warning  Generic Object Injection Sink  security/detect-object-injection
+  361:26  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/settings/RunnerConfigurationSection.jsx
+   556:18   warning  Generic Object Injection Sink  security/detect-object-injection
+   575:14   warning  Generic Object Injection Sink  security/detect-object-injection
+  1244:110  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/settings/runnerConfigHelpers.js
+   124:9   warning  Generic Object Injection Sink               security/detect-object-injection
+   124:19  warning  Generic Object Injection Sink               security/detect-object-injection
+   124:33  warning  Generic Object Injection Sink               security/detect-object-injection
+   124:41  warning  Generic Object Injection Sink               security/detect-object-injection
+   416:18  warning  Generic Object Injection Sink               security/detect-object-injection
+   416:54  warning  Generic Object Injection Sink               security/detect-object-injection
+   416:70  warning  Generic Object Injection Sink               security/detect-object-injection
+   422:18  warning  Generic Object Injection Sink               security/detect-object-injection
+   422:56  warning  Generic Object Injection Sink               security/detect-object-injection
+   422:75  warning  Generic Object Injection Sink               security/detect-object-injection
+   637:15  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+   639:15  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+   687:21  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+   694:19  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+   699:17  warning  Generic Object Injection Sink               security/detect-object-injection
+   750:99  warning  Generic Object Injection Sink               security/detect-object-injection
+   948:19  warning  Generic Object Injection Sink               security/detect-object-injection
+  1015:10  warning  Generic Object Injection Sink               security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/tasks/SurveyPage.jsx
+  190:13  warning  Generic Object Injection Sink  security/detect-object-injection
+  321:7   warning  Generic Object Injection Sink  security/detect-object-injection
+  329:23  warning  Generic Object Injection Sink  security/detect-object-injection
+  344:23  warning  Generic Object Injection Sink  security/detect-object-injection
+  352:7   warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/tasks/SurveyTaskPanel.jsx
+  86:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  99:18  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/tasks/taskFormatters.js
+  440:18  warning  Generic Object Injection Sink        security/detect-object-injection
+  679:9   warning  Generic Object Injection Sink        security/detect-object-injection
+  679:35  warning  Generic Object Injection Sink        security/detect-object-injection
+  679:49  warning  Generic Object Injection Sink        security/detect-object-injection
+  795:43  warning  Function Call Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/StageRunnerPolicyEditor.jsx
+  142:63  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/StageSkillsPanel.jsx
+   58:7   warning  Generic Object Injection Sink               security/detect-object-injection
+   58:33  warning  Generic Object Injection Sink               security/detect-object-injection
+   58:65  warning  Generic Object Injection Sink               security/detect-object-injection
+   70:19  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+   83:20  warning  Generic Object Injection Sink               security/detect-object-injection
+   85:17  warning  Generic Object Injection Sink               security/detect-object-injection
+  123:18  warning  Generic Object Injection Sink               security/detect-object-injection
+  186:26  warning  Function Call Object Injection Sink         security/detect-object-injection
+  186:48  warning  Generic Object Injection Sink               security/detect-object-injection
+  187:7   warning  Generic Object Injection Sink               security/detect-object-injection
+  191:31  warning  Function Call Object Injection Sink         security/detect-object-injection
+  191:62  warning  Generic Object Injection Sink               security/detect-object-injection
+  196:25  warning  Function Call Object Injection Sink         security/detect-object-injection
+  196:58  warning  Generic Object Injection Sink               security/detect-object-injection
+  464:26  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+  468:20  warning  Generic Object Injection Sink               security/detect-object-injection
+  800:43  warning  Generic Object Injection Sink               security/detect-object-injection
+  800:83  warning  Generic Object Injection Sink               security/detect-object-injection
+  815:32  warning  Generic Object Injection Sink               security/detect-object-injection
+  815:72  warning  Generic Object Injection Sink               security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/WorkflowCanvasModels.test.jsx
+  169:15  warning  Found non-literal argument to RegExp Constructor  security/detect-non-literal-regexp
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/hooks/useStageDnD.js
+  33:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  33:44  warning  Generic Object Injection Sink  security/detect-object-injection
+  39:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  41:8   warning  Generic Object Injection Sink  security/detect-object-injection
+  43:9   warning  Generic Object Injection Sink  security/detect-object-injection
+  62:5   warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/hooks/workflowHooks.test.js
+  122:9   warning  Generic Object Injection Sink  security/detect-object-injection
+  124:29  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/pipelineTransfer.js
+  184:7   warning  Generic Object Injection Sink  security/detect-object-injection
+  184:18  warning  Generic Object Injection Sink  security/detect-object-injection
+  185:16  warning  Generic Object Injection Sink  security/detect-object-injection
+  186:7   warning  Generic Object Injection Sink  security/detect-object-injection
+  186:18  warning  Generic Object Injection Sink  security/detect-object-injection
+  197:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  197:16  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/pipelineTransfer.test.js
+  93:24  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+  95:13  warning  Generic Object Injection Sink               security/detect-object-injection
+  98:67  warning  Generic Object Injection Sink               security/detect-object-injection
+  99:18  warning  Function Call Object Injection Sink         security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/stageAnalytics.js
+  87:23  warning  Variable Assigned to Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/components/workflow/stageAnalytics.test.js
+  17:40  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/context/KainBainContext.test.jsx
+  234:14  warning  Function Call Object Injection Sink  security/detect-object-injection
+  234:56  warning  Function Call Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/context/useReview.js
+  139:21  warning  Generic Object Injection Sink                                                                                     security/detect-object-injection
+  235:5   warning  React Hook useCallback has an unnecessary dependency: 'review'. Either exclude it or remove the dependency array  react-hooks/exhaustive-deps
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/context/useUiPreferences.test.js
+  20:31  warning  Generic Object Injection Sink  security/detect-object-injection
+  22:9   warning  Generic Object Injection Sink  security/detect-object-injection
+  25:16  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/hooks/useFeedbackAssets.js
+  46:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  44 |
+  45 |   useEffect(() => {
+> 46 |     refresh();
+     |     ^^^^^^^ Avoid calling setState() directly within an effect
+  47 |   }, [refresh]);
+  48 |
+  49 |   return { names, available, refresh };  react-hooks/set-state-in-effect
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/routing.js
+  198:24  warning  Generic Object Injection Sink             security/detect-object-injection
+  217:20  warning  Generic Object Injection Sink             security/detect-object-injection
+  217:65  warning  Generic Object Injection Sink             security/detect-object-injection
+  224:3   warning  Potential timing attack, left side: true  security/detect-possible-timing-attacks
+  225:3   warning  Potential timing attack, left side: true  security/detect-possible-timing-attacks
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/services/domainRequests.test.js
+  42:69  warning  Generic Object Injection Sink        security/detect-object-injection
+  78:12  warning  Function Call Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/services/harnessPrefs.js
+  57:5   warning  Generic Object Injection Sink  security/detect-object-injection
+  76:17  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/services/imageRetry.test.js
+   89:32  warning  Function Call Object Injection Sink  security/detect-object-injection
+  147:32  warning  Function Call Object Injection Sink  security/detect-object-injection
+  171:32  warning  Function Call Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/services/taskImages.js
+  29:7   warning  Unsafe Regular Expression                         security/detect-unsafe-regex
+  62:34  warning  Found non-literal argument to RegExp Constructor  security/detect-non-literal-regexp
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/setupTests.js
+  33:29  warning  Generic Object Injection Sink  security/detect-object-injection
+  35:7   warning  Generic Object Injection Sink  security/detect-object-injection
+  38:14  warning  Generic Object Injection Sink  security/detect-object-injection
+  46:25  warning  Generic Object Injection Sink  security/detect-object-injection
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/theme/lightThemeContrast.test.js
+  24:10  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+/home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498/frontend/src/theme/observabilityContrast.test.js
+  122:18  warning  Found readFileSync from package "node:fs" with non literal argument at index 0  security/detect-non-literal-fs-filename
+
+✖ 223 problems (2 errors, 221 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+
