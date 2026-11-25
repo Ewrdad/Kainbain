@@ -1248,6 +1248,34 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 		}
 		await ensureRepoHooksPath(docsRepoDir);
 	}
+	const addFreshWorktree = async (targetRepoDir, targetWorkdir, targetMode) => {
+		const remoteRef = targetMode === "clone"
+			? await runGit(targetRepoDir, ["rev-parse", "--verify", `origin/${branch}`])
+				.then(() => `origin/${branch}`)
+				.catch(() => null)
+			: null;
+		const startPoint = remoteRef ? [remoteRef] : [];
+		try {
+			await runGit(targetRepoDir, [
+				"worktree",
+				"add",
+				targetWorkdir,
+				remoteRef ? "-B" : "-b",
+				branch,
+				...startPoint,
+			]);
+		} catch (err) {
+			const msg = String(err?.stderr || err?.message || "");
+			if (msg.includes("already exists") || msg.includes("already used")) {
+				await runGit(targetRepoDir, ["worktree", "add", targetWorkdir, branch]);
+				if (remoteRef) {
+					await runGit(targetWorkdir, ["reset", "--hard", remoteRef]);
+				}
+			} else {
+				throw err;
+			}
+		}
+	};
 	const ensureDocsWorktree = async () => {
 		if (!docsWorkdir) return { docsRecoveredTo: null, docsBaseSha: null };
 		if (fs.existsSync(docsWorkdir)) {
@@ -1261,16 +1289,7 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 			touchWorkdir(docsWorkdir);
 			return { docsRecoveredTo, docsBaseSha };
 		}
-		try {
-			await runGit(docsRepoDir, ["worktree", "add", docsWorkdir, "-b", branch]);
-		} catch (err) {
-			const msg = String(err?.stderr || err?.message || "");
-			if (msg.includes("already exists") || msg.includes("already used")) {
-				await runGit(docsRepoDir, ["worktree", "add", docsWorkdir, branch]);
-			} else {
-				throw err;
-			}
-		}
+		await addFreshWorktree(docsRepoDir, docsWorkdir, docsMode);
 		const docsBaseSha = await runGit(docsWorkdir, ["rev-parse", "--verify", `origin/${branch}`])
 			.then((r) => r.stdout.trim())
 			.catch(() => null);
@@ -1290,16 +1309,7 @@ export async function prepareWorkdir({ repoUrl, localPath, workRoot, taskId, evi
 		touchWorkdir(workdir);
 		return { workdir, branch, mode, reused: true, orphans, recoveredTo, baseSha, evicted, docsWorkdir, docsRepoDir, ...docs };
 	}
-	try {
-		await runGit(repoDir, ["worktree", "add", workdir, "-b", branch]);
-	} catch (err) {
-		const msg = String(err?.stderr || err?.message || "");
-		if (msg.includes("already exists") || msg.includes("already used")) {
-			await runGit(repoDir, ["worktree", "add", workdir, branch]);
-		} else {
-			throw err;
-		}
-	}
+	await addFreshWorktree(repoDir, workdir, mode);
 	const baseSha = await runGit(workdir, ["rev-parse", "--verify", `origin/${branch}`])
 		.then((r) => r.stdout.trim())
 		.catch(() => null);
