@@ -55,6 +55,7 @@
  *   older docs keep working.
  * @example `npm test` => thirteen PASS lines (twelve fast branches + Canary Tests), exit 0
  * @example `npm test -- --no-canary` => twelve PASS lines, exit 0
+ * @example `node scripts/run-tests.mjs --print-runner-suites` => one runner/*.test.js path per line (the publish.sh derivation contract)
  ***/
 
 import { spawnSync } from "node:child_process";
@@ -403,6 +404,58 @@ export function resolveFailFast({ argv = process.argv, env = process.env } = {})
 }
 
 /***
+ * MARK: RUNNER_TEST_SUITES
+ * @description Single source of truth for the runner unit-suite list: every
+ *   `runner/*.test.js` file the "Unit Tests (runner)" branch runs, in
+ *   canonical order. `publish.sh` derives its runner gate from this binding
+ *   via `node scripts/run-tests.mjs --print-runner-suites` — edit here
+ *   only. Explicit file list, never a bare directory or a glob: `node
+ *   --test runner/` mis-resolves the positional directory on current Node,
+ *   and a glob would need a shell (the gate never spawns through one).
+ *   tests/run-tests.test.mjs pins that every runner/*.test.js on disk is
+ *   named here, so a new suite file fails the gate instead of silently
+ *   never running.
+ * @example RUNNER_TEST_SUITES.includes("runner/harness.test.js") => true
+ ***/
+export const RUNNER_TEST_SUITES = [
+	"runner/ciBranchWorkdir.test.js",
+	"runner/daemon.test.js",
+	"runner/client.test.js",
+	"runner/client.backendOutage.test.js",
+	"runner/impromptu.test.js",
+	"runner/config.test.js",
+	"runner/gitOps.test.js",
+	"runner/harness.test.js",
+	"runner/logEvents.test.js",
+	"runner/modelDiscovery.test.js",
+	"runner/harnessModelDiscovery.test.js",
+	"runner/project.test.js",
+	"runner/project.docsRepo.test.js",
+	"runner/updates-check.test.js",
+	"runner/updates-compat.test.js",
+	"runner/updates-daemon.test.js",
+	"runner/updates-fixture.test.js",
+	"runner/updates-manifest.test.js",
+	"runner/updates-platform.test.js",
+	"runner/updates-state.test.js",
+	"runner/updates-verify.test.js",
+	"runner/updates-wrapper.test.js",
+];
+
+/***
+ * MARK: runnerSuiteArgs
+ * @description The argv tail for the "Unit Tests (runner)" branch: `node
+ *   --test` plus every suite in RUNNER_TEST_SUITES. One call path shared
+ *   by buildBranches() and the --print-runner-suites mode, so the gate
+ *   branch and the publish.sh derivation cannot diverge.
+ * @example runnerSuiteArgs()[0] => "--test"
+ * @returns {Array<string>} ["--test", ...RUNNER_TEST_SUITES].
+ ***/
+export function runnerSuiteArgs() {
+	return ["--test", ...RUNNER_TEST_SUITES];
+}
+
+/***
  * MARK: buildBranches
  * @description Builds the thirteen gate branches in canonical order (the
  *   twelve fast branches plus the Canary Tests branch). Branch
@@ -459,37 +512,10 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 		{
 			name: "Unit Tests (runner)",
 			file: nodeExec,
-			// Explicit file list, never a bare directory or a glob: `node
-			// --test runner/` mis-resolves the positional directory on
-			// current Node, and a glob would need a shell (the gate never
-			// spawns through one). tests/run-tests.test.mjs pins that every
-			// runner/*.test.js on disk is named here, so a new suite file
-			// fails the gate instead of silently never running.
-			args: [
-				"--test",
-				"runner/ciBranchWorkdir.test.js",
-				"runner/daemon.test.js",
-				"runner/client.test.js",
-				"runner/client.backendOutage.test.js",
-				"runner/impromptu.test.js",
-				"runner/config.test.js",
-				"runner/gitOps.test.js",
-				"runner/harness.test.js",
-				"runner/logEvents.test.js",
-				"runner/modelDiscovery.test.js",
-				"runner/harnessModelDiscovery.test.js",
-				"runner/project.test.js",
-				"runner/project.docsRepo.test.js",
-				"runner/updates-check.test.js",
-				"runner/updates-compat.test.js",
-				"runner/updates-daemon.test.js",
-				"runner/updates-fixture.test.js",
-				"runner/updates-manifest.test.js",
-				"runner/updates-platform.test.js",
-				"runner/updates-state.test.js",
-				"runner/updates-verify.test.js",
-				"runner/updates-wrapper.test.js",
-			],
+			// The suite list lives in RUNNER_TEST_SUITES above (edit there
+			// only) — this branch and --print-runner-suites share
+			// runnerSuiteArgs() so they cannot diverge.
+			args: runnerSuiteArgs(),
 		},
 		{ name: "Linting (api)", file: npmExec, args: ["run", "lint:api"], lowPriority: true },
 		{ name: "Linting (frontend)", file: npmExec, args: ["run", "lint:frontend"], lowPriority: true },
@@ -992,7 +1018,40 @@ async function main() {
 	process.exitCode = ok ? 0 : 1;
 }
 
+/***
+ * MARK: printRunnerSuites
+ * @description Print mode for the publish.sh derivation contract: writes the
+ *   "Unit Tests (runner)" suite list (the same runnerSuiteArgs() the gate
+ *   branch uses, never a second literal) — one `runner/*.test.js` path per
+ *   line, trailing newline, nothing else on stdout — and returns instead of
+ *   running any gate logic (no provisioning, pruning, or network). Fails
+ *   closed: an empty or malformed list prints one line to stderr and sets a
+ *   non-zero exit code, so publish.sh can never run a vacuous `node --test`.
+ * @example printRunnerSuites() prints the 22 runner suites, exit 0
+ * @returns {void}
+ ***/
+function printRunnerSuites() {
+	const suites = runnerSuiteArgs().slice(1);
+	const wellFormed =
+		suites.length > 0 &&
+		suites.every((suite) => typeof suite === "string" && suite.length > 0);
+	if (!wellFormed) {
+		console.error(
+			"run-tests.mjs: cannot list runner suites (RUNNER_TEST_SUITES is empty or malformed) — refusing to run a gate with no files",
+		);
+		process.exitCode = 1;
+		return;
+	}
+	for (const suite of suites) {
+		console.log(suite);
+	}
+}
+
 const invokedDirectly = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
-	await main();
+	if (process.argv.includes("--print-runner-suites")) {
+		printRunnerSuites();
+	} else {
+		await main();
+	}
 }

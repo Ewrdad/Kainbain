@@ -22,6 +22,7 @@ describe("publish.sh", () => {
 	it("dry-run --all prints the full command plan and exits 0", () => {
 		const r = run(["--dry-run", "--all"], { KAINBAIN_DOCKERHUB_NAMESPACE: "dryrun-probe" });
 		assert.equal(r.status, 0, r.stderr + r.stdout);
+		assert.match(r.stdout, /would run: node --test runner\/ciBranchWorkdir\.test\.js/, "dry-run plan includes the derived runner gate");
 		assert.match(r.stdout, /would run: docker build -f Dockerfile/);
 		assert.match(r.stdout, /would run: docker push docker\.io\/dryrun-probe\/kainbain-backend:/);
 		assert.match(r.stdout, /would run: docker push docker\.io\/dryrun-probe\/kainbain-frontend:/);
@@ -110,20 +111,79 @@ describe("publish.sh", () => {
 		assert.equal(git(dir, "rev-parse", "HEAD"), primaryHead);
 		assert.match(git(dir, "status", "--porcelain"), /A {2}wip\.txt/);
 	});
-	it("runner gate runs the same suite list as scripts/run-tests.mjs (no under-tested channel)", async () => {
+	it("runner gate derives its suite list live from scripts/run-tests.mjs (single source, no second copy)", async () => {
 		// The publish gate once ran 6 runner suites and omitted every
-		// updates-* suite, so a green publish could ship a broken updater.
-		// The two lists are pinned equal here instead of sharing code:
-		// publish.sh must stay dependency-free bash.
+		// updates-* suite, so a green publish could ship a broken updater;
+		// later the list lived in TWO places and a one-list edit failed the
+		// whole fast gate in CI (task 78eac844). There is exactly one list
+		// now — RUNNER_TEST_SUITES in scripts/run-tests.mjs — and publish.sh
+		// reads it live via node (which the gate already requires), so a
+		// run-tests/publish mismatch is impossible by construction.
 		const publish = fs.readFileSync(path.join(ROOT, "publish.sh"), "utf8");
-		const gateLine = publish.split("\n").find((line) => line.includes("runner) run node --test"));
-		assert.ok(gateLine, "publish.sh has a runner gate line");
-		const gated = [...gateLine.matchAll(/runner\/[A-Za-z0-9.-]+\.test\.js/g)].map((m) => m[0]).sort();
+		// 1. No hand-maintained copy: no runner suite filename anywhere in
+		// publish.sh (not on the deriving line either — it names the script
+		// and flag, never suite files).
+		const hardcoded = [...publish.matchAll(/runner\/[A-Za-z0-9.-]+\.test\.js/g)].map((m) => m[0]);
+		assert.deepEqual(hardcoded, [], "publish.sh must not hardcode runner suite files — it derives them from scripts/run-tests.mjs");
+		// 2. The runner case of gate_for() derives from the single source.
+		const lines = publish.split("\n");
+		const gateStart = lines.findIndex((line) => line === "gate_for() {");
+		assert.ok(gateStart >= 0, "publish.sh defines gate_for()");
+		const runnerLine = lines.findIndex((line, i) => i > gateStart && line.includes("runner)"));
+		assert.ok(runnerLine >= 0, "publish.sh gate_for() has a runner case");
+		const caseEnd = lines.findIndex((line, i) => i >= runnerLine && line.includes(";;"));
+		assert.ok(caseEnd >= runnerLine, "runner case terminates");
+		const runnerCase = lines.slice(runnerLine, caseEnd + 1).join("\n");
+		assert.ok(runnerCase.includes("scripts/run-tests.mjs"), "runner case reads scripts/run-tests.mjs");
+		assert.ok(runnerCase.includes("--print-runner-suites"), "runner case uses the --print-runner-suites derivation contract");
+		assert.ok(runnerCase.includes("return 1"), "runner case fails closed when the lookup fails");
+		// 3. What publish runs is exactly what the gate branch runs: the
+		// print-mode output deep-equals the branch args (same binding, same
+		// order) — the old "no under-tested channel" intent survives.
+		const printed = spawnSync(process.execPath, [path.join(ROOT, "scripts", "run-tests.mjs"), "--print-runner-suites"], { encoding: "utf8" });
+		assert.equal(printed.status, 0, printed.stderr);
 		const { buildBranches } = await import("../scripts/run-tests.mjs");
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		const runnerBranch = branches.find((branch) => branch.name === "Unit Tests (runner)");
-		const expected = runnerBranch.args.filter((arg) => arg.startsWith("runner/")).sort();
-		assert.deepEqual(gated, expected, "publish.sh runner gate names every suite in the gate branch");
+		const expected = runnerBranch.args.filter((arg) => arg.startsWith("runner/"));
+		assert.deepEqual(printed.stdout.trim().split("\n"), expected, "publish.sh can only run what the gate branch names");
+	});
+	it("runner gate executes the derived suites and fails closed when the lookup fails", async () => {
+		// Runs the REAL gate_for() from publish.sh in a harness with a
+		// stubbed run() (echo only — no suites execute): in the repo it
+		// must expand to every suite; where the lookup cannot succeed it
+		// must refuse with non-zero exit and never echo a vacuous
+		// `node --test` with no files.
+		const publish = fs.readFileSync(path.join(ROOT, "publish.sh"), "utf8");
+		const lines = publish.split("\n");
+		const start = lines.findIndex((line) => line === "gate_for() {");
+		assert.ok(start >= 0, "publish.sh defines gate_for()");
+		const end = lines.findIndex((line, i) => i > start && line === "}");
+		assert.ok(end > start, "gate_for() has a closing brace");
+		const gateFn = lines.slice(start, end + 1).join("\n");
+		const { RUNNER_TEST_SUITES } = await import("../scripts/run-tests.mjs");
+		assert.ok(RUNNER_TEST_SUITES.length > 0, "single source is non-empty");
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kainbain-publish-runner-gate-"));
+		try {
+			const harnessPath = path.join(dir, "gate.sh");
+			fs.writeFileSync(harnessPath, `run() { echo "would run: $*"; }\n${gateFn}\ngate_for runner\n`);
+			const ok = spawnSync("bash", [harnessPath], { cwd: ROOT, encoding: "utf8" });
+			assert.equal(ok.status, 0, ok.stderr);
+			for (const suite of RUNNER_TEST_SUITES) {
+				assert.ok(ok.stdout.includes(suite), `derived gate runs ${suite}`);
+			}
+			const brokenPath = path.join(dir, "gate-broken.sh");
+			fs.writeFileSync(
+				brokenPath,
+				`run() { echo "would run: $*"; }\n${gateFn.replaceAll("scripts/run-tests.mjs", "scripts/does-not-exist.mjs")}\ngate_for runner\n`,
+			);
+			const bad = spawnSync("bash", [brokenPath], { cwd: dir, encoding: "utf8" });
+			assert.notEqual(bad.status, 0, "broken lookup must fail closed");
+			assert.match(bad.stderr, /refusing to run a gate with no files/);
+			assert.doesNotMatch(bad.stdout, /would run: node --test/, "must never run a vacuous node --test");
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 	it("--runner cuts and pushes the runner-v* tag once, then skips it as already released", () => {
 		// Fixture repo pair with a stubbed runner build (the tag flow, not
@@ -150,6 +210,15 @@ describe("publish.sh", () => {
 		fs.copyFileSync(path.join(ROOT, "publish.sh"), path.join(dir, "publish.sh"));
 		fs.chmodSync(path.join(dir, "publish.sh"), 0o755);
 		fs.writeFileSync(path.join(dir, "scripts", "check-component-compat.mjs"), "process.exit(0);\n");
+		// The runner gate derives its suite list live from
+		// scripts/run-tests.mjs --print-runner-suites (even under
+		// --dry-run, where only the test command is echoed), so the
+		// fixture stubs the print mode; the real derivation is covered
+		// by the gate_for harness tests above, not by this tag flow.
+		fs.writeFileSync(
+			path.join(dir, "scripts", "run-tests.mjs"),
+			'if (process.argv.includes("--print-runner-suites")) { console.log("runner/fixture-stub.test.js"); }\n',
+		);
 		fs.writeFileSync(
 			path.join(dir, "scripts", "package-runner.sh"),
 			'#!/usr/bin/env bash\nset -euo pipefail\nmkdir -p dist\necho stub > "dist/kainbain-runner-${1:-dev}.tar.gz"\n',
@@ -171,6 +240,7 @@ describe("publish.sh", () => {
 		// instead of re-exec'ing into the primary like the repo tests do).
 		const planned = spawnSync("./publish.sh", ["--dry-run", "--runner"], { cwd: dir, encoding: "utf8", env: process.env });
 		assert.equal(planned.status, 0, planned.stderr + planned.stdout);
+		assert.match(planned.stdout, /would run: node --test runner\/fixture-stub\.test\.js/, "dry-run expands the derived runner gate");
 		assert.match(planned.stdout, /would run: bash scripts\/package-runner\.sh/);
 		assert.match(planned.stdout, /would run: git tag -a runner-v0\.2\.0/);
 		assert.match(planned.stdout, /would run: git push origin runner-v0\.2\.0/);

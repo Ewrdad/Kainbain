@@ -1,10 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { CANARY_SERIAL_START_LINE, FAST_GATE_BRANCH_NAMES, buildBranches, depcheckAvailable, ensureWorkspaceDeps, resolvePhaseOutcome, pruneStaleTestDirectories, reportPreflightFailure, resolveCanary, resolveFailFast, runGatePhases, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
+const { CANARY_SERIAL_START_LINE, FAST_GATE_BRANCH_NAMES, RUNNER_TEST_SUITES, buildBranches, depcheckAvailable, ensureWorkspaceDeps, resolvePhaseOutcome, pruneStaleTestDirectories, reportPreflightFailure, resolveCanary, resolveFailFast, runGatePhases, runnerSuiteArgs, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
 
 /***
  * MARK: run-tests tests
@@ -233,6 +234,57 @@ describe("buildBranches", () => {
 		// own honest hung-branch ceiling (25 min, exit 124 on breach) instead
 		// of leaving a wedged suite bounded only by silence thresholds.
 		assert.equal(canary.timeoutMs, 25 * 60 * 1000);
+	});
+});
+
+describe("RUNNER_TEST_SUITES / --print-runner-suites", () => {
+	it("the gate branch runs exactly runnerSuiteArgs() (one call path, no second literal)", () => {
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const runnerTests = branches.find((branch) => branch.name === "Unit Tests (runner)");
+		assert.deepEqual(runnerTests.args, runnerSuiteArgs());
+		assert.deepEqual(runnerSuiteArgs(), ["--test", ...RUNNER_TEST_SUITES]);
+	});
+
+	it("print mode lists exactly the branch suites, one per line, exit 0", () => {
+		// The publish.sh derivation contract: stdout is the suite list and
+		// nothing else, so the shell can read it line by line.
+		const printed = spawnSync(process.execPath, ["scripts/run-tests.mjs", "--print-runner-suites"], {
+			cwd: path.resolve(import.meta.dirname, ".."),
+			encoding: "utf8",
+		});
+		assert.equal(printed.status, 0, printed.stderr);
+		assert.equal(printed.stderr, "", "print mode must be silent on stderr");
+		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
+		const runnerTests = branches.find((branch) => branch.name === "Unit Tests (runner)");
+		const expected = runnerTests.args.filter((arg) => arg.startsWith("runner/"));
+		assert.deepEqual(printed.stdout.trim().split("\n"), expected);
+		assert.ok(printed.stdout.endsWith("\n"), "trailing newline required");
+		for (const line of printed.stdout.trim().split("\n")) {
+			assert.match(line, /^runner\/[A-Za-z0-9._-]+\.test\.js$/, `extraneous stdout line: ${line}`);
+		}
+	});
+
+	it("print mode never emits a bare directory or a glob (explicit file list only)", () => {
+		const printed = spawnSync(process.execPath, ["scripts/run-tests.mjs", "--print-runner-suites"], {
+			cwd: path.resolve(import.meta.dirname, ".."),
+			encoding: "utf8",
+		});
+		assert.equal(printed.status, 0, printed.stderr);
+		for (const line of printed.stdout.trim().split("\n")) {
+			assert.notEqual(line, "runner/", "never a bare directory");
+			assert.notEqual(line, "runner", "never a bare directory");
+			assert.doesNotMatch(line, /[*?[]/, "never a glob");
+		}
+	});
+
+	it("print mode short-circuits the gate (no preamble, no side effects)", () => {
+		const printed = spawnSync(process.execPath, ["scripts/run-tests.mjs", "--print-runner-suites", "--no-canary"], {
+			cwd: path.resolve(import.meta.dirname, ".."),
+			encoding: "utf8",
+		});
+		assert.equal(printed.status, 0, printed.stderr);
+		assert.doesNotMatch(printed.stdout, /Starting full project verification/, "must not run the gate");
+		assert.deepEqual(printed.stdout.trim().split("\n"), [...RUNNER_TEST_SUITES]);
 	});
 });
 

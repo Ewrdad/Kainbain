@@ -262,7 +262,25 @@ gate_for() {
   case "$1" in
     backend) run npm run test:api && run npm run lint:api ;;
     frontend) run npm run test:frontend && run npm run lint:frontend && run npm run build:frontend ;;
-    runner) run node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/client.backendOutage.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/project.docsRepo.test.js runner/updates-check.test.js runner/updates-compat.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js ;;
+    runner)
+      # Single-sourced: the runner suite list lives in scripts/run-tests.mjs
+      # (RUNNER_TEST_SUITES) and is read live via --print-runner-suites —
+      # never hardcode runner suite files here, or a new suite runs in the
+      # gate but not in publish (or vice versa). Explicit file list, never
+      # a bare directory (`node --test runner/` mis-resolves on current
+      # Node) or a shell glob. The lookup always executes (even under
+      # --dry-run, where only the test command is echoed), and fails
+      # closed: a failed or empty lookup refuses with a message instead of
+      # running a vacuous `node --test` with no files. Bash + node only.
+      local _suites_out _suite
+      local _suites=()
+      _suites_out="$(node scripts/run-tests.mjs --print-runner-suites)" || { echo "publish.sh: cannot list runner suites (scripts/run-tests.mjs --print-runner-suites failed) — refusing to run a gate with no files" >&2; return 1; }
+      [ -n "$_suites_out" ] || { echo "publish.sh: empty runner suite list from scripts/run-tests.mjs --print-runner-suites — refusing to run a gate with no files" >&2; return 1; }
+      while IFS= read -r _suite; do
+        [ -n "$_suite" ] && _suites+=("$_suite")
+      done <<< "$_suites_out"
+      [ "${#_suites[@]}" -gt 0 ] || { echo "publish.sh: empty runner suite list from scripts/run-tests.mjs --print-runner-suites — refusing to run a gate with no files" >&2; return 1; }
+      run node --test "${_suites[@]}" ;;
   esac
 }
 if [ "$COMPONENTS" = "backend frontend runner" ] && [ "$FAST" != "1" ]; then

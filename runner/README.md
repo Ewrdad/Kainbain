@@ -280,10 +280,11 @@ cannot see them until that Runner self-updates.
   without consuming idle budget. `STALE_EPOCH`, auth failures, and
   unknown errors stay fatal.
 - Log gaps are reported as data (`frames X–Y missing`), never papered over.
-- `node --test runner/ciBranchWorkdir.test.js runner/daemon.test.js runner/client.test.js runner/client.backendOutage.test.js runner/impromptu.test.js runner/config.test.js runner/gitOps.test.js runner/harness.test.js runner/logEvents.test.js runner/modelDiscovery.test.js runner/harnessModelDiscovery.test.js runner/project.test.js runner/updates-check.test.js runner/updates-daemon.test.js runner/updates-fixture.test.js runner/updates-manifest.test.js runner/updates-platform.test.js runner/updates-state.test.js runner/updates-verify.test.js runner/updates-wrapper.test.js`
+- `node --test $(node scripts/run-tests.mjs --print-runner-suites)`
   runs the daemon suite (no ports, real temp git repos, mock harness).
-  Name each file: a bare `node --test runner/` directory arg mis-resolves
-  on current Node, and this same explicit list is what the `Unit Tests
+  The print mode expands to an explicit file list — never a bare
+  `node --test runner/` directory arg, which mis-resolves on current
+  Node — and it is the same `RUNNER_TEST_SUITES` list the `Unit Tests
   (runner)` gate branch runs (`scripts/run-tests.mjs`, pinned by
   `tests/run-tests.test.mjs` so a new suite file fails loudly instead of
   silently never running).
