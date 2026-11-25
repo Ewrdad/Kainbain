@@ -45,6 +45,7 @@ source of truth. This file intentionally lists only high-impact changes.
 - Runner model precedence stays pin-wins by default (pinned installs skip discovery and advertise exactly their pin across updates); `KAINBAIN_RUNNER_MODEL_DISCOVERY_WINS=1` opts in to survey-q4 discovery-wins, where a non-empty auto-detect result replaces the pin (task 2cbe91b6).
 - Consolidated root-level markdown files into `docs/`: moved `CI_SCRIPTS.md`, `PORTABLE_DEPLOYMENT.md`, `agent-docs/`, and `research/phase0-branch-dry-run.md`; deleted 13 obsolete one-off summaries and superseded phase-2 plans (task fc3acfff).
 - Merged the ALL / FAILED / HUMAN ONLY board pills into the unified search bar as `!` system filters (e.g. `auth #Dev !failed`): same dropdown, chips, and Any/All toggle as `#` tags; unknown `!tokens` stay as text; future native filters register via `frontend/src/components/workflow/systemFilters/` (task c213d3a9).
+- Browser tab title no longer carries the engine-status prefix: tabs read `Kainbain - <project> - <page>` whether the engine runs or not, since the single global paused/running signal was misleading; live engine state stays visible in badges and pills (task 0fac7482).
 
 ### Fixed
 

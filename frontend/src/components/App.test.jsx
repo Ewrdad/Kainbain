@@ -1,6 +1,7 @@
 import { expect, test, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import App from './App';
+import { api } from '../services/api';
 import '@testing-library/jest-dom';
 
 /**
@@ -441,13 +442,13 @@ test('keyboard shortcut 5 opens the Docs view', async () => {
   window.location.hash = '';
 });
 
-test('document title follows [Paused] Kainbain - Project - Orchestrator on boot', async () => {
+test('document title follows Kainbain - Project - Orchestrator on boot', async () => {
   window.localStorage.clear();
   window.location.hash = '';
   render(<App />);
   await screen.findByText(/Project A/i);
   await waitFor(() => {
-    expect(document.title).toBe('[Paused] Kainbain - Project A - Orchestrator');
+    expect(document.title).toBe('Kainbain - Project A - Orchestrator');
   });
   window.location.hash = '';
 });
@@ -459,29 +460,35 @@ test('document title tracks view changes without getting stuck on retrospective'
     render(<App />);
     await screen.findByTestId('retrospective-page');
     await waitFor(() => {
-      expect(document.title).toBe('[Paused] Kainbain - Project A - Retrospective');
+      expect(document.title).toBe('Kainbain - Project A - Retrospective');
     });
     // Leaving retrospective must retitle the tab (the reported stuck-title bug).
     fireEvent.keyDown(window, { key: '1' });
     await waitFor(() => {
-      expect(document.title).toBe('[Paused] Kainbain - Project A - Orchestrator');
+      expect(document.title).toBe('Kainbain - Project A - Orchestrator');
     });
   } finally {
     window.location.hash = '';
   }
 });
 
-test('document title flips to Running when the compute engine starts', async () => {
+test('document title is unaffected by the compute toggle', async () => {
   window.localStorage.clear();
   window.location.hash = '';
   render(<App />);
   await screen.findByText(/Project A/i);
+  const bootTitle = 'Kainbain - Project A - Orchestrator';
   await waitFor(() => {
-    expect(document.title).toBe('[Paused] Kainbain - Project A - Orchestrator');
+    expect(document.title).toBe(bootTitle);
   });
   fireEvent.keyDown(window, { key: 'p' });
+  // The toggle really fired (the engine start was requested and the badge
+  // flips elsewhere) — only then is "title unchanged" meaningful proof that
+  // the tab no longer tracks engine state.
   await waitFor(() => {
-    expect(document.title).toBe('[Running] Kainbain - Project A - Orchestrator');
+    expect(api.computeStart).toHaveBeenCalled();
   });
+  expect(document.title).toBe(bootTitle);
+  expect(document.title).not.toMatch(/^\[(Running|Paused)\]/);
   window.location.hash = '';
 });
