@@ -14,15 +14,25 @@
  *      single signature list (`canary-e2e/tests/infra-flakes.mjs`).
  *   3. ONLY when every failure matches a known signature, rerun just those
  *      tests (`file:line` filters from the JSON report, `--last-failed` as
- *      fallback) — minutes, not another full run. A green rerun (or one
- *      failing solely on known signatures again) forgives the flake; ANY
- *      genuine failure at any stage exits non-zero immediately. Mixed runs
- *      (flake + genuine) stay red.
+ *      fallback) — minutes, not another full run. A green rerun that
+ *      actually ran the tests (or one failing solely on known signatures
+ *      again) forgives the flake; ANY genuine failure at any stage exits
+ *      non-zero immediately. Mixed runs (flake + genuine) stay red, and a
+ *      "green" rerun that ran ZERO tests (Playwright exits 0 on "No tests
+ *      found") stays red too — fail-safe, never a silent forgiveness.
  *   4. always report: the greppable `KAINBAIN_CANARY_QUARANTINE …` log line
- *      (lane + signatures + tests) and `canary-quarantine.json` in the gate's
- *      verdict dir (via `KAINBAIN_CANARY_QUARANTINE_DIR`, set by the Canary
- *      Tests branch in scripts/run-tests.mjs), snapshotting the committed
- *      baseline (`canary-e2e/infra-flake-baseline.json`).
+ *      (lane + outcome + signatures + tests) and `canary-quarantine.json` in
+ *      the gate's verdict dir (via `KAINBAIN_CANARY_QUARANTINE_DIR`, set by
+ *      the Canary Tests branch in scripts/run-tests.mjs), snapshotting the
+ *      committed baseline (`canary-e2e/infra-flake-baseline.json`).
+ *
+ *   Fail-safe map (how this wrapper can fail, and which way it fails):
+ *   reporting I/O breaks (no writable scratch/verdict dir) → degrades to
+ *   the plain strict run, never crashes the gate, never forgives; run 1
+ *   killed/crashes with no JSON → unclassifiable → red; rerun green with
+ *   zero tests run → red; rerun genuine → red; mixed first run → red with
+ *   no rerun. Only a signature-only first run plus a rerun that really ran
+ *   goes green, and then visibly (log line + JSON).
  *
  *   Nothing is ever skipped silently: quarantined tests still ran, and only
  *   signature-only failures are forgiven, with the record above. The wrapper
@@ -44,6 +54,7 @@ import {
 	LANE_RUNNER_RERUN,
 	buildQuarantineSummary,
 	collectFailedTests,
+	countRanTests,
 	evaluateRerun,
 	formatQuarantineLogLine,
 	loadReport,
@@ -82,6 +93,40 @@ export function resolvePlaywrightCli({ canaryDir = CANARY_DIR } = {}) {
 		// Fall through to the .bin shim.
 	}
 	return path.join(canaryDir, "node_modules", ".bin", "playwright");
+}
+
+/***
+ * MARK: resolveWorkDir
+ * @description Creates the scratch dir that holds the gate-only JSON reports
+ *   (`run-1.json`, `run-2.json`). Fail-open by design: the dir only serves
+ *   reporting, so when it cannot be created the lane degrades to the plain
+ *   strict run — no JSON report means an unclassifiable failure stays RED
+ *   (fail-safe) and a green run still passes — instead of crashing the
+ *   wrapper before the suite even ran. Returns null when no dir could be
+ *   created. Prefers os.tmpdir() (the "kb-" prefix lets the gate's
+ *   stale-scratch pruner reclaim it), falls back to the quarantine dir.
+ * @example resolveWorkDir({ quarantineDir: "/v" }) => "/tmp/kb-canary-quarantine-XXXX"
+ * @example resolveWorkDir({ quarantineDir: "/v", mkdtempFn: () => { throw new Error("tmp full"); } }) => null
+ * @param {Object} [opts]
+ * @param {string} [opts.quarantineDir] - Already-created verdict/quarantine dir (fallback location).
+ * @param {Function} [opts.tmpdirFn] - os.tmpdir seam, for tests.
+ * @param {Function} [opts.mkdtempFn] - fs.mkdtempSync seam, for tests.
+ * @returns {string|null} The created work dir, or null (degraded strict mode).
+ ***/
+export function resolveWorkDir({ quarantineDir, tmpdirFn = os.tmpdir, mkdtempFn = fs.mkdtempSync } = {}) {
+	try {
+		return mkdtempFn(path.join(tmpdirFn(), "kb-canary-quarantine-"));
+	} catch {
+		// Fall through to the quarantine dir below.
+	}
+	if (typeof quarantineDir === "string" && quarantineDir.trim()) {
+		try {
+			return mkdtempFn(path.join(quarantineDir, "kb-canary-quarantine-"));
+		} catch {
+			// Fall through to null (degraded strict mode).
+		}
+	}
+	return null;
 }
 
 /***
@@ -155,6 +200,7 @@ export function runPlaywright({ cli, canaryDir = CANARY_DIR, args = [], jsonRepo
  * @param {string} [opts.cli] - Playwright CLI path.
  * @param {Function} [opts.runPreflightFn] - Preflight seam.
  * @param {Function} [opts.runPlaywrightFn] - Playwright seam.
+ * @param {Function} [opts.resolveWorkDirFn] - Report-scratch-dir seam (fail-open, see resolveWorkDir).
  * @param {Function} [opts.log] - Line sink, defaults to console.log.
  * @param {Function} [opts.now] - ISO timestamp seam.
  * @returns {{ exitCode: number, summary: Object, summaryPath: string|null, quarantineDir: string }}
@@ -167,15 +213,22 @@ export function runCanaryGate({
 	cli = resolvePlaywrightCli({ canaryDir }),
 	runPreflightFn = runPreflight,
 	runPlaywrightFn = runPlaywright,
+	resolveWorkDirFn = resolveWorkDir,
 	log = (...args) => console.log(...args),
 	now = () => new Date().toISOString(),
 } = {}) {
 	const quarantineDir = resolveQuarantineDir({ env, repoRoot });
-	// Report scratch dir: "kb-" prefixed so the gate's stale-scratch pruner
-	// (pruneStaleTestDirectories) reclaims it; paths are recorded in the summary.
-	const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "kb-canary-quarantine-"));
-	const report1 = path.join(workDir, "run-1.json");
-	const report2 = path.join(workDir, "run-2.json");
+	// Report scratch dir for the gate-only JSON reports. Fail-open: when no
+	// work dir can be created the lane degrades to the plain strict run
+	// (report paths null → no JSON reporter → an unclassifiable failure
+	// stays red, a green run still passes) — reporting scaffolding must
+	// never crash the gate or red a green suite on its own.
+	const workDir = resolveWorkDirFn({ quarantineDir });
+	const report1 = workDir ? path.join(workDir, "run-1.json") : null;
+	const report2 = workDir ? path.join(workDir, "run-2.json") : null;
+	if (!workDir) {
+		log("canary-quarantine: no writable report scratch dir — running strict, no JSON report (fail-safe)");
+	}
 	const baseline = readBaseline({ repoRoot });
 	const testDir = path.join(canaryDir, "tests");
 
@@ -195,7 +248,9 @@ export function runCanaryGate({
 		return { exitCode: pre.exitCode || 1, summary, summaryPath: written.path, quarantineDir };
 	}
 
-	log(`canary-quarantine: run 1 (full suite, retries stay 0), json report ${report1}`);
+	log(
+		`canary-quarantine: run 1 (full suite, retries stay 0), json report ${report1 ?? "unavailable (strict mode)"}`,
+	);
 	const first = runPlaywrightFn({ cli, canaryDir, args: [...argv], jsonReport: report1, env });
 	const report1Obj = loadReport(report1);
 	const { failed: failed1, globalErrors } = collectFailedTests(report1Obj, { testDir, configDir: canaryDir });
@@ -216,13 +271,18 @@ export function runCanaryGate({
 			`canary-quarantine: ${plan.reason} — rerunning ${filters.length || "the"} failed test(s) once (lane=${LANE_RUNNER_RERUN}): ${rerunArgs.join(" ")}`,
 		);
 		const second = runPlaywrightFn({ cli, canaryDir, args: rerunArgs, jsonReport: report2, env });
-		const { failed: failed2 } = collectFailedTests(loadReport(report2), { testDir, configDir: canaryDir });
-		const verdict = evaluateRerun({ rerunExitCode: second.exitCode, rerunFailed: failed2 });
+		const report2Obj = loadReport(report2);
+		const { failed: failed2 } = collectFailedTests(report2Obj, { testDir, configDir: canaryDir });
+		// Playwright exits 0 even when zero tests ran ("No tests found") —
+		// such a rerun proves nothing and must stay red (fail-safe).
+		const rerunRanTests = countRanTests(report2Obj);
+		const verdict = evaluateRerun({ rerunExitCode: second.exitCode, rerunFailed: failed2, rerunRanTests });
 		rerun = {
 			attempted: true,
 			exitCode: second.exitCode,
 			filters: rerunArgs,
 			outcome: verdict.outcome,
+			testsRan: rerunRanTests,
 			unresolvedFilters: unresolved,
 		};
 		if (verdict.forgiven) {

@@ -78,12 +78,37 @@ weakening the gate for real regressions:
   exits non-zero immediately. `retries: 0` in `playwright.config.js` is
   untouched — nothing is skipped silently: quarantined tests still ran.
 - Reporting (all three surfaces): a greppable
-  `KAINBAIN_CANARY_QUARANTINE forgiven=<n> lane=<lane> signatures=… tests=…`
-  log line in the gate output, `canary-quarantine.json` next to
-  `verdict.json` in the gate's `ci-fast-gate-<timestamp>/` dir (per-signature
-  counts + named tests + a snapshot of `infra-flake-baseline.json`), and the
+  `KAINBAIN_CANARY_QUARANTINE forgiven=<n> lane=<lane> outcome=<outcome> signatures=… tests=… summary=…`
+  log line in the gate output (`outcome` = `passed` / `signature-only` /
+  `red` / `no-tests-ran`, or `none` when nothing was rerun), the
+  `canary-quarantine.json` next to `verdict.json` in the gate's
+  `ci-fast-gate-<timestamp>/` dir (per-signature counts + named tests +
+  rerun details + a snapshot of `infra-flake-baseline.json`), and the
   `[infra-flake:<id>]` tag in the failing test's error text in the Playwright
   HTML report.
+
+### How this lane can fail (fail-safe map)
+
+Every failure mode fails **red**, never silently green:
+
+- **Pattern too broad** (would forgive a genuine failure): guarded by the
+  narrow full-sentence patterns, the negative fixtures in
+  `tests/infra-flakes.test.mjs`, and the re-broadening guard test. A false
+  negative (a new browser-death wording) fails red — add it as a signature.
+- **First run crashes/killed with no JSON report** → unclassifiable → red,
+  no rerun (`unclassified: true` in the summary).
+- **Mixed run** (one flake + one genuine failure) → red, no rerun; the
+  summary names both.
+- **Rerun green but zero tests ran** (Playwright exits 0 on "No tests
+  found", e.g. a `--last-failed` fallback with no record or a drifted
+  `file:line` filter) → red, `outcome="no-tests-ran"`.
+- **Rerun hits a genuine failure** → red, `outcome="red"`.
+- **Reporting I/O breaks** (no writable scratch/verdict dir) → the wrapper
+  degrades to the plain strict run (`retries: 0`, no JSON report): green
+  still passes, any failure stays red. Reporting can never crash the gate
+  or forgive on its own.
+- **Wrapper killed mid-run** (25-min branch ceiling) → non-zero branch
+  exit → red; a missing summary simply prints no log line.
 
 ### Adding an infra-flake signature
 

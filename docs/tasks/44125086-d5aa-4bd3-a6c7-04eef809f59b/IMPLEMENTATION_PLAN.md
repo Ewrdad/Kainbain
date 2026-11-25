@@ -406,11 +406,47 @@ Extend `canary-e2e/README.md` with a short section:
   → **72/72 pass**; full root script suite `node --test tests/*.test.mjs` →
   **783 pass / 0 fail** (787 total); `check:jsdoc-example` PASS (679 missing
   vs 680 grandfathered), `check-one-function-per-file` PASS,
-  `check-proof-and-hygiene` PASS. Non-blocking follow-up noted by review
-  (not done, pinned log-line format unchanged): add `outcome=` to the
-  `KAINBAIN_CANARY_QUARANTINE` line so "rerun passed" is distinguishable
-  from "rerun signature-only" in the log (today only
-  `canary-quarantine.json` `rerun.outcome` carries it).
+  `check-proof-and-hygiene` PASS.
+
+**2026-11-25 cleanup-stage hardening (this stage):**
+
+- **Live-probed Playwright 1.63 exit semantics and closed a real fail-safe
+  hole:** `playwright test` exits **0** when zero tests run ("No tests
+  found" — e.g. a `--last-failed` fallback with no record, or a drifted
+  `file:line` filter), and the JSON report's `stats` are all-zero. The old
+  `evaluateRerun` forgave any exit-0 rerun, so such a rerun would have
+  green-ed the gate without running anything. Fix: new `countRanTests`
+  (`stats.expected+unexpected+flaky`; null when stats unknown) and
+  `evaluateRerun({ rerunRanTests })` — exit 0 with `rerunRanTests === 0` →
+  `{ forgiven: false, outcome: "no-tests-ran" }`, recorded in the summary
+  (`rerun.testsRan`) and the log line. Pinned by tests: fake rerun exiting 0
+  with an all-zero-stats report stays red.
+- **`outcome=` added to the `KAINBAIN_CANARY_QUARANTINE` log line** (the
+  review's noted follow-up): the line is now
+  `KAINBAIN_CANARY_QUARANTINE forgiven=<n> lane=<lane> outcome=<outcome> signatures=… tests=… summary=…`.
+  No external consumer parses this line (grep-verified: only the producer,
+  the gate's re-emit in `run-tests.mjs` — which calls the same formatter on
+  the JSON — and the tests), so the format change is safe; the exact line is
+  pinned in `tests/canary-quarantine.test.mjs` including quote-escaping.
+- **Fail-open report scratch dir:** `runCanaryGate` previously called
+  `fs.mkdtempSync` unguarded — a full/unwritable tmp would have crashed the
+  wrapper (red gate) before the suite even ran. New `resolveWorkDir`
+  (tmpdir → quarantine-dir → null); null degrades the lane to the plain
+  strict run (no JSON reporter → unclassifiable failures stay red, green
+  passes) with a logged "running strict" line. `resolveQuarantineDir`'s
+  last-resort tmp candidate now uses `mkdtempSync` (unique) instead of
+  `Date.now()`.
+- **Docs:** `canary-e2e/README.md` lane section gained a "How this lane can
+  fail (fail-safe map)" subsection listing every failure mode and its
+  direction (all red except the proven-flake path), and the log-line format
+  now shows `outcome=`; the wrapper's file MARK carries the same map.
+- **Re-verification after hardening:** `node --test
+  tests/infra-flakes.test.mjs tests/canary-quarantine.test.mjs` → **69/69
+  pass**; `node --test tests/run-tests.test.mjs tests/deploy-gates.test.mjs`
+  → **72/72 pass**; full root script suite `node --test tests/*.test.mjs` →
+  **783 pass / 0 fail** (795 total, 4 skipped — same pre-existing env skips);
+  `check:jsdoc-example` PASS, `check-one-function-per-file` PASS,
+  `check-proof-and-hygiene` PASS (exit 0).
 
 ## 8. Sequencing, effort, risks
 

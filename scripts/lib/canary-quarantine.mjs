@@ -28,8 +28,8 @@ const DEFAULT_REPO_ROOT = path.resolve(HERE, "..", "..");
 /***
  * MARK: QUARANTINE_LOG_MARKER
  * @description Opens the quarantine log line
- *   (`KAINBAIN_CANARY_QUARANTINE forgiven=… lane=… signatures=… tests=…
- *   summary=…`) so operators and the engine can grep which lane/signature
+ *   (`KAINBAIN_CANARY_QUARANTINE forgiven=… lane=… outcome=… signatures=…
+ *   tests=… summary=…`) so operators and the engine can grep which lane/signature
  *   was retried or quarantined. Deliberately a SEPARATE marker from the
  *   pinned `KAINBAIN_FAST_GATE_RESULT` spelling, which never changes.
  * @example QUARANTINE_LOG_MARKER => "KAINBAIN_CANARY_QUARANTINE"
@@ -330,20 +330,53 @@ export function planQuarantine({ firstExitCode, failed = [], globalErrors = [] }
 }
 
 /***
+ * MARK: countRanTests
+ * @description Counts how many tests actually produced a result in one
+ *   Playwright JSON report (`stats.expected + stats.unexpected + stats.flaky`;
+ *   `skipped` tests never ran and do not count). Returns null when the report
+ *   is missing or carries no `stats` (count unknown). This is the guard
+ *   against Playwright's "No tests found" exit-0 behaviour: a rerun that ran
+ *   ZERO tests (e.g. a `--last-failed` fallback with no record, or a
+ *   `file:line` filter that drifted) proves nothing and must never forgive.
+ * @example countRanTests({ stats: { expected: 2, unexpected: 0, flaky: 0, skipped: 0 } }) => 2
+ * @example countRanTests({ stats: { expected: 0, unexpected: 0, flaky: 0, skipped: 0 } }) => 0
+ * @example countRanTests(null) => null
+ * @param {Object|null} [report] - Parsed Playwright JSON report (see loadReport).
+ * @returns {number|null} Tests that ran, or null when unknown.
+ ***/
+export function countRanTests(report) {
+	const stats = report?.stats;
+	if (!stats || typeof stats !== "object") return null;
+	return ["expected", "unexpected", "flaky"].reduce(
+		(total, key) => total + (Number(stats[key]) || 0),
+		0,
+	);
+}
+
+/***
  * MARK: evaluateRerun
  * @description Decides whether the rerun forgives the first run's failures:
- *   a green rerun forgives; a rerun failing SOLELY on known signatures again
- *   (any id) is still recorded + forgiven (load flakes can persist within a
- *   run); anything else (genuine failure, or no classifiable failures) keeps
- *   the gate red.
- * @example evaluateRerun({ rerunExitCode: 0, rerunFailed: [] }).forgiven => true
+ *   a green rerun that actually ran at least one test forgives; a rerun
+ *   failing SOLELY on known signatures again (any id) is still recorded +
+ *   forgiven (load flakes can persist within a run); anything else (genuine
+ *   failure, no classifiable failures, or a green exit with ZERO tests run —
+ *   Playwright exits 0 on "No tests found", which proves nothing) keeps the
+ *   gate red.
+ * @example evaluateRerun({ rerunExitCode: 0, rerunFailed: [], rerunRanTests: 1 }).forgiven => true
+ * @example evaluateRerun({ rerunExitCode: 0, rerunFailed: [], rerunRanTests: 0 }) => { forgiven: false, outcome: "no-tests-ran" }
  * @param {Object} [opts]
  * @param {number} [opts.rerunExitCode] - Rerun's exit code.
  * @param {Array<Object>} [opts.rerunFailed] - collectFailedTests of the rerun report.
+ * @param {number|null} [opts.rerunRanTests] - countRanTests of the rerun report (null = unknown).
  * @returns {{ forgiven: boolean, outcome: string }}
  ***/
-export function evaluateRerun({ rerunExitCode, rerunFailed = [] } = {}) {
-	if (rerunExitCode === 0) return { forgiven: true, outcome: "passed" };
+export function evaluateRerun({ rerunExitCode, rerunFailed = [], rerunRanTests = null } = {}) {
+	if (rerunExitCode === 0) {
+		// Exit 0 with zero tests run is Playwright's "No tests found" case —
+		// fail-safe red, never a silent forgiveness.
+		if (rerunRanTests === 0) return { forgiven: false, outcome: "no-tests-ran" };
+		return { forgiven: true, outcome: "passed" };
+	}
 	const { allInfraFlakes } = classifyFailures(rerunFailed);
 	if (Array.isArray(rerunFailed) && rerunFailed.length > 0 && allInfraFlakes) {
 		return { forgiven: true, outcome: "signature-only" };
@@ -364,7 +397,7 @@ export function evaluateRerun({ rerunExitCode, rerunFailed = [] } = {}) {
  * @param {string} [opts.lane] - "none" | "runner-rerun" | "preflight-failed".
  * @param {Array<Object>} [opts.failures] - Failed entries of the deciding run.
  * @param {Object} [opts.firstRun] - { exitCode, reportPath } of the first run.
- * @param {Object|null} [opts.rerun] - { attempted, exitCode, filters, outcome } or null.
+ * @param {Object|null} [opts.rerun] - { attempted, exitCode, filters, outcome, testsRan, unresolvedFilters } or null.
  * @param {boolean} [opts.unclassified] - True when a red run had no classifiable failures.
  * @param {Object|null} [opts.baseline] - Snapshot of infra-flake-baseline.json.
  * @param {string} [opts.note] - Free-form note (e.g. the plan reason).
@@ -418,10 +451,14 @@ export function buildQuarantineSummary({
 /***
  * MARK: formatQuarantineLogLine
  * @description Renders the single greppable gate log line naming the
- *   lane/signature/tests (acceptance criterion 3):
- *   `KAINBAIN_CANARY_QUARANTINE forgiven=<n> lane=<lane> signatures="<id:count;…>" tests="<file:line:title;…>" summary="<path>"`.
- *   Pure; values are quoted so the line parses as tokens.
- * @example formatQuarantineLogLine(buildQuarantineSummary({ lane: "runner-rerun", failures: [{ title: "t", file: "a.spec.js", line: 4, signature: "browser-closed" }] }), "/v/canary-quarantine.json").startsWith("KAINBAIN_CANARY_QUARANTINE forgiven=1 lane=runner-rerun ") => true
+ *   lane/outcome/signature/tests (acceptance criterion 3):
+ *   `KAINBAIN_CANARY_QUARANTINE forgiven=<n> lane=<lane> outcome=<outcome> signatures="<id:count;…>" tests="<file:line:title;…>" summary="<path>"`.
+ *   `outcome` is the rerun's verdict (`passed` / `signature-only` / `red` /
+ *   `no-tests-ran`, or `none` when no rerun happened) so the log alone
+ *   distinguishes "rerun proved the app green" from "rerun hit the flake
+ *   again" from "nothing was rerun". Pure; values are quoted so the line
+ *   parses as tokens.
+ * @example formatQuarantineLogLine(buildQuarantineSummary({ lane: "runner-rerun", failures: [{ title: "t", file: "a.spec.js", line: 4, signature: "browser-closed" }] }), "/v/canary-quarantine.json").startsWith('KAINBAIN_CANARY_QUARANTINE forgiven=1 lane="runner-rerun" outcome="none" ') => true
  * @param {Object} [summary] - buildQuarantineSummary object.
  * @param {string|null} [summaryPath] - Written canary-quarantine.json path.
  * @returns {string} The log line (newline-terminated).
@@ -436,6 +473,7 @@ export function formatQuarantineLogLine(summary, summaryPath = null) {
 	return (
 		`${QUARANTINE_LOG_MARKER} forgiven=${Number(summary?.forgiven ?? 0)}` +
 		` lane=${quoteLogValue(summary?.lane ?? "none")}` +
+		` outcome=${quoteLogValue(summary?.rerun?.outcome ?? "none")}` +
 		` signatures=${quoteLogValue(sig)}` +
 		` tests=${quoteLogValue(tests)}` +
 		` summary=${quoteLogValue(summaryPath ?? "unavailable")}\n`
@@ -486,7 +524,13 @@ export function resolveQuarantineDir({ env = process.env, repoRoot = DEFAULT_REP
 	} catch {
 		// Fall through to the tmp fallback below.
 	}
-	candidates.push(path.join(os.tmpdir(), `kb-canary-quarantine-${Date.now()}`));
+	// Last-resort scratch: a unique mkdtemp dir (a Date.now() name could
+	// collide when two gates start in the same millisecond).
+	try {
+		candidates.push(fs.mkdtempSync(path.join(os.tmpdir(), "kb-canary-quarantine-")));
+	} catch {
+		candidates.push(path.join(os.tmpdir(), `kb-canary-quarantine-${Date.now()}`));
+	}
 	for (const dir of candidates) {
 		try {
 			fs.mkdirSync(dir, { recursive: true });

@@ -24,6 +24,7 @@ import {
 	buildQuarantineSummary,
 	classifyFailures,
 	collectFailedTests,
+	countRanTests,
 	evaluateRerun,
 	formatQuarantineLogLine,
 	loadReport,
@@ -33,7 +34,7 @@ import {
 	resolveQuarantineDir,
 	writeQuarantineSummary,
 } from "../scripts/lib/canary-quarantine.mjs";
-import { runCanaryGate } from "../scripts/canary-with-quarantine.mjs";
+import { resolveWorkDir, runCanaryGate } from "../scripts/canary-with-quarantine.mjs";
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -63,7 +64,11 @@ function spec(file, line, title, errorMessage, { ok = false, suiteTitle = "Suite
 	};
 }
 
-function report(specs, { globalErrors = [] } = {}) {
+function report(specs, { globalErrors = [], stats = null } = {}) {
+	// Mirror the real Playwright JSON root: { config, suites, errors, stats }.
+	// stats counts what actually ran (verified against playwright 1.63: a
+	// "No tests found" run exits 0 with all-zero stats).
+	const passed = specs.filter((s) => s.ok).length;
 	return {
 		suites: [
 			{
@@ -76,8 +81,20 @@ function report(specs, { globalErrors = [] } = {}) {
 			},
 		],
 		errors: globalErrors.map((message) => ({ message })),
+		stats: stats ?? {
+			startTime: "2026-11-24T12:00:00.000Z",
+			duration: 1,
+			expected: passed,
+			skipped: 0,
+			unexpected: specs.length - passed,
+			flaky: 0,
+		},
 	};
 }
+
+const NO_TESTS_REPORT = report([], {
+	stats: { startTime: "2026-11-24T12:00:00.000Z", duration: 1, expected: 0, skipped: 0, unexpected: 0, flaky: 0 },
+});
 
 const FLAKE_MSG = "Error: page.goto: Target page, context or browser has been closed\n\n   at helpers.js:65:14";
 const GENUINE_MSG = "Error: expect(received).toBe(expected)\n\nExpected: 3\nReceived: 2";
@@ -235,10 +252,37 @@ describe("planQuarantine / evaluateRerun decision table", () => {
 		assert.equal(p.red, true);
 	});
 	it("evaluateRerun: green rerun forgives; signature-only rerun forgives; genuine/empty stays red", () => {
-		assert.deepEqual(evaluateRerun({ rerunExitCode: 0, rerunFailed: [] }), { forgiven: true, outcome: "passed" });
+		assert.deepEqual(evaluateRerun({ rerunExitCode: 0, rerunFailed: [], rerunRanTests: 1 }), { forgiven: true, outcome: "passed" });
 		assert.deepEqual(evaluateRerun({ rerunExitCode: 1, rerunFailed: flakeOnly }), { forgiven: true, outcome: "signature-only" });
 		assert.equal(evaluateRerun({ rerunExitCode: 1, rerunFailed: mixed }).forgiven, false);
 		assert.equal(evaluateRerun({ rerunExitCode: 1, rerunFailed: [] }).forgiven, false);
+	});
+	it("evaluateRerun: a green exit with ZERO tests run never forgives (Playwright exits 0 on 'No tests found')", () => {
+		assert.deepEqual(evaluateRerun({ rerunExitCode: 0, rerunFailed: [], rerunRanTests: 0 }), {
+			forgiven: false,
+			outcome: "no-tests-ran",
+		});
+		// Unknown count (unreadable report) with exit 0: the exit code is all
+		// we have — forgiven (playwright always writes the json report on a
+		// normal exit, so null here means something very odd, not zero tests).
+		assert.deepEqual(evaluateRerun({ rerunExitCode: 0, rerunFailed: [], rerunRanTests: null }), {
+			forgiven: true,
+			outcome: "passed",
+		});
+	});
+});
+
+describe("countRanTests", () => {
+	it("sums expected+unexpected+flaky (skipped never ran) and returns null when stats are unknown", () => {
+		assert.equal(countRanTests(report([spec("a.spec.js", 3, "p", null, { ok: true }), spec("a.spec.js", 4, "f", GENUINE_MSG)])), 2);
+		assert.equal(countRanTests(NO_TESTS_REPORT), 0);
+		assert.equal(countRanTests(null), null);
+		assert.equal(countRanTests({ suites: [] }), null);
+		assert.equal(
+			countRanTests({ stats: { expected: 1, unexpected: 1, flaky: 1, skipped: 5 } }),
+			3,
+			"skipped tests do not count as ran",
+		);
 	});
 });
 
@@ -267,18 +311,32 @@ describe("summary + log line", () => {
 		assert.equal(summary.tests[1].errorExcerpt, "", "missing excerpt degrades to empty string");
 		assert.equal(summary.baseline, baseline);
 	});
-	it("formatQuarantineLogLine renders the exact greppable marker line", () => {
+	it("formatQuarantineLogLine renders the exact greppable marker line (lane + outcome + signatures + tests)", () => {
 		const summary = buildQuarantineSummary({
 			generatedAt: "2026-11-24T00:00:00.000Z",
 			lane: "runner-rerun",
 			failures: [{ title: "T", file: "tests/a.spec.js", line: 4, signature: "browser-closed" }],
+			rerun: { attempted: true, exitCode: 0, filters: ["tests/a.spec.js:4"], outcome: "passed", testsRan: 1, unresolvedFilters: 0 },
 		});
 		const line = formatQuarantineLogLine(summary, "/v/canary-quarantine.json");
 		assert.equal(
 			line,
-			`${QUARANTINE_LOG_MARKER} forgiven=1 lane="runner-rerun" signatures="browser-closed:1" tests="tests/a.spec.js:4:T" summary="/v/canary-quarantine.json"\n`,
+			`${QUARANTINE_LOG_MARKER} forgiven=1 lane="runner-rerun" outcome="passed" signatures="browser-closed:1" tests="tests/a.spec.js:4:T" summary="/v/canary-quarantine.json"\n`,
 		);
 		assert.ok(line.startsWith("KAINBAIN_CANARY_QUARANTINE "));
+	});
+	it("formatQuarantineLogLine shows outcome=none when no rerun happened and quotes values safely", () => {
+		const summary = buildQuarantineSummary({ lane: "none", failures: [] });
+		const line = formatQuarantineLogLine(summary, null);
+		assert.ok(line.includes('lane="none" outcome="none" signatures="" tests="" summary="unavailable"'), line);
+		const reranRed = buildQuarantineSummary({
+			lane: "none",
+			failures: [{ title: 'we"ird', file: "tests/a.spec.js", line: 4, signature: null }],
+			rerun: { attempted: true, exitCode: 1, filters: ["tests/a.spec.js:4"], outcome: "red", testsRan: 1 },
+		});
+		const redLine = formatQuarantineLogLine(reranRed, "/v/q.json");
+		assert.ok(redLine.includes('outcome="red"'), redLine);
+		assert.ok(redLine.includes('tests="tests/a.spec.js:4:we\\"ird"'), "quotes inside values are escaped");
 	});
 });
 
@@ -310,7 +368,7 @@ describe("dir resolution + summary writing", () => {
 });
 
 describe("runCanaryGate (fake playwright seams)", () => {
-	function makeHarness({ reports, preflightExit = 0, dirPrefix = "kb-q-gate-" }) {
+	function makeHarness({ reports, preflightExit = 0, dirPrefix = "kb-q-gate-", resolveWorkDirFn } = {}) {
 		const quarantineDir = path.join(tmpdir(dirPrefix), "verdict");
 		const canaryDir = path.join(tmpdir(dirPrefix), "canary-e2e");
 		const testDir = path.join(canaryDir, "tests");
@@ -323,7 +381,8 @@ describe("runCanaryGate (fake playwright seams)", () => {
 			calls.push({ args, jsonReport });
 			const entry = reports[Math.min(runIndex, reports.length - 1)];
 			runIndex += 1;
-			if (entry.report !== null) fs.writeFileSync(jsonReport, JSON.stringify(entry.report));
+			// Degraded strict mode passes jsonReport=null (no JSON reporter).
+			if (jsonReport && entry.report !== null) fs.writeFileSync(jsonReport, JSON.stringify(entry.report));
 			return { exitCode: entry.exitCode, spawnError: null };
 		};
 		const runPreflightFn = () => ({ exitCode: preflightExit });
@@ -344,6 +403,7 @@ describe("runCanaryGate (fake playwright seams)", () => {
 					cli: "/fake/cli.js",
 					runPreflightFn,
 					runPlaywrightFn,
+					resolveWorkDirFn: resolveWorkDirFn ?? resolveWorkDir,
 					log,
 					now: () => "2026-11-24T12:00:00.000Z",
 				}),
@@ -379,6 +439,7 @@ describe("runCanaryGate (fake playwright seams)", () => {
 		const markerLine = h.lines.find((l) => l.startsWith(QUARANTINE_LOG_MARKER));
 		assert.ok(markerLine, "log line printed");
 		assert.ok(markerLine.includes('lane="runner-rerun"'));
+		assert.ok(markerLine.includes('outcome="passed"'));
 		assert.ok(markerLine.includes('signatures="browser-closed:1"'));
 		assert.ok(markerLine.includes("tests/a.spec.js:4:Suite › flake dies"));
 	});
@@ -436,5 +497,60 @@ describe("runCanaryGate (fake playwright seams)", () => {
 		assert.notEqual(exitCode, 0);
 		assert.equal(h.calls.length, 0, "playwright never spawned");
 		assert.equal(summary.lane, "preflight-failed");
+	});
+
+	it("(2d) rerun exits 0 but ran ZERO tests ('No tests found') → stays red, outcome no-tests-ran", () => {
+		const h = makeHarness({ reports: [{ exitCode: 1, report: flakeReport }, { exitCode: 0, report: NO_TESTS_REPORT }] });
+		const { exitCode, summary } = h.run();
+		assert.notEqual(exitCode, 0, "a rerun that ran nothing must never forgive");
+		assert.equal(h.calls.length, 2, "rerun was attempted");
+		assert.equal(summary.rerun.outcome, "no-tests-ran");
+		assert.equal(summary.rerun.testsRan, 0);
+		assert.equal(summary.lane, "none");
+		assert.equal(summary.forgiven, 0);
+		const markerLine = h.lines.find((l) => l.startsWith(QUARANTINE_LOG_MARKER));
+		assert.ok(markerLine.includes('outcome="no-tests-ran"'), markerLine);
+	});
+
+	it("degraded strict mode (no writable report scratch dir): green run still green, failure stays red unclassified", () => {
+		const noWorkDir = () => null;
+		const green = makeHarness({ reports: [{ exitCode: 0, report: greenReport }], resolveWorkDirFn: noWorkDir });
+		const greenResult = green.run();
+		assert.equal(greenResult.exitCode, 0, "green suite passes even without a JSON report");
+		assert.equal(green.calls[0].jsonReport, null, "no JSON reporter in degraded mode");
+		assert.ok(green.lines.some((l) => l.includes("running strict")), "degradation is logged");
+
+		const red = makeHarness({ reports: [{ exitCode: 1, report: flakeReport }], resolveWorkDirFn: noWorkDir });
+		const redResult = red.run();
+		assert.notEqual(redResult.exitCode, 0, "without a JSON report a failure cannot be proven a flake — stays red");
+		assert.equal(red.calls.length, 1, "no rerun without classification");
+		assert.equal(redResult.summary.unclassified, true);
+		assert.equal(redResult.summary.firstRun.reportWritten, false);
+	});
+});
+
+describe("resolveWorkDir (fail-open scratch dir)", () => {
+	it("creates a kb-canary-quarantine-* dir under the OS tmp dir", () => {
+		const dir = resolveWorkDir({ quarantineDir: tmpdir("kb-q-wd-") });
+		assert.ok(dir.startsWith(path.join(os.tmpdir(), "kb-canary-quarantine-")), dir);
+		assert.ok(fs.statSync(dir).isDirectory());
+	});
+	it("falls back to the quarantine dir when the OS tmp dir is unwritable", () => {
+		const quarantineDir = tmpdir("kb-q-wd-");
+		const realMkdtemp = fs.mkdtempSync;
+		const dir = resolveWorkDir({
+			quarantineDir,
+			tmpdirFn: () => "/nonexistent-root/no-tmp",
+			mkdtempFn: (p) => realMkdtemp.call(fs, p),
+		});
+		assert.ok(dir.startsWith(quarantineDir), dir);
+		assert.ok(fs.statSync(dir).isDirectory());
+	});
+	it("returns null when nothing is writable (caller degrades to strict mode)", () => {
+		const alwaysThrow = () => {
+			throw new Error("read-only fs");
+		};
+		assert.equal(resolveWorkDir({ quarantineDir: tmpdir("kb-q-wd-"), mkdtempFn: alwaysThrow }), null);
+		assert.equal(resolveWorkDir({ quarantineDir: "", mkdtempFn: alwaysThrow }), null);
 	});
 });
