@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { APP_URL, API_URL } from "./urls";
-import { isInfraFlake, matchInfraFlake, markInfraFlakeError } from "./infra-flakes.mjs";
+import { INFRA_FLAKE_ERROR_CODE, isInfraFlake, matchInfraFlake, markInfraFlakeError } from "./infra-flakes.mjs";
 
 /***
  * MARK: shared canary helpers
@@ -52,8 +52,11 @@ export const DESKTOP_VIEWPORT = { width: 1280, height: 720 };
  *   tag in the message, see ./infra-flakes.mjs) for the runner-level
  *   quarantine lane (scripts/canary-with-quarantine.mjs), which reruns just
  *   the signature-only failures and reports them via KAINBAIN_CANARY_QUARANTINE
- *   + canary-quarantine.json. Any NON-flake error (dead backend, bad URL,
- *   broken shell failing twice) rethrows unchanged and stays red.
+ *   + canary-quarantine.json. The same marking applies to the whole helper:
+ *   a browser-death signature surfacing in the shell-wait phase below (title
+ *   check, visibility wait, reload) is marked identically on exit. Any
+ *   NON-flake error (dead backend, bad URL, broken shell failing twice,
+ *   assertion diff) rethrows unchanged and stays red.
  * @example await waitForAppReady(page)
  * @param {import("@playwright/test").Page} page
  * @param {Object} [opts] - Options.
@@ -92,27 +95,46 @@ export async function waitForAppReady(page, { readyTimeoutMs = APP_READY_TIMEOUT
 			throw markInfraFlakeError(retryErr, signature);
 		}
 	}
-	await expect(page).toHaveTitle(/Kainbain/);
-	const totalBudget = Number.isFinite(readyTimeoutMs) && readyTimeoutMs > 0 ? readyTimeoutMs : APP_READY_TIMEOUT_MS;
-	const firstHalf = Math.max(1000, Math.floor(totalBudget / 2));
-	const secondHalf = Math.max(1000, totalBudget - firstHalf);
 	try {
-		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-			timeout: firstHalf,
-		});
-	} catch (err) {
-		// Blank-root resource window (net::ERR_INSUFFICIENT_RESOURCES across
-		// the vite module burst AFTER navigation commits: title loads, but a
-		// hundred module requests fail and React never mounts): a longer wait
-		// cannot heal it — the failed loads must be re-issued. One bounded
-		// reload+retry with the budget's second half (same total as the old
-		// single wait); a genuinely broken shell fails twice and stays red.
-		// Mirrors the accessibility spec's waitForAppShell retry.
-		await page.reload({ waitUntil: "domcontentloaded" });
 		await expect(page).toHaveTitle(/Kainbain/);
-		await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
-			timeout: secondHalf,
-		});
+		const totalBudget =
+			Number.isFinite(readyTimeoutMs) && readyTimeoutMs > 0 ? readyTimeoutMs : APP_READY_TIMEOUT_MS;
+		const firstHalf = Math.max(1000, Math.floor(totalBudget / 2));
+		const secondHalf = Math.max(1000, totalBudget - firstHalf);
+		try {
+			await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
+				timeout: firstHalf,
+			});
+		} catch (err) {
+			// A dead browser/context cannot be healed by reloading the same
+			// dead page — skip the reload and let the outer catch mark it for
+			// the runner lane.
+			if (isInfraFlake(err?.message || "")) throw err;
+			// Blank-root resource window (net::ERR_INSUFFICIENT_RESOURCES across
+			// the vite module burst AFTER navigation commits: title loads, but a
+			// hundred module requests fail and React never mounts): a longer wait
+			// cannot heal it — the failed loads must be re-issued. One bounded
+			// reload+retry with the budget's second half (same total as the old
+			// single wait); a genuinely broken shell fails twice and stays red.
+			// Mirrors the accessibility spec's waitForAppShell retry.
+			await page.reload({ waitUntil: "domcontentloaded" });
+			await expect(page).toHaveTitle(/Kainbain/);
+			await expect(page.getByRole("button", { name: /Project/i }).first()).toBeVisible({
+				timeout: secondHalf,
+			});
+		}
+	} catch (err) {
+		// Uniform marked-error contract for the WHOLE helper: any browser-death
+		// signature leaving this block (title check, shell wait, reload) is
+		// rethrown marked (`code = "CANARY_INFRA_FLAKE"`, `signature`,
+		// `[infra-flake:<id>]` tag) so the runner-level quarantine lane and the
+		// HTML report classify it deterministically. Already-marked errors pass
+		// through untouched; any NON-flake error (dead backend, bad URL, broken
+		// shell failing twice, assertion diff) rethrows unchanged and stays red.
+		if (err?.code === INFRA_FLAKE_ERROR_CODE) throw err;
+		const signature = matchInfraFlake(err?.message || "");
+		if (!signature) throw err;
+		throw markInfraFlakeError(err, signature);
 	}
 }
 

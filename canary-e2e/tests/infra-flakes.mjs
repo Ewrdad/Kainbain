@@ -5,8 +5,10 @@
  *   BROWSER/RENDERER died under gate-host load, never that the app is broken.
  *   Consumed by three places, all reading this one list:
  *   - `canary-e2e/tests/helpers.js` (`waitForAppReady`) — decides which first
- *     `page.goto` failures get the one bounded re-issue, and marks a retry
- *     that dies with the same signature (`markInfraFlakeError`).
+ *     `page.goto` failures get the one bounded re-issue, and marks ANY
+ *     browser-death error leaving the helper (the retry re-issue or the
+ *     later shell-wait phase) via `markInfraFlakeError`, so every flake exit
+ *     carries the `[infra-flake:<id>]` tag.
  *   - `scripts/lib/canary-quarantine.mjs` — classifies every failed test in the
  *     Playwright JSON report so the runner-level quarantine lane
  *     (`scripts/canary-with-quarantine.mjs`) can forgive signature-only

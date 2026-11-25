@@ -128,6 +128,71 @@ describe("collectFailedTests + classifyFailures", () => {
 	});
 });
 
+describe("final-outcome semantics (runs with retries enabled)", () => {
+	function multiResultSpec(file, line, title, results) {
+		return {
+			title,
+			ok: false,
+			file,
+			line,
+			column: 5,
+			id: `id-${file}-${line}`,
+			tests: [{ testId: `t-${file}-${line}`, title, status: "unexpected", results }],
+		};
+	}
+
+	it("a flaky spec (passed on a retry) is NOT collected as a failure", () => {
+		const flakySpec = {
+			title: "flaky then passes",
+			ok: true,
+			file: "a.spec.js",
+			line: 4,
+			column: 5,
+			id: "id-flaky",
+			tests: [
+				{
+					testId: "t-flaky",
+					title: "flaky then passes",
+					status: "flaky",
+					results: [
+						{ status: "failed", error: { message: FLAKE_MSG, stack: FLAKE_MSG } },
+						{ status: "passed", error: null },
+					],
+				},
+			],
+		};
+		const { failed } = collectFailedTests(report([flakySpec]));
+		assert.equal(failed.length, 0, "ok=true + status=flaky means the test ultimately passed");
+	});
+
+	it("classifies on the FINAL result: flake first attempt + genuine final failure stays genuine (red)", () => {
+		const entry = multiResultSpec("a.spec.js", 4, "mixed attempts", [
+			{ status: "failed", error: { message: FLAKE_MSG, stack: FLAKE_MSG } },
+			{ status: "failed", error: { message: GENUINE_MSG, stack: GENUINE_MSG } },
+		]);
+		const { failed } = collectFailedTests(report([entry]));
+		assert.equal(failed.length, 1);
+		assert.equal(failed[0].signature, null, "the final (genuine) result must win over an earlier flake attempt");
+		assert.ok(failed[0].errorExcerpt.includes("Expected: 3"), "excerpt carries the deciding error");
+	});
+
+	it("final result flake-only is classified as the flake even if an earlier attempt was genuine", () => {
+		const entry = multiResultSpec("a.spec.js", 4, "flake final", [
+			{ status: "failed", error: { message: GENUINE_MSG, stack: GENUINE_MSG } },
+			{ status: "failed", error: { message: FLAKE_MSG, stack: FLAKE_MSG } },
+		]);
+		const { failed } = collectFailedTests(report([entry]));
+		assert.equal(failed[0].signature, "browser-closed");
+	});
+
+	it("a failed spec with no results at all (interrupted) is collected, unclassified", () => {
+		const entry = multiResultSpec("a.spec.js", 4, "interrupted", []);
+		const { failed } = collectFailedTests(report([entry]));
+		assert.equal(failed.length, 1);
+		assert.equal(failed[0].signature, null);
+	});
+});
+
 describe("planRerunFilters", () => {
 	it("builds deduped configDir-relative file:line filters for failed tests only", () => {
 		const dir = tmpdir("kb-q-filters-");
@@ -185,7 +250,7 @@ describe("summary + log line", () => {
 			generatedAt: "2026-11-24T00:00:00.000Z",
 			lane: "runner-rerun",
 			failures: [
-				{ title: "T one", file: "tests/a.spec.js", line: 4, signature: "browser-closed" },
+				{ title: "T one", file: "tests/a.spec.js", line: 4, signature: "browser-closed", errorExcerpt: "page.goto: Target page, context or browser has been closed" },
 				{ title: "T two", file: "tests/b.spec.js", line: 2, signature: "browser-closed" },
 				{ title: "G", file: "tests/c.spec.js", line: 8, signature: null },
 			],
@@ -198,6 +263,8 @@ describe("summary + log line", () => {
 		assert.equal(summary.forgiven, 2);
 		assert.deepEqual(summary.signatures, { "browser-closed": 2 });
 		assert.equal(summary.tests.length, 3);
+		assert.equal(summary.tests[0].errorExcerpt, "page.goto: Target page, context or browser has been closed");
+		assert.equal(summary.tests[1].errorExcerpt, "", "missing excerpt degrades to empty string");
 		assert.equal(summary.baseline, baseline);
 	});
 	it("formatQuarantineLogLine renders the exact greppable marker line", () => {
@@ -303,6 +370,7 @@ describe("runCanaryGate (fake playwright seams)", () => {
 		assert.equal(summary.rerun.outcome, "passed");
 		assert.equal(summary.tests[0].file, "tests/a.spec.js");
 		assert.equal(summary.tests[0].signature, "browser-closed");
+		assert.ok(summary.tests[0].errorExcerpt.includes("has been closed"), "summary carries the deciding error text");
 		// (3) CI report names lane/signature: JSON file + log line agree.
 		assert.equal(summaryPath, path.join(h.quarantineDir, QUARANTINE_SUMMARY_FILENAME));
 		const onDisk = JSON.parse(fs.readFileSync(summaryPath, "utf8"));

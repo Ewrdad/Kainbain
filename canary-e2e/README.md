@@ -68,9 +68,11 @@ weakening the gate for real regressions:
   can launch a fresh browser).
 - The gate's Canary Tests branch (`scripts/canary-with-quarantine.mjs`) runs
   the full suite once with a gate-only JSON report, classifies every failed
-  test against `tests/infra-flakes.mjs`, and — **only when every failure
-  matches a known signature** — reruns just those tests (`file:line`
-  filters, never the whole run) once. A green rerun (or one failing again
+  test against `tests/infra-flakes.mjs` (using each test's FINAL result's
+  error text — a test that passed on a retry is never quarantined), and —
+  **only when every failure matches a known signature** — reruns just those
+  tests (`file:line` filters, `--last-failed` as fallback, never the whole
+  run) once. A green rerun (or one failing again
   solely on known signatures) forgives; **any** genuine failure at any stage
   (dead backend, bad URL, broken shell, assertion diff, mixed flake+genuine)
   exits non-zero immediately. `retries: 0` in `playwright.config.js` is

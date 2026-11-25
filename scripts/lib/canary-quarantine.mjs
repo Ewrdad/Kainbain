@@ -107,6 +107,13 @@ export function loadReport(reportPath) {
 	}
 }
 
+// Result statuses that count as a failure outcome. A test's FINAL result
+// decides: with retries, a spec that passed on a later attempt reports
+// status "flaky" with results [failed, passed] — that is NOT a failure, and
+// its earlier attempt's error text must never classify the run (a flake
+// first attempt followed by a GENUINE final failure is a genuine failure).
+const FAILURE_RESULT_STATUSES = new Set(["failed", "timedOut", "interrupted"]);
+
 function errorTextOfResult(result) {
 	const parts = [];
 	const err = result?.error;
@@ -122,23 +129,40 @@ function errorTextOfResult(result) {
 	return parts.join("\n");
 }
 
+function resultsOf(test) {
+	return Array.isArray(test?.results) ? test.results : [];
+}
+
+function finalResultOf(test) {
+	const results = resultsOf(test);
+	return results.length > 0 ? results[results.length - 1] : null;
+}
+
+function isFailedTest(test) {
+	if (test?.status === "unexpected") return true;
+	return FAILURE_RESULT_STATUSES.has(String(finalResultOf(test)?.status ?? ""));
+}
+
 function walkSuites(suites, chain, out) {
 	for (const suite of Array.isArray(suites) ? suites : []) {
 		const nextChain = suite?.title ? [...chain, String(suite.title)] : chain;
 		for (const spec of Array.isArray(suite?.specs) ? suite.specs : []) {
 			const tests = Array.isArray(spec?.tests) ? spec.tests : [];
-			const failed =
-				spec?.ok === false ||
-				tests.some((t) => t?.status === "unexpected") ||
-				tests.some((t) =>
-					(Array.isArray(t?.results) ? t.results : []).some(
-						(r) => r?.status === "failed" || r?.status === "timedOut" || r?.status === "interrupted",
-					),
-				);
+			const failed = spec?.ok === false || tests.some(isFailedTest);
 			if (!failed) continue;
 			const texts = [];
 			for (const t of tests) {
-				for (const r of Array.isArray(t?.results) ? t.results : []) texts.push(errorTextOfResult(r));
+				// Classify on the FINAL result's error (the outcome that failed
+				// the test); earlier retry attempts do not count. When the final
+				// result carries no error text (e.g. an interrupted run with no
+				// results at all), fall back to every result so the signature
+				// scan still sees whatever text exists.
+				const finalText = errorTextOfResult(finalResultOf(t));
+				if (finalText) {
+					texts.push(finalText);
+				} else {
+					for (const r of resultsOf(t)) texts.push(errorTextOfResult(r));
+				}
 			}
 			const text = texts.join("\n");
 			const file = spec?.file ?? suite?.file ?? "";
@@ -378,6 +402,10 @@ export function buildQuarantineSummary({
 			file: String(e?.displayFile ?? e?.file ?? ""),
 			line: typeof e?.line === "number" ? e.line : null,
 			signature: e?.signature ?? null,
+			// The error text that produced the classification, so the report
+			// shows WHY a test landed in the lane (and why a genuine failure
+			// did not match any signature).
+			errorExcerpt: typeof e?.errorExcerpt === "string" ? e.errorExcerpt : "",
 		})),
 		firstRun,
 		rerun,

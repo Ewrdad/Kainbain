@@ -125,6 +125,22 @@ describe("helpers.js consumes the shared signature list (no drift)", () => {
 	it("marks a browser-closed retry failure instead of rethrowing raw", () => {
 		assert.match(helpersSource, /markInfraFlakeError\(retryErr, signature\)/);
 	});
+	it("marks infra-flake errors on EVERY helper exit path, with a double-mark guard", () => {
+		assert.match(
+			helpersSource,
+			/import \{[^}]*\bINFRA_FLAKE_ERROR_CODE\b[^}]*\} from "\.\/infra-flakes\.mjs"/,
+		);
+		assert.match(
+			helpersSource,
+			/if \(err\?\.code === INFRA_FLAKE_ERROR_CODE\) throw err;/,
+			"already-marked errors must pass through without a second tag",
+		);
+		// The shell-wait phase skips its reload on browser death and lets the
+		// outer catch mark it: the isInfraFlake guard appears in both the
+		// first-load gate and the shell-wait skip.
+		const guards = helpersSource.match(/isInfraFlake\(err\?\.message \|\| ""\)/g) || [];
+		assert.ok(guards.length >= 2, `expected the flake guard in both phases, got ${guards.length}`);
+	});
 });
 
 describe("baseline covers every signature id", () => {
