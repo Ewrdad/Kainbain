@@ -42,6 +42,25 @@ Background (plain language): the list of runner test files is currently typed ou
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "Live lookup (Recommended): the release check asks the main test runner for the current list each time it runs, so there is only ever one list"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Rewrite it (Recommended): since there will be only one list, check instead that the release check really reads from it and holds no copy of its own"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Stop with a clear error (Recommended): fail the release check loudly rather than guessing which tests to run"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
