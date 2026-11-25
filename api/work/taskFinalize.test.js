@@ -919,6 +919,45 @@ describe.skipIf(!gitAvailable)("commitFailedStageWork under HEAD contention (sha
 		}
 	});
 
+	it("T2b: a sibling task's own report dirt under docs/tasks/<sibling>/ also fails closed", async () => {
+		const ctx = setupContentionRepo("t2b");
+		const { repo, store, task, siblingBranch } = ctx;
+		try {
+			const branch = await prepareHeadContention(ctx);
+			const reportPath = writeFailedStageReport(repo, task);
+			// The sibling's in-flight report lives under ITS OWN docs folder —
+			// engine-owned for the sibling, foreign for this task.
+			const siblingTaskId = siblingBranch.replace(/^kb\//, "");
+			const siblingReportDir = path.join(repo, "docs", "tasks", siblingTaskId);
+			fs.mkdirSync(siblingReportDir, { recursive: true });
+			fs.writeFileSync(
+				path.join(siblingReportDir, "report-failure.md"),
+				"# sibling in-flight report\n",
+			);
+			const siblingReportPath = `docs/tasks/${siblingTaskId}/report-failure.md`;
+			moveHeadToSibling(repo, siblingBranch);
+			const siblingTipBefore = run(repo, "rev-parse", siblingBranch).trim();
+			const ownTipBefore = run(repo, "rev-parse", branch).trim();
+
+			const res = await commitFailedStageWork(store, task, repo, { stageName: "Dev" });
+
+			expect(res).toBeNull();
+			expect(await currentBranch(repo)).toBe(siblingBranch);
+			const errEntry = task.history.find((h) =>
+				h.action.startsWith("Error: failed-stage report"),
+			);
+			expect(errEntry).toBeTruthy();
+			expect(errEntry.action).toContain(siblingReportPath);
+			expect(errEntry.action).toContain(reportPath);
+			expect(errEntry.action).toContain("No commit was made on any branch");
+			// Acceptance 2: no commit landed on any branch.
+			expect(run(repo, "rev-parse", branch).trim()).toBe(ownTipBefore);
+			expect(run(repo, "rev-parse", siblingBranch).trim()).toBe(siblingTipBefore);
+		} finally {
+			teardown(repo);
+		}
+	});
+
 	it("T3: fails closed when the owning branch was deleted mid-flight", async () => {
 		const ctx = setupContentionRepo("t3");
 		const { repo, store, task, siblingBranch } = ctx;

@@ -479,7 +479,11 @@ export async function finalizeTaskBranch(
  *   the engine state dir (`<kainbainDirName>/…`, regenerated store state, not
  *   any task's work). Anything else dirty is treated as possibly a sibling
  *   task's work and fails closed. Pure, no I/O.
+ *   Fails CLOSED without a task id: claiming the whole `<docsDirName>/tasks/`
+ *   tree as "own" would let a sibling task's report dirt ride the recovery
+ *   checkout, so an id-less task gets only the state dir.
  * @example _failedStageOwnPathPrefixes({ id: 't1' }, null) => ['docs/tasks/t1/', '.kainbain/']
+ * @example _failedStageOwnPathPrefixes({ id: '' }, null) => ['.kainbain/']
  * @param {Object} task - Task entity (reads `id`).
  * @param {Object|null} [project] - Project record hint for custom dir names.
  * @returns {Array<string>}
@@ -489,10 +493,8 @@ function _failedStageOwnPathPrefixes(task, project) {
 	const docsDir = resolveDocsDirName(project || {});
 	const stateDir = resolveKainbainDirName(project || {});
 	const taskId = String(task?.id || "").trim();
-	return [
-		taskId ? `${docsDir}/tasks/${taskId}/` : `${docsDir}/tasks/`,
-		`${stateDir}/`,
-	];
+	if (!taskId) return [`${stateDir}/`];
+	return [`${docsDir}/tasks/${taskId}/`, `${stateDir}/`];
 }
 
 /***
@@ -515,6 +517,44 @@ function _isProvablyOwnFailedStagePath(p, prefixes) {
 		const parent = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
 		return norm === parent || norm.startsWith(prefix);
 	});
+}
+
+/***
+ * MARK: _recordTaskHistory
+ * @description Appends one `{timestamp, action}` entry to the task's history
+ *   log. Audit-only and never throws: a missing or broken history array must
+ *   never block failure routing on the failed-stage path.
+ * @example _recordTaskHistory({ history: [] }, 'Auto-committed partial work …')
+ * @param {Object} task - Task entity (writes `history` when it is an array).
+ * @param {string} action - Human-readable history line.
+ * @private
+ ***/
+function _recordTaskHistory(task, action) {
+	try {
+		if (Array.isArray(task?.history)) {
+			task.history.push({ timestamp: new Date().toISOString(), action });
+		}
+	} catch {
+		// Audit-only; routing continues regardless.
+	}
+}
+
+/***
+ * MARK: _appendProcessLogSafely
+ * @description Writes one line to the task's process log, never throwing:
+ *   process-log failures are audit-only and must never block failure routing
+ *   on the failed-stage path.
+ * @example _appendProcessLogSafely(task, '[ERROR] failed-stage report …')
+ * @param {Object} task - Task entity.
+ * @param {string} line - Process-log line (including its [LEVEL] tag).
+ * @private
+ ***/
+function _appendProcessLogSafely(task, line) {
+	try {
+		_appendProcessLog(task, line);
+	} catch {
+		// Audit-only; routing continues regardless.
+	}
 }
 
 /***
@@ -615,7 +655,10 @@ async function _recoverFailedStageCommitAfterHeadMove({
 		const [nowBranch, exists, status] = await Promise.all([
 			currentBranch(execCwd).catch(() => null),
 			branchExists(execCwd, branch),
-			getWorkingTreeStatus(execCwd, { ignorePaths: [], project }).catch(() => null),
+			// Full status with NO ignore prefixes: the recovery must see every
+			// dirty path (including other tasks' docs/tasks/<id>/ reports) so
+			// only provably-own dirt is carried across the re-checkout.
+			getWorkingTreeStatus(execCwd, { ignorePaths: [] }).catch(() => null),
 		]);
 		return { nowBranch, exists, status };
 	};
@@ -806,112 +849,84 @@ export async function commitFailedStageWork(taskStore, task, projectCwd, opts = 
 		let commitRes = null;
 		let recoveryNote = null;
 		try {
-			commitRes =
-				typeof commitAllIfNeeded === "function"
-					? await commitAllIfNeeded(execCwd, subject, {
-							expectedBranch: branch,
-							noCode: opts.noCode === true,
-							project,
-						})
-					: { committed: false, hash: null };
+			commitRes = await commitAllIfNeeded(execCwd, subject, {
+				expectedBranch: branch,
+				noCode: opts.noCode === true,
+				project,
+			});
 		} catch (commitErr) {
 			const isBranchMismatch =
 				commitErr instanceof GitBranchMismatchError ||
 				commitErr?.name === "GitBranchMismatchError";
-			if (isBranchMismatch) {
-				// HEAD contention: a concurrent task moved the shared checkout
-				// onto a sibling branch. Re-establish the owning branch and
-				// retry the commit exactly once — failing closed into an
-				// actionable error entry when recovery is not provably safe.
-				// The guard is never weakened: no commit lands on a sibling.
-				let recovery = null;
-				try {
-					recovery = await _recoverFailedStageCommitAfterHeadMove({
-						task,
-						execCwd,
-						branch,
-						subject,
-						stageLabel,
-						commitOpts: { noCode: opts.noCode === true, project },
-						mismatch: commitErr,
-					});
-				} catch {
-					recovery = null;
-				}
-				if (recovery && recovery.commitRes) {
-					commitRes = recovery.commitRes;
-					recoveryNote = recovery.note || null;
-				} else {
-					const detail =
-						recovery?.detail ||
-						`Error: failed-stage report for '${stageLabel}' could NOT be committed — HEAD is on another branch (${commitErr?.actualBranch || "unknown"}) and recovery was not attempted. Expected branch: '${branch}'. No commit was made on any branch.`;
-					try {
-						if (Array.isArray(task.history)) {
-							task.history.push({
-								timestamp: new Date().toISOString(),
-								action: detail,
-							});
-						}
-					} catch {
-						// History is audit-only; routing continues regardless.
-					}
-					try {
-						_appendProcessLog(task, `[ERROR] ${detail}`);
-					} catch {
-						// Process log is audit-only; routing continues regardless.
-					}
-					return null;
-				}
+			if (!isBranchMismatch) {
+				// Historical warn-only skip for every non-branch commit failure
+				// (e.g. a hook rejection): no recovery is attempted.
+				_recordTaskHistory(
+					task,
+					`Warning: failed-stage auto-commit after '${stageLabel}' skipped (${commitErr?.message || commitErr})`,
+				);
+				return null;
+			}
+			// HEAD contention: a concurrent task moved the shared checkout
+			// onto a sibling branch. Re-establish the owning branch and
+			// retry the commit exactly once — failing closed into an
+			// actionable error entry when recovery is not provably safe.
+			// The guard is never weakened: no commit lands on a sibling.
+			let recovery = null;
+			try {
+				recovery = await _recoverFailedStageCommitAfterHeadMove({
+					task,
+					execCwd,
+					branch,
+					subject,
+					stageLabel,
+					commitOpts: { noCode: opts.noCode === true, project },
+					mismatch: commitErr,
+				});
+			} catch {
+				recovery = null;
+			}
+			if (recovery && recovery.commitRes) {
+				commitRes = recovery.commitRes;
+				recoveryNote = recovery.note || null;
 			} else {
-				try {
-					if (Array.isArray(task.history)) {
-						task.history.push({
-							timestamp: new Date().toISOString(),
-							action: `Warning: failed-stage auto-commit after '${stageLabel}' skipped (${commitErr?.message || commitErr})`,
-						});
-					}
-				} catch {
-					// History is audit-only; routing continues regardless.
-				}
+				const detail =
+					recovery?.detail ||
+					_formatFailedStageCommitUnrecoverable({
+						stageLabel,
+						branch,
+						actualBranch: commitErr?.actualBranch || null,
+						reason:
+							"the HEAD-contention recovery failed unexpectedly before any retry",
+						reportPaths: [],
+						execCwd,
+					});
+				_recordTaskHistory(task, detail);
+				_appendProcessLogSafely(task, `[ERROR] ${detail}`);
 				return null;
 			}
 		}
 		if (commitRes?.committed === true) {
+			_recordTaskHistory(
+				task,
+				`Auto-committed partial work on '${branch}' (${commitRes?.hash || "no hash"}) after failed stage '${stageLabel}'`,
+			);
+			_appendProcessLogSafely(
+				task,
+				`[GIT] Auto-committed partial work on '${branch}' after failed stage '${stageLabel}'`,
+			);
+			// Bound the failed attempt's range: the retry starts after
+			// this commit, so the failed stage keeps its own diff.
 			try {
-				if (Array.isArray(task.history)) {
-					task.history.push({
-						timestamp: new Date().toISOString(),
-						action: `Auto-committed partial work on '${branch}' (${commitRes?.hash || "no hash"}) after failed stage '${stageLabel}'`,
-					});
-				}
-				_appendProcessLog(
-					task,
-					`[GIT] Auto-committed partial work on '${branch}' after failed stage '${stageLabel}'`,
-				);
-				// Bound the failed attempt's range: the retry starts after
-				// this commit, so the failed stage keeps its own diff.
-				try {
-					task.currentStageEndSha = await resolveSha(execCwd, "HEAD");
-				} catch {
-					task.currentStageEndSha = commitRes?.hash || task.currentStageEndSha || null;
-				}
+				task.currentStageEndSha = await resolveSha(execCwd, "HEAD");
 			} catch {
-				// Audit writes never block failure routing.
+				task.currentStageEndSha = commitRes?.hash || task.currentStageEndSha || null;
 			}
 			// HEAD-contention recovery succeeded: leave the short note so the
 			// race that moved HEAD stays visible in the task history.
 			if (recoveryNote) {
-				try {
-					if (Array.isArray(task.history)) {
-						task.history.push({
-							timestamp: new Date().toISOString(),
-							action: recoveryNote,
-						});
-					}
-					_appendProcessLog(task, `[GIT] ${recoveryNote}`);
-				} catch {
-					// Audit writes never block failure routing.
-				}
+				_recordTaskHistory(task, recoveryNote);
+				_appendProcessLogSafely(task, `[GIT] ${recoveryNote}`);
 			}
 			// File operations end pushed: publish the failed attempt's commit
 			// now, so the retry (or a second writer after a restart) merges
@@ -920,32 +935,20 @@ export async function commitFailedStageWork(taskStore, task, projectCwd, opts = 
 			try {
 				const pushRes = await pushBranchIfRemote(execCwd, branch);
 				if (pushRes?.pushed === true) {
-					try {
-						if (Array.isArray(task.history)) {
-							task.history.push({
-								timestamp: new Date().toISOString(),
-								action: `Pushed '${branch}' to remote after failed stage '${stageLabel}'`,
-							});
-						}
-					} catch {
-						// Audit writes never block failure routing.
-					}
-					_appendProcessLog(
+					_recordTaskHistory(
+						task,
+						`Pushed '${branch}' to remote after failed stage '${stageLabel}'`,
+					);
+					_appendProcessLogSafely(
 						task,
 						`[GIT] Pushed '${branch}' to remote after failed stage '${stageLabel}'`,
 					);
 				}
 			} catch (pushErr) {
-				try {
-					if (Array.isArray(task.history)) {
-						task.history.push({
-							timestamp: new Date().toISOString(),
-							action: `Warning: push of '${branch}' after failed stage '${stageLabel}' failed (${pushErr?.message || pushErr}) — retry still proceeds`,
-						});
-					}
-				} catch {
-					// Audit writes never block failure routing.
-				}
+				_recordTaskHistory(
+					task,
+					`Warning: push of '${branch}' after failed stage '${stageLabel}' failed (${pushErr?.message || pushErr}) — retry still proceeds`,
+				);
 			}
 		}
 		return commitRes;

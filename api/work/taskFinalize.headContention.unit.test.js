@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mocks = vi.hoisted(() => ({
 	commitAllIfNeeded: vi.fn(),
 	checkoutBranch: vi.fn(),
+	getWorkingTreeStatus: vi.fn(),
 	state: {
 		head: "kb/sibling",
 		branchExists: true,
@@ -22,7 +23,7 @@ vi.mock("../git.js", async (importOriginal) => {
 		checkoutBranch: (...args) => mocks.checkoutBranch(...args),
 		currentBranch: async () => mocks.state.head,
 		branchExists: async () => mocks.state.branchExists,
-		getWorkingTreeStatus: async () => mocks.state.status,
+		getWorkingTreeStatus: (...args) => mocks.getWorkingTreeStatus(...args),
 		pushBranchIfRemote: async () => ({ pushed: false, skipped: "no-remote" }),
 		resolveSha: async () => "abc123def456",
 	};
@@ -53,6 +54,8 @@ const mismatch = () =>
 beforeEach(() => {
 	mocks.commitAllIfNeeded.mockReset();
 	mocks.checkoutBranch.mockReset();
+	mocks.getWorkingTreeStatus.mockReset();
+	mocks.getWorkingTreeStatus.mockImplementation(async () => mocks.state.status);
 	mocks.state.head = "kb/sibling";
 	mocks.state.branchExists = true;
 	mocks.state.status = {
@@ -225,6 +228,108 @@ describe("commitFailedStageWork HEAD-contention recovery (mocked git)", () => {
 			h.action.startsWith("Error: failed-stage report"),
 		);
 		expect(errEntry.action).toContain("re-establishing the owning branch");
+		expect(errEntry.action).toContain("No commit was made on any branch");
+	});
+
+	it("fails closed when HEAD is still on the sibling after the recovery checkout (race still live)", async () => {
+		mocks.commitAllIfNeeded.mockRejectedValue(mismatch());
+		// The checkout "succeeds" but a concurrent task moved HEAD again
+		// before the switch landed, so HEAD is still on the sibling.
+		mocks.checkoutBranch.mockResolvedValueOnce({ switched: true });
+		const task = fakeTask();
+
+		const res = await commitFailedStageWork(fakeStore(), task, "/repo", {
+			stageName: "Dev",
+		});
+
+		expect(res).toBeNull();
+		// No retry: the post-switch re-verify fails closed first.
+		expect(mocks.commitAllIfNeeded).toHaveBeenCalledTimes(1);
+		expect(mocks.checkoutBranch).toHaveBeenCalledTimes(1);
+		const errEntry = task.history.find((h) =>
+			h.action.startsWith("Error: failed-stage report"),
+		);
+		expect(errEntry).toBeTruthy();
+		expect(errEntry.action).toContain("race is still live");
+		expect(errEntry.action).toContain("kb/sibling");
+		expect(errEntry.action).toContain("No commit was made on any branch");
+	});
+
+	it("fails closed when foreign dirt appears between the pre-checkout and post-checkout reads", async () => {
+		mocks.commitAllIfNeeded.mockRejectedValue(mismatch());
+		let statusReads = 0;
+		mocks.getWorkingTreeStatus.mockImplementation(async () => {
+			statusReads += 1;
+			if (statusReads <= 1) {
+				// Pre-checkout read: only the task's own report dirt.
+				return { clean: false, dirtyPaths: ["docs/tasks/t1/report-failure.md"] };
+			}
+			// Post-checkout read: a sibling's work appeared mid-recovery.
+			return {
+				clean: false,
+				dirtyPaths: ["docs/tasks/t1/report-failure.md", "docs/tasks/sibling/x.md"],
+			};
+		});
+		mocks.checkoutBranch.mockImplementation(async () => {
+			mocks.state.head = "kb/t1";
+			return { switched: true };
+		});
+		const task = fakeTask();
+
+		const res = await commitFailedStageWork(fakeStore(), task, "/repo", {
+			stageName: "Dev",
+		});
+
+		expect(res).toBeNull();
+		// No retry: the post-switch foreign-dirt check fails closed first.
+		expect(mocks.commitAllIfNeeded).toHaveBeenCalledTimes(1);
+		const errEntry = task.history.find((h) =>
+			h.action.startsWith("Error: failed-stage report"),
+		);
+		expect(errEntry).toBeTruthy();
+		expect(errEntry.action).toContain("docs/tasks/sibling/x.md");
+		expect(errEntry.action).toContain("during the recovery checkout");
+		expect(errEntry.action).toContain("No commit was made on any branch");
+	});
+
+	it("fails closed when the working-tree status cannot be read at all", async () => {
+		mocks.commitAllIfNeeded.mockRejectedValue(mismatch());
+		mocks.getWorkingTreeStatus.mockRejectedValue(new Error("git status exploded"));
+		const task = fakeTask();
+
+		const res = await commitFailedStageWork(fakeStore(), task, "/repo", {
+			stageName: "Dev",
+		});
+
+		expect(res).toBeNull();
+		expect(mocks.commitAllIfNeeded).toHaveBeenCalledTimes(1);
+		expect(mocks.checkoutBranch).not.toHaveBeenCalled();
+		const errEntry = task.history.find((h) =>
+			h.action.startsWith("Error: failed-stage report"),
+		);
+		expect(errEntry).toBeTruthy();
+		expect(errEntry.action).toContain("could not be read");
+		expect(errEntry.action).toContain("No commit was made on any branch");
+	});
+
+	it("fails closed for a task without an id: report dirt is not provably its own", async () => {
+		mocks.commitAllIfNeeded.mockRejectedValue(mismatch());
+		// A pathological task carrying a branch but no id must not get the
+		// whole docs/tasks/ tree classified as "own".
+		const task = { id: "", projectId: "proj-1", history: [], branch: "kb/t1" };
+
+		const res = await commitFailedStageWork(fakeStore(), task, "/repo", {
+			stageName: "Dev",
+		});
+
+		expect(res).toBeNull();
+		expect(mocks.commitAllIfNeeded).toHaveBeenCalledTimes(1);
+		expect(mocks.checkoutBranch).not.toHaveBeenCalled();
+		const errEntry = task.history.find((h) =>
+			h.action.startsWith("Error: failed-stage report"),
+		);
+		expect(errEntry).toBeTruthy();
+		expect(errEntry.action).toContain("docs/tasks/t1/report-failure.md");
 		expect(errEntry.action).toContain("No commit was made on any branch");
 	});
 });

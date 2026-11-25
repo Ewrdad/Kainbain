@@ -130,8 +130,10 @@ export async function assertBranchAffinity(projectCwd, expectedBranch) {
  * @param {string} [opts.expectedBranch] - Branch affinity guard: when set,
  *   the commit is refused with a GitBranchMismatchError unless the working
  *   tree is checked out on exactly this branch (see assertBranchAffinity —
- *   the guard is fail-closed and never bypassed). Opt-in so interactive and
- *   legacy callers keep the historical permissive behaviour.
+ *   the guard is fail-closed and never bypassed). The guard runs BEFORE any
+ *   working-tree mutation (including the no-code erase), so a refusal never
+ *   leaves a partially-mutated alien branch behind. Opt-in so interactive
+ *   and legacy callers keep the historical permissive behaviour.
  * @returns {Promise<{committed: boolean, hash: string|null}>}
  * @throws {GitBranchMismatchError} When `opts.expectedBranch` is set and the
  *   tree is on a different branch (the caller's files must not be committed
@@ -144,10 +146,23 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 		return { committed: false, hash: null };
 	if (!(await hasCommits(projectCwd))) return { committed: false, hash: null };
 
+	// Branch affinity guard (opt-in) runs BEFORE any working-tree mutation:
+	// never stage, commit, or even erase (no-code) while a concurrent task has
+	// moved the shared checkout off the branch this caller owns — the no-code
+	// erase below would otherwise discard a sibling task's in-flight non-doc
+	// work on that alien branch before the refusal fires. A failed branch
+	// read is treated as a mismatch (fail closed) so an unreadable HEAD can
+	// never silently accept an alien commit.
+	if (opts.expectedBranch) {
+		await assertBranchAffinity(projectCwd, opts.expectedBranch);
+	}
+
 	// No-code enforcement: if enabled, erase any changes outside the docs
 	// directory before staging, so code edits cannot leak into the commit.
 	// Stage only the docs directory afterwards as a second line of defence,
 	// so a failed erase can never sneak non-doc paths into the commit.
+	// Only reached once the affinity guard has proven we are on our own
+	// branch, so the erase can never touch a sibling task's tree.
 	const isNoCodeStage = opts?.noCode === true;
 	let noCodeDocsDir = null;
 	if (isNoCodeStage) {
@@ -159,14 +174,6 @@ export async function commitAllIfNeeded(projectCwd, message, opts = {}) {
 		}
 		noCodeDocsDir = resolveDocsDirName(projectHint);
 		await discardChangesOutsideDocs(projectCwd, noCodeDocsDir);
-	}
-
-	// Branch affinity guard (opt-in): never stage/commit when a concurrent
-	// task has moved the shared checkout off the branch this caller owns.
-	// A failed branch read is treated as a mismatch (fail closed) so an
-	// unreadable HEAD can never silently accept an alien commit.
-	if (opts.expectedBranch) {
-		await assertBranchAffinity(projectCwd, opts.expectedBranch);
 	}
 
 	const status = await getWorkingTreeStatus(projectCwd, { ignorePaths: [] });

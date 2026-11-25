@@ -291,6 +291,67 @@ describe("commitAllIfNeeded", () => {
 		expect(calls.some((a) => a[0] === "commit")).toBe(false);
 	});
 
+	it("runs the branch-affinity guard BEFORE any no-code tree mutation on mismatch", async () => {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {
+				return fakeChildFromResponse({ stdout: "kb/sibling\n" });
+			}
+			if (args[0] === "status") {
+				return fakeChildFromResponse({ stdout: " M src/app.js\n?? notes.txt\n" });
+			}
+			return fakeChildFromResponse({ stdout: "" });
+		});
+		await expect(
+			commitAllIfNeeded("/repo", "msg", {
+				expectedBranch: "kb/mine",
+				noCode: true,
+			}),
+		).rejects.toMatchObject({
+			name: "GitBranchMismatchError",
+			expectedBranch: "kb/mine",
+			actualBranch: "kb/sibling",
+		});
+		// The no-code erase (status/reset/checkout/clean) must NOT have run on
+		// the sibling branch — the guard refuses before touching the tree.
+		const mutating = calls.filter((a) =>
+			["add", "commit", "reset", "clean", "checkout"].includes(a[0]),
+		);
+		expect(mutating).toEqual([]);
+		// Even the status scan of the erase is skipped: the guard runs first.
+		expect(calls.some((a) => a[0] === "status")).toBe(false);
+	});
+
+	it("still runs the no-code erase once the guard has proven the owning branch", async () => {
+		const calls = [];
+		spawnMock.mockImplementation((cmd, args) => {
+			calls.push([...args]);
+			if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {
+				return fakeChildFromResponse({ stdout: "kb/mine\n" });
+			}
+			if (args[0] === "status") {
+				// First status (erase scan) sees non-doc dirt; the post-guard
+				// status sees a clean tree so the commit no-ops.
+				return fakeChildFromResponse({ stdout: calls.some((c) => c[0] === "clean") ? "" : " M src/app.js\n" });
+			}
+			if (args[0] === "add") return fakeChildFromResponse({ stdout: "" });
+			if (args[0] === "commit") {
+				return fakeChildFromResponse({ stdout: "[kb/mine abc] msg" });
+			}
+			return fakeChildFromResponse({ stdout: "abc1234" });
+		});
+		const res = await commitAllIfNeeded("/repo", "msg", {
+			expectedBranch: "kb/mine",
+			noCode: true,
+		});
+		// Guard passed, erase ran (clean attempted on the non-doc dirt)…
+		expect(calls.some((a) => a[0] === "clean")).toBe(true);
+		expect(calls.some((a) => a[0] === "reset")).toBe(true);
+		// …and the commit path still ran (tree clean afterwards → no-op).
+		expect(res.committed).toBe(false);
+	});
+
 	it("stays permissive when no expectedBranch is provided", async () => {
 		const calls = [];
 		spawnMock.mockImplementation((cmd, args) => {

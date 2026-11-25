@@ -73,3 +73,27 @@ criteria remain as in IMPLEMENTATION_PLAN.md §4.
 2. `commitFailedStageWork` still never throws and never blocks failure
    routing (`routeStageError.js`, `commandStages.js` unchanged).
 3. Success-path auto-commit behaviour unchanged (T7).
+
+## Cleanup stage (hardening pass)
+
+Fail-safe holes found and closed while reviewing the recovery path:
+
+| Change | Why |
+|---|---|
+| `commitAllIfNeeded` now runs the branch-affinity guard BEFORE the no-code erase (`api/git/commit.js`) | Previously a `noCode` stage under HEAD contention erased the sibling branch's non-doc in-flight work (`discardChangesOutsideDocs`) and only THEN refused on the mismatch. The guard now refuses before any working-tree mutation, so a refusal never leaves a partially-mutated alien branch. Behaviour is byte-identical when branches match (guard passes, erase runs). Pinned by two new mocked tests asserting no `status`/`reset`/`clean`/`checkout`/`add`/`commit` runs on mismatch with `noCode: true`. |
+| `_failedStageOwnPathPrefixes` fails closed without a task id (`api/work/taskFinalize.js`) | An id-less task used to claim the whole `docs/tasks/` tree as "own", which would have let a sibling's report dirt ride the recovery checkout. Now only the state dir counts as own. |
+| `_recordTaskHistory` / `_appendProcessLogSafely` helpers replace the repeated try/catch audit blocks in `commitFailedStageWork` | One place owns the "audit writes never block failure routing" contract; the unexpected-recovery-failure fallback now reuses `_formatFailedStageCommitUnrecoverable` instead of a divergent inline string. The dead `typeof commitAllIfNeeded === "function"` ternary is gone (the import is always a function). |
+| Recovery reads full status (`ignorePaths: []`, no dead `project` key) | Every dirty path is visible to the foreign-dirt check, including other tasks' `docs/tasks/<id>/` reports. |
+
+New tests: T2b (integration — sibling report dirt under `docs/tasks/<sibling>/`
+fails closed, no commit anywhere), post-switch HEAD-still-on-sibling ("race
+is still live"), foreign dirt appearing between the two status reads,
+unreadable status, id-less task fail-closed (unit), and the two guard-ordering
+tests in `api/git/commit.test.js`.
+
+Continuation of operations: after a successful recovery the shared checkout
+is left on the FAILED task's owning branch (where its report now lives).
+That is safe for continuation — the next pickup re-establishes its own
+branch via `ensureTaskBranch`/`ensureBranchCheckedOut` (default-first hop in
+`api/work/taskBranches.js`), and a stage retry of the same task is a no-op
+checkout. On the unrecoverable path HEAD is never moved at all.
