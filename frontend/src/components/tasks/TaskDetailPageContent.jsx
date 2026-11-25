@@ -1,7 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useParams } from 'react-router';
 
 import { useKainBain } from '../../context/KainBainContext';
+import { useFeedbackAssets } from '../../hooks/useFeedbackAssets';
+import { FeedbackValidationDialog } from '../feedback/FeedbackValidationDialog';
+import { parseFeedbackValidationError } from '../../services/feedbackValidation';
+import { appendImagesMarkdown } from '../../services/taskImages';
+import {
+  MIN_FEEDBACK_PROSE_CHARS,
+  formatFeedbackValidationError,
+  stripAssetRefs,
+  validateHumanFeedback,
+} from '../../../../shared/feedbackValidation/index.js';
 import {
   buildDisplayTimeline,
   formatBlockerKeys,
@@ -375,6 +385,33 @@ export function TaskDetailPage({ task: propTask, onBack }) {
   const [interventionText, setInterventionText] = useState('');
   const [approvalGuidance, setApprovalGuidance] = useState('');
   const [showApprovalGuidance, setShowApprovalGuidance] = useState(false);
+  // Open blocking dialog (`{ missing, imageOnly }`) when the intervention
+  // draft fails submit-time validation; `pendingInterventionSend` remembers
+  // which action resumes after recovery ('follow-up' | 'steer').
+  const [interventionBlock, setInterventionBlock] = useState(null);
+  const [pendingInterventionSend, setPendingInterventionSend] = useState(null);
+  const interventionTextareaRef = useRef(null);
+
+  // Advisory-instant attachment list for the intervention pre-check; the
+  // server re-validates authoritatively.
+  const {
+    names: attachedNames,
+    available: assetsAvailable,
+    refresh: refreshAttached,
+  } = useFeedbackAssets(activeProjectId, task?.id);
+
+  // Latest-draft mirror: upload batches land seconds after their gesture.
+  const latestInterventionRef = useRef(interventionText);
+  useEffect(() => {
+    latestInterventionRef.current = interventionText;
+  }, [interventionText]);
+
+  // Live pre-check as the draft changes: advisory inline (the send attempt
+  // opens the blocking dialog, never a silent disable).
+  const liveInterventionDecision =
+    assetsAvailable && interventionText.trim()
+      ? validateHumanFeedback(interventionText, attachedNames)
+      : null;
 
   // Label for the goal section's Manual Save button, mirroring the
   // single-flight save action state (in-flight confirmation saved).
@@ -406,24 +443,91 @@ export function TaskDetailPage({ task: propTask, onBack }) {
     }
   };
 
-  const handleSendFollowUp = () => {
-    if (!interventionText.trim() || isIntervening) return;
-    runTaskAction('follow-up', async () => {
-      await followUpTask?.(activeProjectId, task.id, interventionText);
+  const doSendIntervention = (kind, text) => {
+    // The mutation stays inside the single-flight guard so a fast
+    // double-click can never send the intervention twice.
+    runTaskAction(kind, async () => {
+      if (kind === 'steer') {
+        await steerTask?.(activeProjectId, task.id, text);
+      } else {
+        await followUpTask?.(activeProjectId, task.id, text);
+      }
       setInterventionText('');
-    }).catch(() => {
-      // Handled by feedback layer
+    }).catch((err) => {
+      // A 422 re-opens the recovery dialog with the server-authoritative
+      // file list; every other failure keeps today's handling.
+      const serverBlock = parseFeedbackValidationError(err);
+      if (serverBlock) {
+        setPendingInterventionSend(kind);
+        refreshAttached();
+        setInterventionBlock(serverBlock);
+      }
     });
   };
 
-  const handleSendSteering = () => {
+  const attemptInterventionSend = (kind) => {
     if (!interventionText.trim() || isIntervening) return;
-    runTaskAction('steer', async () => {
-      await steerTask?.(activeProjectId, task.id, interventionText);
-      setInterventionText('');
-    }).catch(() => {
-      // Handled by feedback layer
+    // Submit-time pre-check against a freshly listed set; a failed
+    // listing skips the check — the server guards.
+    refreshAttached().then(({ names: fresh, available }) => {
+      if (available) {
+        const decision = validateHumanFeedback(interventionText, fresh);
+        if (!decision.ok) {
+          setPendingInterventionSend(kind);
+          setInterventionBlock({ missing: decision.missing, imageOnly: decision.imageOnly });
+          return;
+        }
+      }
+      doSendIntervention(kind, interventionText);
     });
+  };
+
+  const handleSendFollowUp = () => {
+    attemptInterventionSend('follow-up');
+  };
+
+  const handleSendSteering = () => {
+    attemptInterventionSend('steer');
+  };
+
+  // Inline-upload recovery: the batch's refs join the draft and the
+  // pending send resumes automatically once the draft checks out.
+  const handleInterventionImagesUploadedBatch = (images) => {
+    if (!Array.isArray(images) || images.length === 0) return;
+    const next = appendImagesMarkdown(latestInterventionRef.current, images);
+    setInterventionText(next);
+    if (!interventionBlock || !pendingInterventionSend) {
+      refreshAttached();
+      return;
+    }
+    refreshAttached().then(({ names: fresh, available }) => {
+      if (!available) return;
+      const decision = validateHumanFeedback(next, fresh);
+      if (decision.ok) {
+        const kind = pendingInterventionSend;
+        setInterventionBlock(null);
+        setPendingInterventionSend(null);
+        doSendIntervention(kind, next.trim());
+      } else {
+        setInterventionBlock({ missing: decision.missing, imageOnly: decision.imageOnly });
+      }
+    });
+  };
+
+  const handleInterventionStripToTextOnly = () => {
+    const stripped = stripAssetRefs(
+      latestInterventionRef.current,
+      interventionBlock?.missing || [],
+    ).trim();
+    const kind = pendingInterventionSend;
+    setInterventionBlock(null);
+    setPendingInterventionSend(null);
+    if (!stripped || !kind) {
+      interventionTextareaRef.current?.focus();
+      return;
+    }
+    setInterventionText(stripped);
+    doSendIntervention(kind, stripped);
   };
 
   const handlePauseTask = () => {
@@ -1190,12 +1294,21 @@ export function TaskDetailPage({ task: propTask, onBack }) {
 
                 <div className="space-y-2">
                   <textarea
+                    ref={interventionTextareaRef}
                     value={interventionText}
                     onChange={(e) => setInterventionText(e.target.value)}
                     placeholder="Type follow-up prompt or steering instruction..."
                     rows={3}
                     className="w-full bg-surface-deep border border-border-standard rounded p-2.5 text-xs font-mono text-on-surface focus:outline-none focus:border-primary resize-y min-h-[64px]"
                   />
+                  {liveInterventionDecision && !liveInterventionDecision.ok && (
+                    <p
+                      className="text-[10px] font-mono text-warning"
+                      data-testid="intervention-live-warning"
+                    >
+                      {formatFeedbackValidationError(liveInterventionDecision)}
+                    </p>
+                  )}
                   <div className="flex items-center justify-end gap-2">
                     <button
                       type="button"
@@ -1215,6 +1328,23 @@ export function TaskDetailPage({ task: propTask, onBack }) {
                     </button>
                   </div>
                 </div>
+                {interventionBlock && (
+                  <FeedbackValidationDialog
+                    missing={interventionBlock.missing}
+                    imageOnly={interventionBlock.imageOnly}
+                    minProseChars={MIN_FEEDBACK_PROSE_CHARS}
+                    projectId={activeProjectId}
+                    taskId={task?.id}
+                    textareaRef={interventionTextareaRef}
+                    onUploadedBatch={handleInterventionImagesUploadedBatch}
+                    onStripToTextOnly={handleInterventionStripToTextOnly}
+                    canStrip={interventionBlock.missing.length > 0}
+                    onClose={() => {
+                      setInterventionBlock(null);
+                      setPendingInterventionSend(null);
+                    }}
+                  />
+                )}
               </section>
             )}
 

@@ -72,6 +72,8 @@ export function ReportReadableView({
       {fileLevel.map(renderThread)}
       {composer === 'file' && (
         <ReviewCommentComposer
+          projectId={activeProject?.id}
+          taskId={taskId}
           // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
           autoFocus
           label={`Comment on report ${reportPath}`}
@@ -208,6 +210,8 @@ export function ReportReadableView({
                 {showComposer && (
                   <div className="mt-1 w-full min-w-0 max-w-full overflow-hidden">
                     <ReviewCommentComposer
+                      projectId={activeProject?.id}
+                      taskId={taskId}
                       // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
                       autoFocus
                       label={`Comment on ${kind}, ${lineRef}`}

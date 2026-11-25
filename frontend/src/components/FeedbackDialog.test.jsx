@@ -38,7 +38,7 @@ test('renders the task and feedback textarea', () => {
   expect(screen.getByPlaceholderText(/unit tests/i)).toBeInTheDocument();
 });
 
-test('submitting feedback calls rejectTaskWithFeedback', () => {
+test('submitting feedback calls rejectTaskWithFeedback', async () => {
   const rejectTaskWithFeedback = vi.fn();
   renderWithKainBain(<FeedbackDialog />, {
     feedbackTask: task,
@@ -49,7 +49,10 @@ test('submitting feedback calls rejectTaskWithFeedback', () => {
     target: { value: 'Please add tests.' },
   });
   fireEvent.click(screen.getByText('Reject & Retry'));
-  expect(rejectTaskWithFeedback).toHaveBeenCalledWith('proj-1', 'task-1', 'Please add tests.');
+  // The submit awaits one fresh attachment listing for its pre-check.
+  await waitFor(() => {
+    expect(rejectTaskWithFeedback).toHaveBeenCalledWith('proj-1', 'task-1', 'Please add tests.');
+  });
 });
 
 test('does not submit empty feedback', () => {
@@ -85,8 +88,10 @@ test('shows a loading state and disables the submit button while rejecting', asy
   fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
 
   // While the backend has not yet responded the button is disabled and the
-  // dialog shows the in-flight loading state.
-  expect(rejectTaskWithFeedback).toHaveBeenCalledWith('proj-1', 'task-1', 'Please add tests.');
+  // dialog shows the in-flight loading state (after the pre-check listing).
+  await waitFor(() => {
+    expect(rejectTaskWithFeedback).toHaveBeenCalledWith('proj-1', 'task-1', 'Please add tests.');
+  });
   const rejectingButton = screen.getByRole('button', { name: /Rejecting\.\.\./i });
   expect(rejectingButton).toBeDisabled();
   expect(rejectingButton).toHaveAttribute('aria-busy', 'true');
@@ -145,6 +150,10 @@ const pngFile = (name = 'shot.png') =>
 
 test('attaching an image appends its markdown ref to the submitted feedback', async () => {
   const rejectTaskWithFeedback = vi.fn().mockResolvedValue({});
+  // The server lists what was uploaded, so the pre-check passes on submit.
+  api.listTaskImages.mockResolvedValue({
+    images: [{ name: 'shot.png', path: 'assets/shot.png', size: 3 }],
+  });
   api.uploadTaskImage.mockResolvedValue({ name: 'shot.png', path: 'assets/shot.png' });
   const { container } = renderWithKainBain(<FeedbackDialog />, {
     feedbackTask: task,
@@ -338,4 +347,198 @@ test('keeps the dialog open with the draft intact when rejecting fails', async (
   });
   expect(screen.getByText('Reject with Feedback')).toBeInTheDocument();
   expect(screen.getByPlaceholderText(/unit tests/i).value).toBe('Please add tests.');
+});
+
+/**
+ * MARK: FeedbackDialog submit-time validation tests
+ * @description Dangling `assets/*` refs and image-only drafts block with a
+ *   recovery dialog naming the file; attach-inline resumes the send and
+ *   words-only strips the dead refs; a server 422 re-opens the same dialog.
+ */
+const validationError = (missing, imageOnly) => {
+  const err = new Error(
+    `API 422 on /tasks/task-1/reject: ${JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing,
+      imageOnly,
+    })}`,
+  );
+  err.status = 422;
+  err.body = JSON.stringify({
+    code: 'FEEDBACK_VALIDATION_FAILED',
+    missing,
+    imageOnly,
+  });
+  return err;
+};
+
+test('blocks a dangling ref submit and names the file', async () => {
+  const rejectTaskWithFeedback = vi.fn().mockResolvedValue({});
+  renderWithKainBain(<FeedbackDialog />, {
+    feedbackTask: task,
+    activeProjectId: 'proj-1',
+    rejectTaskWithFeedback,
+  });
+  fireEvent.change(screen.getByPlaceholderText(/unit tests/i), {
+    target: { value: 'See ![gone](assets/gone.png) please take a look' },
+  });
+  // Live advisory warning names the file as the draft changes.
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-live-warning')).toHaveTextContent('assets/gone.png');
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+  });
+  expect(screen.getByText('assets/gone.png')).toBeInTheDocument();
+  expect(rejectTaskWithFeedback).not.toHaveBeenCalled();
+});
+
+test('blocks image-only feedback until a note is added', async () => {
+  const rejectTaskWithFeedback = vi.fn().mockResolvedValue({});
+  api.listTaskImages.mockResolvedValue({
+    images: [{ name: 'a.png', path: 'assets/a.png' }],
+  });
+  renderWithKainBain(<FeedbackDialog />, {
+    feedbackTask: task,
+    activeProjectId: 'proj-1',
+    rejectTaskWithFeedback,
+  });
+  const textarea = screen.getByPlaceholderText(/unit tests/i);
+  fireEvent.change(textarea, { target: { value: '![a](assets/a.png)' } });
+  fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+  });
+  expect(rejectTaskWithFeedback).not.toHaveBeenCalled();
+  // Back to editing, add the note, and the same submit goes through.
+  fireEvent.click(screen.getByText('Back to editing'));
+  await waitFor(() => {
+    expect(screen.queryByTestId('feedback-validation-dialog')).not.toBeInTheDocument();
+  });
+  fireEvent.change(textarea, { target: { value: 'Broken on save — see ![a](assets/a.png)' } });
+  fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
+  await waitFor(() => {
+    expect(rejectTaskWithFeedback).toHaveBeenCalledWith(
+      'proj-1',
+      'task-1',
+      'Broken on save — see ![a](assets/a.png)',
+    );
+  });
+});
+
+test('send words-only strips the dangling refs and submits the prose', async () => {
+  const rejectTaskWithFeedback = vi.fn().mockResolvedValue({});
+  renderWithKainBain(<FeedbackDialog />, {
+    feedbackTask: task,
+    activeProjectId: 'proj-1',
+    rejectTaskWithFeedback,
+  });
+  fireEvent.change(screen.getByPlaceholderText(/unit tests/i), {
+    target: { value: 'See ![gone](assets/gone.png) please take a look' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+  });
+  fireEvent.click(screen.getByText('Send words-only'));
+  await waitFor(() => {
+    expect(rejectTaskWithFeedback).toHaveBeenCalledWith(
+      'proj-1',
+      'task-1',
+      'See please take a look',
+    );
+  });
+});
+
+test('attaching the missing file inline resumes the send automatically', async () => {
+  const rejectTaskWithFeedback = vi.fn().mockResolvedValue({});
+  api.uploadTaskImage.mockResolvedValue({ name: 'gone.png', path: 'assets/gone.png' });
+  const { container } = renderWithKainBain(<FeedbackDialog />, {
+    feedbackTask: task,
+    activeProjectId: 'proj-1',
+    rejectTaskWithFeedback,
+  });
+  fireEvent.change(screen.getByPlaceholderText(/unit tests/i), {
+    target: { value: 'See the problem please take a look ![gone](assets/gone.png)' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+  });
+  // The upload lands and the re-listed set now carries the file: the dialog
+  // closes and the original send resumes without another click.
+  api.listTaskImages.mockResolvedValue({
+    images: [{ name: 'gone.png', path: 'assets/gone.png' }],
+  });
+  const dialogInput = screen
+    .getByTestId('feedback-validation-dialog')
+    .querySelector('[data-testid="task-image-input"]');
+  expect(dialogInput).toBeInTheDocument();
+  await act(async () => {
+    fireEvent.change(dialogInput, { target: { files: [pngFile('gone.png')] } });
+  });
+  await waitFor(() => {
+    expect(rejectTaskWithFeedback).toHaveBeenCalledTimes(1);
+  });
+  expect(rejectTaskWithFeedback.mock.calls[0][2]).toContain('assets/gone.png');
+  expect(container.querySelector('[data-testid="feedback-validation-dialog"]')).toBe(null);
+});
+
+test('a server 422 re-opens the dialog with the server-named files', async () => {
+  const rejectTaskWithFeedback = vi
+    .fn()
+    .mockRejectedValueOnce(
+      validationError(
+        [{ ref: 'assets/server-gone.png', name: 'server-gone.png' }],
+        false,
+      ),
+    )
+    .mockResolvedValue({});
+  // Client list is stale-fresh (file present); the server disagrees.
+  api.listTaskImages.mockResolvedValue({
+    images: [{ name: 'server-gone.png', path: 'assets/server-gone.png' }],
+  });
+  renderWithKainBain(<FeedbackDialog />, {
+    feedbackTask: task,
+    activeProjectId: 'proj-1',
+    rejectTaskWithFeedback,
+  });
+  fireEvent.change(screen.getByPlaceholderText(/unit tests/i), {
+    target: { value: 'See ![x](assets/server-gone.png) please take a look' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+  });
+  expect(screen.getByText('assets/server-gone.png')).toBeInTheDocument();
+  // Words-only recovery against the server-named file sends the prose.
+  api.listTaskImages.mockResolvedValue({ images: [] });
+  fireEvent.click(screen.getByText('Send words-only'));
+  await waitFor(() => {
+    expect(rejectTaskWithFeedback).toHaveBeenCalledTimes(2);
+  });
+  expect(rejectTaskWithFeedback.mock.calls[1][2]).toBe('See please take a look');
+});
+
+test('healthy drafts submit unchanged (no dialog, no extra friction)', async () => {
+  const rejectTaskWithFeedback = vi.fn().mockResolvedValue({});
+  renderWithKainBain(<FeedbackDialog />, {
+    feedbackTask: task,
+    activeProjectId: 'proj-1',
+    rejectTaskWithFeedback,
+  });
+  fireEvent.change(screen.getByPlaceholderText(/unit tests/i), {
+    target: { value: 'Please add tests for the retry path.' },
+  });
+  expect(screen.queryByTestId('feedback-live-warning')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Reject & Retry/i }));
+  await waitFor(() => {
+    expect(rejectTaskWithFeedback).toHaveBeenCalledWith(
+      'proj-1',
+      'task-1',
+      'Please add tests for the retry path.',
+    );
+  });
+  expect(screen.queryByTestId('feedback-validation-dialog')).not.toBeInTheDocument();
 });

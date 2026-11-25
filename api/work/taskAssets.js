@@ -9,10 +9,17 @@ import { resolveDocsDirName, resolveTasksDir } from "../docsPath.js";
 import {
 	extractAssetRefs,
 	normalizeAssetSrc,
+	IMAGE_EXTENSIONS,
+	isAllowedImageExt,
+	sanitizeImageName,
 } from "../../shared/taskAssetRefs/index.js";
 
-/** Allowed image file extensions (lowercase, without the dot). */
-export const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp"];
+// Single-owner re-export: the extension allowlist, the extension check, and
+// the filename sanitizer live in shared/taskAssetRefs (UI-safe, no node
+// builtins) so submit-time feedback validation classifies names exactly
+// like the upload endpoint and the serve route. Every existing importer
+// keeps working unchanged through this re-export.
+export { IMAGE_EXTENSIONS, isAllowedImageExt, sanitizeImageName };
 
 /** Content-Type served for each allowed image extension. */
 const IMAGE_MEDIA_TYPES = {
@@ -22,22 +29,6 @@ const IMAGE_MEDIA_TYPES = {
 	gif: "image/gif",
 	webp: "image/webp",
 };
-
-/** Maximum sanitized filename length (including extension). */
-const MAX_IMAGE_NAME_LENGTH = 120;
-
-/***
- * MARK: isAllowedImageExt
- * @description Whether a filename carries an allowed image extension (png/jpg/jpeg/gif/webp), case-insensitive.
- * @example isAllowedImageExt('photo.PNG') => true
- * @example isAllowedImageExt('payload.svg') => false
- * @param {string} filename
- * @returns {boolean}
- ***/
-export function isAllowedImageExt(filename) {
-	const ext = path.extname(String(filename || "")).replace(/^\./, "").toLowerCase();
-	return IMAGE_EXTENSIONS.includes(ext);
-}
 
 /***
  * MARK: imageMediaType
@@ -49,44 +40,6 @@ export function isAllowedImageExt(filename) {
 export function imageMediaType(filename) {
 	const ext = path.extname(String(filename || "")).replace(/^\./, "").toLowerCase();
 	return IMAGE_MEDIA_TYPES[ext] || null;
-}
-
-/***
- * MARK: sanitizeImageName
- * @description Reduces an uploaded filename to a safe, flat asset name: directory
- *   components (and any traversal payloads like `../../etc/passwd`) are stripped to
- *   the final segment, unsafe characters collapse to `-`, leading dots/separators are
- *   trimmed, and the result is lowercased and length-capped. Returns "" when nothing
- *   safe remains. Callers combine this with `isAllowedImageExt` before writing.
- * @example sanitizeImageName('../../etc/passwd.png') => 'passwd.png'
- * @example sanitizeImageName('My Screenshot (1).PNG') => 'my-screenshot-1.png'
- * @example sanitizeImageName('..') => ''
- * @param {string} rawName
- * @returns {string}
- ***/
-export function sanitizeImageName(rawName) {
-	if (!rawName || typeof rawName !== "string") return "";
-	// Normalize separators and keep only the final path segment: any traversal
-	// payload (`../`, `..\`, absolute paths) collapses to the bare filename.
-	const base = String(rawName).replace(/\\/g, "/").split("/").pop() || "";
-	let name = base
-		.normalize("NFKD")
-		.replace(/[^A-Za-z0-9._-]+/g, "-")
-		.toLowerCase();
-	// Split stem/extension so trimming and the length cap never eat the extension.
-	// A degenerate trailing dot ("trailing..") is not an extension: it must trim.
-	const rawExt = path.extname(name);
-	const ext = /^\.[A-Za-z0-9]+$/.test(rawExt) ? rawExt.toLowerCase() : "";
-	let stem = ext ? name.slice(0, name.length - rawExt.length) : name;
-	stem = stem
-		.replace(/-{2,}/g, "-")
-		.replace(/^[.-]+/, "")
-		.replace(/[.-]+$/g, "");
-	name = `${stem}${ext.toLowerCase()}`;
-	if (name.length > MAX_IMAGE_NAME_LENGTH) {
-		name = `${stem.slice(0, MAX_IMAGE_NAME_LENGTH - ext.length)}${ext.toLowerCase()}`;
-	}
-	return name;
 }
 
 /***

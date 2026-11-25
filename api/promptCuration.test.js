@@ -636,6 +636,37 @@ describe("Missing Task Assets prompt section", () => {
 		});
 	});
 
+	it("pins the legacy backstop: a dead ref minted before submit-time validation still warns byte-identically", () => {
+		// Legacy tasks never resubmit, so the curate-time warning is their
+		// only guard: a pre-existing rejection reason shaped exactly like
+		// the cf4b6847 case study (feedback literally just the image ref,
+		// bytes never uploaded) must render the identical warning block.
+		withTempCwd((tempCwd) => {
+			fs.mkdirSync(path.join(tempCwd, "docs", "tasks", "task-legacy"), {
+				recursive: true,
+			});
+			const engine = new PromptCurationEngine();
+			const prompt = engine.curatePrompt(
+				{
+					id: "task-legacy",
+					goal: "Ship the widget.\n\n## Human Correction / Feedback\n![image.png](assets/image.png)",
+				},
+				{ id: "1", name: "Plan", type: "agent", prompt: "Make a plan." },
+				{
+					projectCwd: tempCwd,
+					failureDetails: "Rejected by human review: ![image.png](assets/image.png)",
+				},
+			);
+			const expectedBlock = [
+				"# Missing Task Assets",
+				"MISSING-ASSET: the task references a file that is not in its assets folder:",
+				"- `assets/image.png` — expected at `docs/tasks/task-legacy/assets/image.png`",
+				"Do not guess at their visual content. Proceed from source, say the screenshot was unavailable, and continue working — re-uploading the file heals the next run automatically.",
+			].join("\n");
+			expect(prompt.startsWith(`${expectedBlock}\n`)).toBe(true);
+		});
+	});
+
 	it("stays silent when the checkout cannot be verified (no project cwd)", () => {
 		const engine = new PromptCurationEngine();
 		const prompt = engine.curatePrompt(

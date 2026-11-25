@@ -321,4 +321,61 @@ describe('useReview', () => {
     await act(async () => {});
     expect(result.current.unresolvedCount).toBe(2);
   });
+
+  it('addComment rethrows 422 feedback-validation refusals after rollback', async () => {
+    api.getTaskReview.mockResolvedValue(baseReview);
+    const err = new Error('API 422 on review comments: refused');
+    err.status = 422;
+    err.body = JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing: [{ ref: 'assets/gone.png', name: 'gone.png' }],
+      imageOnly: false,
+    });
+    api.addReviewComment.mockRejectedValue(err);
+    const { result } = renderHook(() => useReview({ projectId: 'proj-1', taskId: 'task-1' }));
+    await act(async () => {});
+    await expect(
+      result.current.addComment({ scope: 'file', filePath: 'src/app.js', body: 'See x' }),
+    ).rejects.toBe(err);
+    // Optimistic temp entry rolled back; no page-level error (composer owns it).
+    expect(result.current.review.comments).toEqual([]);
+    expect(result.current.reviewError).toBe(null);
+  });
+
+  it('updateComment and addReply rethrow 422s with rollback', async () => {
+    const seeded = {
+      ...baseReview,
+      comments: [{ id: 'rc-1', scope: 'file', filePath: 'src/app.js', body: 'Old', replies: [] }],
+    };
+    api.getTaskReview.mockResolvedValue(seeded);
+    const err = new Error('API 422 on review comments: refused');
+    err.status = 422;
+    err.body = JSON.stringify({ code: 'FEEDBACK_VALIDATION_FAILED', missing: [], imageOnly: true });
+    api.updateReviewComment.mockRejectedValue(err);
+    api.addReviewCommentReply.mockRejectedValue(err);
+    const { result } = renderHook(() => useReview({ projectId: 'proj-1', taskId: 'task-1' }));
+    await act(async () => {});
+    await expect(result.current.updateComment('rc-1', { body: 'New' })).rejects.toBe(err);
+    expect(result.current.review.comments[0].body).toBe('Old');
+    await expect(result.current.addReply('rc-1', 'Reply')).rejects.toBe(err);
+    expect(result.current.review.comments[0].replies).toEqual([]);
+  });
+
+  it('addReply rolls back to null on non-422 failures (no ReferenceError)', async () => {
+    const seeded = {
+      ...baseReview,
+      comments: [{ id: 'rc-1', scope: 'file', filePath: 'src/app.js', body: 'Old', replies: [] }],
+    };
+    api.getTaskReview.mockResolvedValue(seeded);
+    api.addReviewCommentReply.mockRejectedValue(new Error('API 500: boom'));
+    const { result } = renderHook(() => useReview({ projectId: 'proj-1', taskId: 'task-1' }));
+    await act(async () => {});
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.addReply('rc-1', 'Reply');
+    });
+    expect(outcome).toBe(null);
+    expect(result.current.review.comments[0].replies).toEqual([]);
+    expect(result.current.reviewError).toContain('boom');
+  });
 });

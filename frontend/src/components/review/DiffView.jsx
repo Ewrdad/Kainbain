@@ -22,6 +22,8 @@ import { ReviewCommentComposer } from './ReviewCommentComposer';
  * @param {Function} props.onDelete - (commentId) => Promise
  * @param {string} props.headSha - Current review head; mismatch marks stale threads.
  * @param {boolean} [props.canComment] - False during non-human stages → read-only.
+ * @param {string} [props.projectId] - Task context enabling composer pre-checks.
+ * @param {string} [props.taskId] - Task context enabling composer pre-checks.
  ***/
 export function DiffView({
   file,
@@ -34,6 +36,8 @@ export function DiffView({
   addComment,
   headSha,
   canComment = true,
+  projectId = null,
+  taskId = null,
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [composer, setComposer] = useState(null); // { line, side } | 'file'
@@ -66,6 +70,8 @@ export function DiffView({
       onReply={onReply}
       onUpdate={onUpdate}
       onDelete={onDelete}
+      projectId={projectId}
+      taskId={taskId}
     />
   );
 
@@ -141,6 +147,8 @@ export function DiffView({
           {composer === 'file' && (
             <div className="px-3 pt-2">
               <ReviewCommentComposer
+                projectId={projectId}
+                taskId={taskId}
                 // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
                 autoFocus
                 label={`Comment on file ${file.path}`}
@@ -249,6 +257,8 @@ export function DiffView({
                     composer.side === commentSide && (
                       <div className="px-3 py-1">
                         <ReviewCommentComposer
+                          projectId={projectId}
+                          taskId={taskId}
                           // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
                           autoFocus
                           label={`Comment on ${composer.side === 'left' ? 'old' : 'new'} line ${composer.line}`}

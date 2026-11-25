@@ -3,6 +3,7 @@ import { useKainBain } from '../../context/KainBainContext';
 import { useReview } from '../../context/useReview';
 import { usePendingAction } from '../../hooks/usePendingAction';
 import { usePersistentState } from '../../hooks/usePersistentState';
+import { useFeedbackAssets } from '../../hooks/useFeedbackAssets';
 import { scrollIntoViewRespectingMotion } from '../../a11y/reducedMotion';
 import { copyToClipboard } from '../../services/clipboard';
 import { approvalCopy, isTerminalHumanApproval } from '../stageTypes';
@@ -17,7 +18,15 @@ import { ReportNavigator } from '../review/ReportNavigator';
 import { normalizeReportPath } from '../review/reportPaths';
 import { ReviewCommentThread } from '../review/ReviewCommentThread';
 import { TaskImageAttach } from './TaskImageAttach';
+import { FeedbackValidationDialog } from '../feedback/FeedbackValidationDialog';
 import { appendImagesMarkdown, removeImageMarkdown } from '../../services/taskImages';
+import { parseFeedbackValidationError } from '../../services/feedbackValidation';
+import {
+  MIN_FEEDBACK_PROSE_CHARS,
+  formatFeedbackValidationError,
+  stripAssetRefs,
+  validateHumanFeedback,
+} from '../../../../shared/feedbackValidation/index.js';
 import { useIsGlassesViewport } from '../util/viewport';
 import {
   GlassesQuickReviewView,
@@ -96,7 +105,33 @@ export function TaskReviewPage({ task: propTask, onBack }) {
   // Screenshot uploads in the fail modal reuse the task's assets/ folder;
   // submit stays disabled mid-upload so the fail cannot beat its images.
   const [failImagesUploading, setFailImagesUploading] = useState(false);
+  // Pass guidance can carry screenshots too, so the pass modal mounts the
+  // same attach affordance (and the same mid-upload submit guard).
+  const [passImagesUploading, setPassImagesUploading] = useState(false);
+  // Open blocking dialogs (`{ missing, imageOnly }`) when a draft fails
+  // submit-time validation — client pre-check or server 422 alike.
+  const [failBlock, setFailBlock] = useState(null);
+  const [passBlock, setPassBlock] = useState(null);
   const failTextareaRef = useRef(null);
+  const passTextareaRef = useRef(null);
+
+  // Advisory-instant attachment list for both modals' pre-checks; the
+  // server re-validates authoritatively.
+  const {
+    names: attachedNames,
+    available: assetsAvailable,
+    refresh: refreshAttached,
+  } = useFeedbackAssets(activeProjectId, taskId);
+
+  // Latest-draft mirrors: upload batches land seconds after their gesture.
+  const latestFailRef = useRef(failFeedback);
+  const latestPassRef = useRef(passGuidance);
+  useEffect(() => {
+    latestFailRef.current = failFeedback;
+  }, [failFeedback]);
+  useEffect(() => {
+    latestPassRef.current = passGuidance;
+  }, [passGuidance]);
   // Guards double-merging of the same REVIEW_UPDATED payload.
   const handledReviewEventSeqRef = useRef(0);
 
@@ -216,24 +251,81 @@ export function TaskReviewPage({ task: propTask, onBack }) {
     [setActiveTab],
   );
 
+  // Live pre-checks as each draft changes: advisory inline (the submit
+  // attempt opens the blocking dialog, never a silent disable).
+  const livePassDecision =
+    assetsAvailable && passGuidance.trim()
+      ? validateHumanFeedback(passGuidance, attachedNames)
+      : null;
+  const liveFailDecision =
+    assetsAvailable && failFeedback.trim()
+      ? validateHumanFeedback(failFeedback, attachedNames)
+      : null;
+
+  const doPass = async (guidance) => {
+    try {
+      await runAction('pass', async () => {
+        await advanceTask(activeProjectId, taskId, {
+          guidance: guidance || undefined,
+        });
+        setPassGuidance('');
+        setShowPassModal(false);
+        onBack?.();
+        backToTaskDetail();
+      });
+    } catch (err) {
+      // A 422 re-opens the recovery dialog with the server-authoritative
+      // file list; every other failure keeps today's handling (the
+      // mutation layer already notified; the modal stays open).
+      const serverBlock = parseFeedbackValidationError(err);
+      if (serverBlock) {
+        refreshAttached();
+        setPassBlock(serverBlock);
+      }
+    }
+  };
+
   /***
    * MARK: handlePass
    * @description Pass Stage: POST /tasks/:id/advance with optional guidance
    *   (guidance becomes `## Human Guidance` on the task goal, plan D5).
    *   `guidanceOverride` avoids a stale-state race when the composer submits
    *   the guidance it just captured (setState would not be visible yet).
+   *   Empty guidance skips validation (nothing to check); non-empty
+   *   guidance pre-checks and blocks with recovery on failure.
    ***/
   const handlePass = async (guidanceOverride) => {
     if (!activeProjectId || !taskId) return;
     const guidance = (guidanceOverride !== undefined ? guidanceOverride : passGuidance).trim();
-    await runAction('pass', async () => {
-      await advanceTask(activeProjectId, taskId, {
-        guidance: guidance || undefined,
-      });
-      setPassGuidance('');
-      setShowPassModal(false);
-      onBack?.();
-      backToTaskDetail();
+    if (passImagesUploading) return;
+    // Submit-time pre-check against a freshly listed set; a failed
+    // listing skips the check — the server guards.
+    if (guidance) {
+      const { names: fresh, available } = await refreshAttached();
+      if (available) {
+        const decision = validateHumanFeedback(guidance, fresh);
+        if (!decision.ok) {
+          setPassBlock({ missing: decision.missing, imageOnly: decision.imageOnly });
+          return;
+        }
+      }
+    }
+    await doPass(guidance);
+  };
+
+  // Resume helper shared by both modals' inline uploads: the batch's refs
+  // join the draft, and while the blocking dialog is open the send resumes
+  // automatically once the draft checks out against the refreshed list.
+  const resumeBlockedSend = (next, setBlock, submit) => {
+    refreshAttached().then(({ names: fresh, available }) => {
+      if (!available) return;
+      const decision = validateHumanFeedback(next, fresh);
+      if (decision.ok) {
+        setBlock(null);
+        submit(next.trim());
+      } else {
+        setBlock({ missing: decision.missing, imageOnly: decision.imageOnly });
+      }
     });
   };
 
@@ -241,11 +333,47 @@ export function TaskReviewPage({ task: propTask, onBack }) {
   // (the existing reject path carries them to the retry prompt verbatim).
   const handleFailImagesUploadedBatch = (images) => {
     if (!Array.isArray(images) || images.length === 0) return;
-    setFailFeedback((draft) => appendImagesMarkdown(draft, images));
+    const next = appendImagesMarkdown(latestFailRef.current, images);
+    setFailFeedback(next);
+    if (failBlock) resumeBlockedSend(next, setFailBlock, (text) => doFail(text));
+    else refreshAttached();
   };
 
   const handleFailImageRemoved = (name) => {
     setFailFeedback((draft) => removeImageMarkdown(draft, name));
+  };
+
+  // Pass-modal image handlers: same contract for the guidance draft.
+  const handlePassImagesUploadedBatch = (images) => {
+    if (!Array.isArray(images) || images.length === 0) return;
+    const next = appendImagesMarkdown(latestPassRef.current, images);
+    setPassGuidance(next);
+    if (passBlock) resumeBlockedSend(next, setPassBlock, (text) => doPass(text));
+    else refreshAttached();
+  };
+
+  const handlePassImageRemoved = (name) => {
+    setPassGuidance((draft) => removeImageMarkdown(draft, name));
+  };
+
+  const doFail = async (feedback) => {
+    try {
+      await runAction('fail', async () => {
+        await rejectTaskWithFeedback(activeProjectId, taskId, feedback);
+        setShowFailModal(false);
+        onBack?.();
+        backToTaskDetail();
+      });
+    } catch (err) {
+      // A 422 re-opens the recovery dialog with the server-authoritative
+      // file list; every other failure keeps today's handling (the
+      // mutation layer already notified; the modal stays open).
+      const serverBlock = parseFeedbackValidationError(err);
+      if (serverBlock) {
+        refreshAttached();
+        setFailBlock(serverBlock);
+      }
+    }
   };
 
   /***
@@ -256,17 +384,30 @@ export function TaskReviewPage({ task: propTask, onBack }) {
     if (!activeProjectId || !taskId) return;
     const feedback = failFeedback.trim();
     if (!feedback || failImagesUploading) return;
-    try {
-      await runAction('fail', async () => {
-        await rejectTaskWithFeedback(activeProjectId, taskId, feedback);
-        setShowFailModal(false);
-        onBack?.();
-        backToTaskDetail();
-      });
-    } catch {
-      // The mutation layer already notified the failure; the modal stays
-      // open with the draft intact so the reviewer can retry.
+    // Submit-time pre-check against a freshly listed set; a failed
+    // listing skips the check — the server guards.
+    const { names: fresh, available } = await refreshAttached();
+    if (available) {
+      const decision = validateHumanFeedback(feedback, fresh);
+      if (!decision.ok) {
+        setFailBlock({ missing: decision.missing, imageOnly: decision.imageOnly });
+        return;
+      }
     }
+    await doFail(feedback);
+  };
+
+  // Words-only recovery shared by both modals: strip the dangling refs and
+  // send; a draft left empty returns to its composer for a written note.
+  const handleStripToTextOnly = (setBlock, block, draftRef, setDraft, submit, focusRef) => {
+    const stripped = stripAssetRefs(draftRef.current, block?.missing || []).trim();
+    setBlock(null);
+    if (!stripped) {
+      focusRef.current?.focus();
+      return;
+    }
+    setDraft(stripped);
+    submit(stripped);
   };
 
   /***
@@ -522,6 +663,8 @@ export function TaskReviewPage({ task: propTask, onBack }) {
                               onDelete={review.deleteComment}
                               headSha={data.headSha}
                               canComment={isWaitingHuman}
+                              projectId={activeProjectId}
+                              taskId={taskId}
                             />
                           ))}
                         </section>
@@ -543,6 +686,8 @@ export function TaskReviewPage({ task: propTask, onBack }) {
                             onDelete={review.deleteComment}
                             headSha={data.headSha}
                             canComment={isWaitingHuman}
+                            projectId={activeProjectId}
+                            taskId={taskId}
                           />
                         ))}
                       </section>
@@ -562,6 +707,8 @@ export function TaskReviewPage({ task: propTask, onBack }) {
                           onDelete={review.deleteComment}
                           headSha={data.headSha}
                           canComment={isWaitingHuman}
+                          projectId={activeProjectId}
+                          taskId={taskId}
                         />
                       ))}
                     </div>
@@ -663,6 +810,8 @@ export function TaskReviewPage({ task: propTask, onBack }) {
                       {data.comments.map((comment) => (
                         <ReviewCommentThread
                           key={comment.id}
+                          projectId={activeProjectId}
+                          taskId={taskId}
                           comment={comment}
                           stale={Boolean(
                             comment.headSha &&
@@ -738,7 +887,18 @@ export function TaskReviewPage({ task: propTask, onBack }) {
                 downstream stages can consider them.
               </p>
             )}
+            {activeProjectId && taskId && (
+              <TaskImageAttach
+                projectId={activeProjectId}
+                taskId={taskId}
+                textareaRef={passTextareaRef}
+                onUploadedBatch={handlePassImagesUploadedBatch}
+                onRemoved={handlePassImageRemoved}
+                onUploadingChange={setPassImagesUploading}
+              />
+            )}
             <textarea
+              ref={passTextareaRef}
               value={passGuidance}
               onChange={(e) => setPassGuidance(e.target.value)}
               rows={4}
@@ -748,6 +908,14 @@ export function TaskReviewPage({ task: propTask, onBack }) {
               placeholder="e.g. Please also cover the retry path…"
               className="w-full bg-surface-deep border border-border-standard rounded p-2 text-xs font-mono text-on-surface focus:outline-none focus:border-primary"
             />
+            {livePassDecision && !livePassDecision.ok && (
+              <p
+                className="text-[10px] font-mono text-warning"
+                data-testid="pass-guidance-live-warning"
+              >
+                {formatFeedbackValidationError(livePassDecision)}
+              </p>
+            )}
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -760,7 +928,7 @@ export function TaskReviewPage({ task: propTask, onBack }) {
               <button
                 type="button"
                 onClick={() => handlePass()}
-                disabled={isBusy}
+                disabled={isBusy || passImagesUploading}
                 className="px-3 py-2 min-h-[44px] bg-secondary text-on-secondary rounded-sm text-[11px] font-mono font-bold uppercase hover:brightness-110 cursor-pointer disabled:opacity-40"
               >
                 {pendingKey === 'pass' ? reviewCopy.reviewBusy : reviewCopy.reviewButton}
@@ -768,6 +936,30 @@ export function TaskReviewPage({ task: propTask, onBack }) {
             </div>
           </div>
         </div>
+      )}
+      {showPassModal && passBlock && (
+        <FeedbackValidationDialog
+          missing={passBlock.missing}
+          imageOnly={passBlock.imageOnly}
+          minProseChars={MIN_FEEDBACK_PROSE_CHARS}
+          projectId={activeProjectId}
+          taskId={taskId}
+          textareaRef={passTextareaRef}
+          onUploadedBatch={handlePassImagesUploadedBatch}
+          onUploadingChange={setPassImagesUploading}
+          onStripToTextOnly={() =>
+            handleStripToTextOnly(
+              setPassBlock,
+              passBlock,
+              latestPassRef,
+              setPassGuidance,
+              (text) => doPass(text),
+              passTextareaRef,
+            )
+          }
+          canStrip={passBlock.missing.length > 0}
+          onClose={() => setPassBlock(null)}
+        />
       )}
 
       {/* Fail modal (ReviewSummaryComposer) */}
@@ -803,6 +995,14 @@ export function TaskReviewPage({ task: propTask, onBack }) {
               aria-label="Stage feedback"
               className="w-full bg-surface-deep border border-border-standard rounded p-2 text-xs font-mono text-on-surface focus:outline-none focus:border-primary"
             />
+            {liveFailDecision && !liveFailDecision.ok && (
+              <p
+                className="text-[10px] font-mono text-warning"
+                data-testid="fail-feedback-live-warning"
+              >
+                {formatFeedbackValidationError(liveFailDecision)}
+              </p>
+            )}
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -823,6 +1023,30 @@ export function TaskReviewPage({ task: propTask, onBack }) {
             </div>
           </div>
         </div>
+      )}
+      {showFailModal && failBlock && (
+        <FeedbackValidationDialog
+          missing={failBlock.missing}
+          imageOnly={failBlock.imageOnly}
+          minProseChars={MIN_FEEDBACK_PROSE_CHARS}
+          projectId={activeProjectId}
+          taskId={taskId}
+          textareaRef={failTextareaRef}
+          onUploadedBatch={handleFailImagesUploadedBatch}
+          onUploadingChange={setFailImagesUploading}
+          onStripToTextOnly={() =>
+            handleStripToTextOnly(
+              setFailBlock,
+              failBlock,
+              latestFailRef,
+              setFailFeedback,
+              (text) => doFail(text),
+              failTextareaRef,
+            )
+          }
+          canStrip={failBlock.missing.length > 0}
+          onClose={() => setFailBlock(null)}
+        />
       )}
     </div>
   );

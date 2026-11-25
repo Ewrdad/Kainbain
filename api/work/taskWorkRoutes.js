@@ -12,6 +12,7 @@ import { resolveStagesForTask } from "../flow/taskScheduler.js";
 import { normalizeSurveyFileName, readSurvey, resolveQuestionMeOutputFile, resolveSurveyPath, saveSurveyAnswers, withSurveyFileWriteLock } from "./taskSurvey.js";
 import { stageHasQuestionMe, unansweredRequired } from "../../shared/survey.js";
 import { ensureSurveyImages, persistChosenSurveyImages, resolveImageGenProvider } from "../imageGen/surveyImages.js";
+import { validateFeedbackForTask } from "./validateFeedbackAssets.js";
 
 /***
  * MARK: surveyOutputFileForRequest
@@ -385,9 +386,30 @@ export async function registerTaskWorkRoutes(app, deps) {
 					}
 				}
 
+				// Warn-only submit-time check on the birth goal: creation must never
+				// wedge on eventual-consistency uploads (images land after the task
+				// exists), so dangling refs here ride along as `feedbackWarnings`
+				// for API clients instead of refusing. Healthy creates stay
+				// byte-identical (no warnings key at all).
+				const birthWarnings = validateFeedbackForTask({
+					projectCwd: ctx.project?.cwd,
+					taskId: task.id,
+					branch: task.branch,
+					docsProject: ctx.project,
+					text: ctx.goal,
+				});
+
 				return {
 					...task,
 					curatedPrompt: finalPrompt,
+					...(!birthWarnings.ok
+						? {
+								feedbackWarnings: {
+									missing: birthWarnings.missing,
+									imageOnly: birthWarnings.imageOnly,
+								},
+							}
+						: {}),
 				};
 			},
 		);
@@ -477,6 +499,28 @@ export async function registerTaskWorkRoutes(app, deps) {
 			});
 			}
 			taskStore._recordHistory(updated, request.actor?.kind === "api-key" ? `Task details edited by api-key:${request.actor.name}` : "Task details edited");
+			// Warn-only goal check (never a refusal): goal edits arrive from the
+			// auto-saving editor and from automation, so a dangling ref rides
+			// along as `feedbackWarnings` instead of wedging the save. Healthy
+			// edits stay byte-identical.
+			if (typeof updates.goal === "string") {
+				const goalWarnings = validateFeedbackForTask({
+					projectCwd: project?.cwd,
+					taskId: task.id,
+					branch: updated?.branch || task.branch,
+					docsProject: project,
+					text: updates.goal,
+				});
+				if (!goalWarnings.ok) {
+					return {
+						...updated,
+						feedbackWarnings: {
+							missing: goalWarnings.missing,
+							imageOnly: goalWarnings.imageOnly,
+						},
+					};
+				}
+			}
 			return updated;
 		},
 	);

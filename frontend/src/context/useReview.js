@@ -1,6 +1,7 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { logger } from '../services/logger';
+import { parseFeedbackValidationError } from '../services/feedbackValidation';
 
 /***
  * MARK: VIEWED_FILES_STORAGE_PREFIX
@@ -187,6 +188,11 @@ export function useReview({ projectId, taskId } = {}) {
       } catch (e) {
         logger.error('Failed to add review comment', e);
         removeComment(tempId);
+        // A 422 feedback-validation refusal propagates (after the rollback)
+        // so the composer keeps its draft and shows the recovery surface
+        // with the server-named files; every other failure stays a null
+        // return with the page-level error exactly as before.
+        if (parseFeedbackValidationError(e)) throw e;
         setReviewError(e?.message || 'Failed to add comment');
         return null;
       }
@@ -217,8 +223,12 @@ export function useReview({ projectId, taskId } = {}) {
         return updated;
       } catch (e) {
         logger.error('Failed to update review comment', e);
-        setReviewError(e?.message || 'Failed to update comment');
         if (previous) setReview(previous);
+        // A 422 feedback-validation refusal propagates (after the rollback)
+        // so the composer keeps its draft and shows the recovery surface;
+        // every other failure stays a null return exactly as before.
+        if (parseFeedbackValidationError(e)) throw e;
+        setReviewError(e?.message || 'Failed to update comment');
         return null;
       }
     },
@@ -253,6 +263,7 @@ export function useReview({ projectId, taskId } = {}) {
   const addReply = useCallback(
     async (commentId, body) => {
       if (!projectId || !taskId || !commentId) return null;
+      const previous = reviewRef.current;
       const optimistic = {
         id: `rep-temp-${Date.now()}`,
         body,
@@ -283,8 +294,12 @@ export function useReview({ projectId, taskId } = {}) {
         return reply;
       } catch (e) {
         logger.error('Failed to add reply', e);
-        setReviewError(e?.message || 'Failed to add reply');
         if (previous) setReview(previous);
+        // A 422 feedback-validation refusal propagates (after the rollback)
+        // so the composer keeps its draft and shows the recovery surface;
+        // every other failure stays a null return exactly as before.
+        if (parseFeedbackValidationError(e)) throw e;
+        setReviewError(e?.message || 'Failed to add reply');
         return null;
       }
     },

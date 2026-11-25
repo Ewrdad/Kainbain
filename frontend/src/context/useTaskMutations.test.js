@@ -8,6 +8,8 @@ vi.mock('../services/api', () => ({
     deleteTask: vi.fn(),
     advanceTask: vi.fn(),
     failbackTask: vi.fn(),
+    followUpTask: vi.fn(),
+    steerTask: vi.fn(),
   },
 }));
 
@@ -192,5 +194,74 @@ describe('useTaskMutations', () => {
     });
 
     expect(order).toEqual(['update', 'reject']);
+  });
+
+  it('advanceTask rethrows 422 feedback-validation refusals with the file named', async () => {
+    const err = new Error('API 422 on /tasks/t1/advance: refused');
+    err.status = 422;
+    err.body = JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing: [{ ref: 'assets/gone.png', name: 'gone.png' }],
+      imageOnly: false,
+    });
+    api.advanceTask.mockRejectedValue(err);
+    const onNotification = vi.fn();
+    const { result } = renderHook(() =>
+      useTaskMutations({ onNotification, refreshTasks: vi.fn() }),
+    );
+    await expect(
+      result.current.advanceTask('proj-1', 't1', { guidance: 'See the screenshot' }),
+    ).rejects.toBe(err);
+    expect(onNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Approval Failed',
+        message: expect.stringContaining('assets/gone.png'),
+      }),
+    );
+  });
+
+  it('advanceTask still swallows non-422 failures', async () => {
+    api.advanceTask.mockRejectedValue(new Error('Task failed in its current stage'));
+    const onNotification = vi.fn();
+    const { result } = renderHook(() =>
+      useTaskMutations({ onNotification, refreshTasks: vi.fn() }),
+    );
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.advanceTask('proj-1', 't1', {});
+    });
+    expect(outcome).toBe(undefined);
+    expect(onNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Approval Failed' }),
+    );
+  });
+
+  it('followUpTask and steerTask rethrow 422s, swallow the rest', async () => {
+    const err = new Error('API 422 on /tasks/t1/steer: refused');
+    err.status = 422;
+    err.body = JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing: [],
+      imageOnly: true,
+    });
+    api.followUpTask.mockRejectedValue(err);
+    api.steerTask.mockRejectedValueOnce(err).mockRejectedValue(new Error('no session'));
+    const onNotification = vi.fn();
+    const { result } = renderHook(() =>
+      useTaskMutations({ onNotification, refreshTasks: vi.fn() }),
+    );
+    await expect(result.current.followUpTask('proj-1', 't1', 'x')).rejects.toBe(err);
+    expect(onNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Follow-up Failed',
+        message: expect.stringContaining('only images'),
+      }),
+    );
+    await expect(result.current.steerTask('proj-1', 't1', 'x')).rejects.toBe(err);
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.steerTask('proj-1', 't1', 'plain guidance here');
+    });
+    expect(outcome).toBe(undefined);
   });
 });

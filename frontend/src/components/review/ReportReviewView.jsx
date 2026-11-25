@@ -164,6 +164,8 @@ export function ReportReviewView({
       onReply={onReply}
       onUpdate={onUpdate}
       onDelete={onDelete}
+      projectId={activeProject?.id}
+      taskId={taskId}
     />
   );
 
@@ -274,6 +276,8 @@ export function ReportReviewView({
               {fileLevel.map(renderThread)}
               {composer === 'file' && (
                 <ReviewCommentComposer
+                  projectId={activeProject?.id}
+                  taskId={taskId}
                   // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
                   autoFocus
                   label={`Comment on report ${reportPath}`}
@@ -311,6 +315,8 @@ export function ReportReviewView({
                   composer={
                     composerOpen && (
                       <ReviewCommentComposer
+                        projectId={activeProject?.id}
+                        taskId={taskId}
                         // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
                         autoFocus
                         label={`Comment on report line ${lineNumber}`}

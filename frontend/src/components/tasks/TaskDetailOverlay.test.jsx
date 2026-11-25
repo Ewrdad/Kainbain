@@ -1444,3 +1444,82 @@ test('inspector stays full-width on mobile with no inline width override', () =>
     }
   }
 });
+
+/**
+ * MARK: Intervention submit-time validation tests
+ * @description Follow-up/steer drafts with dangling `assets/*` refs block with
+ *   a recovery dialog naming the file; words-only recovery sends through the
+ *   pending action; a server 422 re-opens the same dialog.
+ */
+import { api as overlayApi } from '../../services/api';
+
+test('blocks a dangling intervention ref and names the file', async () => {
+  const followUpTask = vi.fn().mockResolvedValue({});
+  const steerTask = vi.fn().mockResolvedValue({});
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+    followUpTask,
+    steerTask,
+  });
+
+  const textarea = screen.getByPlaceholderText(/Type follow-up prompt or steering instruction/i);
+  fireEvent.change(textarea, { target: { value: 'See ![gone](assets/gone.png) please take a look' } });
+  await waitFor(() => {
+    expect(screen.getByTestId('intervention-live-warning')).toHaveTextContent('assets/gone.png');
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Send Follow-Up/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+  });
+  expect(screen.getByText('assets/gone.png')).toBeInTheDocument();
+  expect(followUpTask).not.toHaveBeenCalled();
+  expect(steerTask).not.toHaveBeenCalled();
+});
+
+test('words-only intervention recovery sends through the pending steer action', async () => {
+  const followUpTask = vi.fn().mockResolvedValue({});
+  const steerTask = vi.fn().mockResolvedValue({});
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+    followUpTask,
+    steerTask,
+  });
+
+  fireEvent.change(screen.getByPlaceholderText(/Type follow-up prompt or steering instruction/i), {
+    target: { value: 'See ![gone](assets/gone.png) please take a look' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Steer Agent/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+  });
+  fireEvent.click(screen.getByText('Send words-only'));
+  await waitFor(() => {
+    expect(steerTask).toHaveBeenCalledWith('proj-1', 't1', 'See please take a look');
+  });
+  expect(followUpTask).not.toHaveBeenCalled();
+});
+
+test('intervention 422 re-opens the dialog with server-named files', async () => {
+  const err = new Error('API 422 on /tasks/t1/steer: refused');
+  err.status = 422;
+  err.body = JSON.stringify({
+    code: 'FEEDBACK_VALIDATION_FAILED',
+    missing: [{ ref: 'assets/race.png', name: 'race.png' }],
+    imageOnly: false,
+  });
+  const followUpTask = vi.fn().mockRejectedValueOnce(err).mockResolvedValue({});
+  overlayApi.listTaskImages.mockResolvedValue({ images: [{ name: 'race.png' }] });
+  renderWithKainBain(<TaskDetailOverlay task={task} onClose={() => {}} />, {
+    stages,
+    followUpTask,
+    steerTask: vi.fn(),
+  });
+
+  fireEvent.change(screen.getByPlaceholderText(/Type follow-up prompt or steering instruction/i), {
+    target: { value: 'See ![r](assets/race.png) please take a look' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: /Send Follow-Up/i }));
+  await waitFor(() => {
+    expect(screen.getByTestId('feedback-validation-dialog')).toHaveTextContent('assets/race.png');
+  });
+});

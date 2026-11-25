@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ReviewCommentComposer } from './ReviewCommentComposer';
 
@@ -59,7 +59,10 @@ describe('ReviewCommentComposer', () => {
     fireEvent.change(textarea, { target: { value: 'body' } });
     expect(screen.getByText('Add comment').disabled).toBe(false);
     fireEvent.click(screen.getByText('Add comment'));
-    expect(screen.getByText('Adding…').disabled).toBe(true);
+    // The submit awaits the pre-check listing before entering flight.
+    await waitFor(() => {
+      expect(screen.getByText('Adding…').disabled).toBe(true);
+    });
     release();
     await vi.waitFor(() => {
       expect(screen.getByText('Add comment')).toBeTruthy();
@@ -76,5 +79,146 @@ describe('ReviewCommentComposer', () => {
     render(<ReviewCommentComposer onSubmit={vi.fn()} onCancel={onCancel} />);
     fireEvent.click(screen.getByText('Cancel'));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});
+/***
+ * MARK: ReviewCommentComposer submit-time validation tests
+ * @description With task context the composer pre-checks against attachments:
+ *   dangling refs and image-only drafts open the inline recovery panel;
+ *   resend/strip recovery and server-422 reopen all keep the draft.
+ */
+import { waitFor } from '@testing-library/react';
+
+vi.mock('../../services/api', () => ({
+  api: { listTaskImages: vi.fn() },
+}));
+
+import { api as mockedApi } from '../../services/api';
+
+describe('ReviewCommentComposer submit-time validation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedApi.listTaskImages.mockResolvedValue({ images: [] });
+  });
+
+  const renderComposer = (props = {}) =>
+    render(
+      <ReviewCommentComposer projectId="proj-1" taskId="task-1" onSubmit={vi.fn()} {...props} />,
+    );
+
+  it('blocks a dangling ref with an inline panel naming the file', async () => {
+    const onSubmit = vi.fn();
+    renderComposer({ onSubmit });
+    const textarea = screen.getByLabelText('Review comment');
+    fireEvent.change(textarea, { target: { value: 'See ![gone](assets/gone.png) please' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('comment-live-warning')).toHaveTextContent('assets/gone.png');
+    });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(screen.getByTestId('comment-validation-panel')).toBeTruthy();
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    // Draft kept for recovery.
+    expect(textarea.value).toContain('assets/gone.png');
+  });
+
+  it('blocks image-only comments until a note is added', async () => {
+    mockedApi.listTaskImages.mockResolvedValue({ images: [{ name: 'a.png' }] });
+    const onSubmit = vi.fn();
+    renderComposer({ onSubmit });
+    const textarea = screen.getByLabelText('Review comment');
+    fireEvent.change(textarea, { target: { value: '![a](assets/a.png)' } });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(screen.getByTestId('comment-validation-panel')).toHaveTextContent(/only images/);
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Back to editing'));
+    fireEvent.change(textarea, { target: { value: 'Null here — see ![a](assets/a.png)' } });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith('Null here — see ![a](assets/a.png)');
+    });
+  });
+
+  it('send words-only strips the dead links and submits', async () => {
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderComposer({ onSubmit });
+    fireEvent.change(screen.getByLabelText('Review comment'), {
+      target: { value: 'See ![gone](assets/gone.png) please take a look' },
+    });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(screen.getByTestId('comment-validation-panel')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText('Send words-only'));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith('See please take a look');
+    });
+  });
+
+  it('resend transmits once the file is attached', async () => {
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderComposer({ onSubmit });
+    fireEvent.change(screen.getByLabelText('Review comment'), {
+      target: { value: 'See ![gone](assets/gone.png) please take a look' },
+    });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(screen.getByTestId('comment-validation-panel')).toBeTruthy();
+    });
+    mockedApi.listTaskImages.mockResolvedValue({ images: [{ name: 'gone.png' }] });
+    fireEvent.click(screen.getByText('Resend'));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith('See ![gone](assets/gone.png) please take a look');
+    });
+  });
+
+  it('a server 422 re-opens the panel with the server-named files', async () => {
+    mockedApi.listTaskImages.mockResolvedValue({ images: [{ name: 'race.png' }] });
+    const err = new Error('API 422 on /review/comments: refused');
+    err.status = 422;
+    err.body = JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing: [{ ref: 'assets/race.png', name: 'race.png' }],
+      imageOnly: false,
+    });
+    const onSubmit = vi.fn().mockRejectedValueOnce(err).mockResolvedValue({});
+    renderComposer({ onSubmit });
+    const textarea = screen.getByLabelText('Review comment');
+    fireEvent.change(textarea, {
+      target: { value: 'See ![r](assets/race.png) please take a look' },
+    });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(screen.getByTestId('comment-validation-panel')).toHaveTextContent('assets/race.png');
+    });
+    expect(textarea.value).toContain('assets/race.png');
+  });
+
+  it('healthy drafts with context submit without a panel', async () => {
+    const onSubmit = vi.fn().mockResolvedValue({});
+    renderComposer({ onSubmit });
+    fireEvent.change(screen.getByLabelText('Review comment'), {
+      target: { value: 'Needs a null check here please' },
+    });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith('Needs a null check here please');
+    });
+    expect(screen.queryByTestId('comment-validation-panel')).toBe(null);
+  });
+
+  it('non-validation failures keep the draft and name the problem', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('backend down'));
+    renderComposer({ onSubmit });
+    const textarea = screen.getByLabelText('Review comment');
+    fireEvent.change(textarea, { target: { value: 'Needs a null check here please' } });
+    fireEvent.click(screen.getByText('Add comment'));
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('backend down');
+    });
+    expect(textarea.value).toBe('Needs a null check here please');
   });
 });

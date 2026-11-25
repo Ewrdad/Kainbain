@@ -11,6 +11,8 @@
 import { ReviewStore } from "../reviewStore.js";
 import { buildTaskReview } from "../reviewAssembly.js";
 import { config } from "../config.js";
+import { validateFeedbackForTask } from "../work/validateFeedbackAssets.js";
+import { FEEDBACK_VALIDATION_CODE } from "../../shared/feedbackValidation/index.js";
 import {
 	normalizeReportPath,
 	reportPathVariants,
@@ -56,6 +58,29 @@ const commentBodySchema = {
 export default async function reviewRoutes(app, { deps }) {
 	const { projectStore, taskStore, eventBridge, resolveAndGuardProject } =
 		deps;
+
+	// Authoritative submit-time comment validation (same rule as the flow
+	// routes): dangling `assets/*` refs or image-only bodies are refused
+	// with 422 naming every missing file, because comment bodies join the
+	// rejection report and would otherwise reach the retry prompt blind.
+	// Returns true when the reply was sent (refused).
+	const refuseInvalidCommentBody = (reply, { project, task, body }) => {
+		const validation = validateFeedbackForTask({
+			projectCwd: project?.cwd,
+			taskId: task?.id,
+			branch: task?.branch,
+			docsProject: project,
+			text: body,
+		});
+		if (validation.ok) return false;
+		reply.status(422).send({
+			error: validation.error,
+			code: FEEDBACK_VALIDATION_CODE,
+			missing: validation.missing,
+			imageOnly: validation.imageOnly,
+		});
+		return true;
+	};
 
 	/***
 	 * MARK: safeGetTaskReports
@@ -269,6 +294,16 @@ export default async function reviewRoutes(app, { deps }) {
 				}
 			}
 
+			if (
+				refuseInvalidCommentBody(reply, {
+					project: ctx.project,
+					task: ctx.task,
+					body: payload.body,
+				})
+			) {
+				return;
+			}
+
 			const comment = await ctx.reviewStore.addComment(ctx.task.id, payload);
 			eventBridge?.broadcastGlobal?.("REVIEW_UPDATED", {
 				projectId: ctx.projectId,
@@ -310,6 +345,17 @@ export default async function reviewRoutes(app, { deps }) {
 		async (request, reply) => {
 			const ctx = await resolveReviewContext(request, reply);
 			if (!ctx) return;
+			// Body edits re-validate; resolved-only toggles skip (no new text).
+			if (
+				typeof request.body?.body === "string" &&
+				refuseInvalidCommentBody(reply, {
+					project: ctx.project,
+					task: ctx.task,
+					body: request.body.body,
+				})
+			) {
+				return;
+			}
 			try {
 				const comment = await ctx.reviewStore.updateComment(
 					ctx.task.id,
@@ -359,6 +405,15 @@ export default async function reviewRoutes(app, { deps }) {
 		async (request, reply) => {
 			const ctx = await resolveReviewContext(request, reply);
 			if (!ctx) return;
+			if (
+				refuseInvalidCommentBody(reply, {
+					project: ctx.project,
+					task: ctx.task,
+					body: request.body?.body,
+				})
+			) {
+				return;
+			}
 			try {
 				const replyData = await ctx.reviewStore.addReply(
 					ctx.task.id,

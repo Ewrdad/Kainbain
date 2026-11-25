@@ -5,6 +5,8 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { logger } from '../services/logger';
 import { removeTaskDraft, readTaskDraft } from '../services/taskDrafts';
+import { parseFeedbackValidationError } from '../services/feedbackValidation';
+import { formatFeedbackValidationError } from '../../../shared/feedbackValidation/index.js';
 
 /***
  * MARK: saveTaskEdit
@@ -97,11 +99,19 @@ export function useTaskMutations({
         // Approving used to fail silently (the backend returned the task
         // unchanged); now refusals such as terminal-failed 409s carry an
         // actionable message — surface it instead of swallowing.
+        const validationBlock = parseFeedbackValidationError(e);
         onNotificationRef.current?.({
           type: 'error',
           title: 'Approval Failed',
-          message: e?.message || 'Could not approve the task',
+          message: validationBlock
+            ? formatFeedbackValidationError(validationBlock)
+            : e?.message || 'Could not approve the task',
         });
+        // A 422 feedback-validation refusal also propagates (like the
+        // reject path below) so the pass dialog re-opens its recovery
+        // surface with the server-named files; every other failure stays
+        // swallowed exactly as before.
+        if (validationBlock) throw e;
       }
     },
     [refreshTasks],
@@ -120,11 +130,18 @@ export function useTaskMutations({
         return result;
       } catch (e) {
         logger.error('Failed to follow up task', e);
+        const validationBlock = parseFeedbackValidationError(e);
         onNotificationRef.current?.({
           type: 'error',
           title: 'Follow-up Failed',
-          message: e?.message || 'Failed to send follow-up prompt',
+          message: validationBlock
+            ? formatFeedbackValidationError(validationBlock)
+            : e?.message || 'Failed to send follow-up prompt',
         });
+        // A 422 feedback-validation refusal also propagates so the
+        // intervention input re-opens its recovery surface; every other
+        // failure stays swallowed exactly as before.
+        if (validationBlock) throw e;
       }
     },
     [refreshTasks],
@@ -143,11 +160,18 @@ export function useTaskMutations({
         return result;
       } catch (e) {
         logger.error('Failed to steer task', e);
+        const validationBlock = parseFeedbackValidationError(e);
         onNotificationRef.current?.({
           type: 'error',
           title: 'Steering Failed',
-          message: e?.message || 'Failed to send steering guidance',
+          message: validationBlock
+            ? formatFeedbackValidationError(validationBlock)
+            : e?.message || 'Failed to send steering guidance',
         });
+        // A 422 feedback-validation refusal also propagates so the
+        // intervention input re-opens its recovery surface; every other
+        // failure stays swallowed exactly as before.
+        if (validationBlock) throw e;
       }
     },
     [refreshTasks],

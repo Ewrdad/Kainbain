@@ -18,6 +18,8 @@ import {
 import { normalizeStageType } from "../projectStore.js";
 import { ReviewStore } from "../reviewStore.js";
 import { buildCommentsGuidance } from "../reviewCommentFormatter.js";
+import { validateFeedbackForTask } from "../work/validateFeedbackAssets.js";
+import { FEEDBACK_VALIDATION_CODE } from "../../shared/feedbackValidation/index.js";
 
 /***
  * MARK: loadHumanReviewComments
@@ -72,6 +74,28 @@ export async function registerTaskFlowRoutes(app, deps) {
 			project?.cwd,
 		);
 		return curatedPrompt;
+	};
+
+	// Authoritative submit-time feedback validation: dangling `assets/*`
+	// refs or image-only drafts are refused with 422 (never a silent 400)
+	// naming every missing file, so no client — UI or API — can mint a new
+	// blind pipeline loop. Returns true when the reply was sent (refused).
+	const refuseInvalidFeedback = (reply, { project, taskId, branch, text }) => {
+		const validation = validateFeedbackForTask({
+			projectCwd: project?.cwd,
+			taskId,
+			branch,
+			docsProject: project,
+			text,
+		});
+		if (validation.ok) return false;
+		reply.status(422).send({
+			error: validation.error,
+			code: FEEDBACK_VALIDATION_CODE,
+			missing: validation.missing,
+			imageOnly: validation.imageOnly,
+		});
+		return true;
 	};
 
 	/***
@@ -206,6 +230,21 @@ export async function registerTaskFlowRoutes(app, deps) {
 
 		const { guidance } = request.body || {};
 		const project = projectStore.getProject(id);
+		// Only the fresh guidance is validated: already-stored review threads
+		// are never re-validated, so legacy comment refs cannot wedge an
+		// approval (the curate-time MISSING-ASSET backstop still covers them).
+		if (
+			typeof guidance === "string" &&
+			guidance.trim() &&
+			refuseInvalidFeedback(reply, {
+				project,
+				taskId: existing.id,
+				branch: existing.branch,
+				text: guidance,
+			})
+		) {
+			return;
+		}
 		// Review threads captured during the checkpoint travel with the approval:
 		// they land in the human approval report and in the task goal so the next
 		// agent stage considers them (plan §2.3).
@@ -300,11 +339,19 @@ export async function registerTaskFlowRoutes(app, deps) {
 		if (!id) return;
 
 		const project = projectStore.getProject(id);
+		const followTask = taskStore.getTask(id, request.params.id);
+		if (
+			refuseInvalidFeedback(reply, {
+				project,
+				taskId: request.params.id,
+				branch: followTask?.branch,
+				text: prompt,
+			})
+		) {
+			return;
+		}
 		const session = await getOrCreateSession(id);
-		const stages = resolveStagesForTask(
-			project,
-			taskStore.getTask(id, request.params.id),
-		);
+		const stages = resolveStagesForTask(project, followTask);
 		const task = await taskStore.followUpTask(id, request.params.id, prompt, {
 			session,
 			projectCwd: project?.cwd,
@@ -330,6 +377,21 @@ export async function registerTaskFlowRoutes(app, deps) {
 			reply,
 		);
 		if (!id) return;
+
+		// Validated before either dispatch path (Runner lease queue or
+		// embedded session), so a steer can never queue blind text.
+		const steerProject = projectStore.getProject(id);
+		const steerTaskRecord = taskStore.getTask(id, request.params.id);
+		if (
+			refuseInvalidFeedback(reply, {
+				project: steerProject,
+				taskId: request.params.id,
+				branch: steerTaskRecord?.branch,
+				text: steerText,
+			})
+		) {
+			return;
+		}
 
 		// D5 unified steer (ADR 0011): a Runner-held lease owns the
 		// execution out-of-process, so the steer queues against the live
@@ -566,6 +628,16 @@ export async function registerTaskFlowRoutes(app, deps) {
 		}
 
 		const project = projectStore.getProject(id);
+		if (
+			refuseInvalidFeedback(reply, {
+				project,
+				taskId: existing.id,
+				branch: existing.branch,
+				text: feedback,
+			})
+		) {
+			return;
+		}
 		const stages = resolveStagesForTask(project, existing);
 		// Line-by-line threads recorded against stage reports/code join the
 		// rejection report so a fail keeps the full written record (the

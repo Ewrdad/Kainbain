@@ -7,3 +7,6 @@
  ***/
 export * from "./normalizeAssetSrc.js";
 export * from "./extractAssetRefs.js";
+export * from "./imageExtensions.js";
+export * from "./isAllowedImageExt.js";
+export * from "./sanitizeImageName.js";

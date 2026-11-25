@@ -220,6 +220,86 @@ describe('TaskReviewPage', () => {
     });
   });
 
+  /***
+   * MARK: TaskReviewPage submit-time validation tests
+   * @description Fail and pass drafts with dangling `assets/*` refs block with
+   *   a recovery dialog naming the file; words-only recovery strips and sends;
+   *   a server 422 re-opens the same dialog.
+   ***/
+  it('Fail blocks a dangling ref and recovers words-only', async () => {
+    const ctx = renderPage();
+    const dialog = await openFailModal();
+    const textarea = dialog.querySelector('textarea');
+    fireEvent.change(textarea, { target: { value: 'See ![gone](assets/gone.png) please take a look' } });
+    await waitFor(() => {
+      expect(screen.getByTestId('fail-feedback-live-warning')).toHaveTextContent('assets/gone.png');
+    });
+    fireEvent.click(screen.getAllByText('✕ Fail Stage').pop());
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+    });
+    expect(ctx.rejectTaskWithFeedback).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Send words-only'));
+    await waitFor(() => {
+      expect(ctx.rejectTaskWithFeedback).toHaveBeenCalledWith(
+        'proj-1',
+        'task-101',
+        'See please take a look',
+      );
+    });
+  });
+
+  it('Fail re-opens the dialog on a server 422 with server-named files', async () => {
+    const err = new Error('API 422 on /tasks/task-101/reject: refused');
+    err.status = 422;
+    err.body = JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing: [{ ref: 'assets/race.png', name: 'race.png' }],
+      imageOnly: false,
+    });
+    const ctx = renderPage({ rejectTaskWithFeedback: vi.fn().mockRejectedValueOnce(err) });
+    api.listTaskImages.mockResolvedValue({ images: [{ name: 'race.png' }] });
+    const dialog = await openFailModal();
+    const textarea = dialog.querySelector('textarea');
+    fireEvent.change(textarea, { target: { value: 'See ![r](assets/race.png) please take a look' } });
+    fireEvent.click(screen.getAllByText('✕ Fail Stage').pop());
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-validation-dialog')).toHaveTextContent('assets/race.png');
+    });
+    expect(textarea.value).toContain('assets/race.png');
+  });
+
+  it('Pass blocks dangling guidance and offers attach inline', async () => {
+    const ctx = renderPage();
+    await waitFor(() => expect(screen.getByTestId('diff-view')).toBeTruthy());
+    fireEvent.click(screen.getByLabelText(/Pass this stage/i));
+    const composer = screen.getByRole('dialog', { name: /Pass stage/i });
+    // The pass modal mounts the shared attach affordance for guidance screenshots.
+    expect(composer.querySelector('[data-testid="task-image-attach"]')).toBeTruthy();
+    fireEvent.change(composer.querySelector('textarea'), {
+      target: { value: 'See ![gone](assets/gone.png) please take a look' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('pass-guidance-live-warning')).toHaveTextContent('assets/gone.png');
+    });
+    fireEvent.click(screen.getAllByText(/▶ Pass Stage/).pop());
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+    });
+    expect(ctx.advanceTask).not.toHaveBeenCalled();
+  });
+
+  it('Pass with empty guidance skips validation (no dialog)', async () => {
+    const ctx = renderPage();
+    await waitFor(() => expect(screen.getByTestId('diff-view')).toBeTruthy());
+    fireEvent.click(screen.getByLabelText(/Pass this stage/i));
+    fireEvent.click(screen.getAllByText(/▶ Pass Stage/).pop());
+    await waitFor(() => {
+      expect(ctx.advanceTask).toHaveBeenCalledWith('proj-1', 'task-101', { guidance: undefined });
+    });
+    expect(screen.queryByTestId('feedback-validation-dialog')).not.toBeInTheDocument();
+  });
+
   it('Fail pre-fills feedback from unresolved comments grouped by file (A5, D5)', async () => {
     api.getTaskReview.mockResolvedValue({
       ...baseReview,
@@ -343,6 +423,10 @@ describe('TaskReviewPage', () => {
 
   it('Fail offers image attach and submits feedback containing the image ref', async () => {
     const ctx = renderPage();
+    // The server lists what was uploaded, so the pre-check passes on submit.
+    api.listTaskImages.mockResolvedValue({
+      images: [{ name: 'shot.png', path: 'assets/shot.png' }],
+    });
     api.uploadTaskImage.mockResolvedValue({ name: 'shot.png', path: 'assets/shot.png' });
     const dialog = await openFailModal();
 
@@ -371,6 +455,10 @@ describe('TaskReviewPage', () => {
   it('Fail keeps attached images in the draft when the rejection fails', async () => {
     const ctx = renderPage({
       rejectTaskWithFeedback: vi.fn().mockRejectedValue(new Error('backend down')),
+    });
+    // The server lists what was uploaded, so the pre-check passes on submit.
+    api.listTaskImages.mockResolvedValue({
+      images: [{ name: 'shot.png', path: 'assets/shot.png' }],
     });
     api.uploadTaskImage.mockResolvedValue({ name: 'shot.png', path: 'assets/shot.png' });
     const dialog = await openFailModal();
@@ -432,6 +520,10 @@ describe('TaskReviewPage', () => {
     // link only the last image. The batch handler folds all refs into one
     // functional setState, so every image lands in selection order.
     const ctx = renderPage();
+    // The server lists what was uploaded, so the pre-check passes on submit.
+    api.listTaskImages.mockResolvedValue({
+      images: ['a.png', 'b.png', 'c.png'].map((name) => ({ name, path: `assets/${name}` })),
+    });
     api.uploadTaskImage.mockImplementation(async (_projectId, _taskId, file) => ({
       name: file.name,
       path: `assets/${file.name}`,

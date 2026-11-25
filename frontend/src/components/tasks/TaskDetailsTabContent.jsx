@@ -13,6 +13,7 @@ import { approvalCopy } from '../stageTypes';
 import { FailureMessage } from './FailureMessage';
 import { GitFailureDetails } from './GitFailureDetails';
 import { pickFailureBannerTitle, isCommitFailureTask } from './failureReason';
+import { formatFeedbackValidationError } from '../../../../shared/feedbackValidation/index.js';
 
 export function TaskDetailsTab({
   activeProjectId,
@@ -37,6 +38,8 @@ export function TaskDetailsTab({
   handleRetryStage,
   handleSendFollowUp,
   handleSendSteering,
+  interventionLiveDecision = null,
+  interventionTextareaRef = null,
   interventionText,
   isAdvancing,
   isBlocked = false,
@@ -325,12 +328,21 @@ export function TaskDetailsTab({
 
           <div className="space-y-2">
             <textarea
+              ref={interventionTextareaRef}
               value={interventionText}
               onChange={(e) => setInterventionText(e.target.value)}
               placeholder="Type follow-up prompt or steering instruction..."
               rows={2}
               className="w-full bg-surface-deep border border-border-standard rounded p-2 text-xs font-mono text-on-surface focus:outline-none focus:border-primary placeholder:text-text-muted/60 resize-y min-h-[52px]"
             />
+            {interventionLiveDecision && !interventionLiveDecision.ok && (
+              <p
+                className="text-[10px] font-mono text-warning"
+                data-testid="intervention-live-warning"
+              >
+                {formatFeedbackValidationError(interventionLiveDecision)}
+              </p>
+            )}
             <div className="flex items-center justify-end gap-2">
               <InfoTooltip
                 title="Steer Active Agent"

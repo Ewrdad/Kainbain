@@ -15,6 +15,8 @@ import { ReviewCommentComposer } from './ReviewCommentComposer';
  * @param {Function} props.onResolve - (commentId, resolved) => Promise
  * @param {Function} props.onDelete - (commentId) => Promise
  * @param {Function} props.onReply - (commentId, body) => Promise
+ * @param {string} [props.projectId] - Task context enabling composer pre-checks.
+ * @param {string} [props.taskId] - Task context enabling composer pre-checks.
  * @example <ReviewCommentThread comment={c} stale onReply={reply} />
  ***/
 export function ReviewCommentThread({
@@ -24,6 +26,8 @@ export function ReviewCommentThread({
   onReply,
   onUpdate,
   onDelete,
+  projectId = null,
+  taskId = null,
 }) {
   const [replyOpen, setReplyOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -116,6 +120,8 @@ export function ReviewCommentThread({
           // eslint-disable-next-line jsx-a11y/no-autofocus -- custom initial-focus prop (programmatic .focus() on user-opened composer), not a DOM autofocus attribute
           autoFocus
           label="Reply"
+          projectId={projectId}
+          taskId={taskId}
           placeholder="Reply to this thread…"
           onSubmit={async (body) => {
             await run(onReply, comment.id, body);
