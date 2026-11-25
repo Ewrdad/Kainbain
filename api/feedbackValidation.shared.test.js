@@ -93,6 +93,14 @@ describe("isImageOnlyFeedback", () => {
 		expect(isImageOnlyFeedback(draft, { minProseChars: "many" })).toBe(true);
 	});
 
+	it("treats a null options bag as the default bar (never throws)", () => {
+		expect(isImageOnlyFeedback("![a](assets/a.png)", null)).toBe(true);
+		expect(isImageOnlyFeedback("Broken on save ![a](assets/a.png)", null)).toBe(
+			false,
+		);
+		expect(isImageOnlyFeedback("fix it", null)).toBe(false);
+	});
+
 	it("holds the bar at the named constant", () => {
 		expect(MIN_FEEDBACK_PROSE_CHARS).toBe(10);
 		// Exactly at the bar passes: 10 non-space chars + one image.
@@ -271,6 +279,8 @@ describe("validateHumanFeedback", () => {
 	it("tolerates untrusted input", () => {
 		expect(validateHumanFeedback(null, null).ok).toBe(true);
 		expect(validateHumanFeedback("![a](assets/a.png)", null).ok).toBe(false);
+		expect(validateHumanFeedback("![a](assets/a.png)", [], null).ok).toBe(false);
+		expect(validateHumanFeedback(null, null, null).ok).toBe(true);
 	});
 });
 

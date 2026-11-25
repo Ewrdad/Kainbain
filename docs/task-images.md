@@ -170,6 +170,15 @@ dangling ref can never enter the pipeline from a review box again.
   re-validated on read — they still render the identical `# Missing Task
   Assets` warning at curate time, proven by the legacy regression test and
   the untouched `promptCuration` / `promptLayout` suites.
+- **Rollout and rollback.** No migration and no stored-format change: the
+  check runs on submit and leaves stored text untouched. API clients should
+  match `code: 'FEEDBACK_VALIDATION_FAILED'` on a 422 and surface `error`
+  (which names every missing file) rather than retrying. A browser holding a
+  pre-deploy bundle keeps working: its submits are still guarded by the
+  server, failures arrive as the usual error toast with the draft kept open
+  (reject/fail paths), and a refresh loads the recovery dialog. Rollback is a
+  plain revert — the 422s vanish, the curate-time warning keeps covering old
+  and new dead refs alike.
 
 ## Repairs
 

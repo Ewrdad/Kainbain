@@ -4,6 +4,7 @@ import { expect, test, vi, beforeEach, describe } from 'vitest';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { renderWithKainBain } from '../../testUtils';
 import { TaskDetailPage } from './TaskDetailPage';
+import { api as pageApi } from '../../services/api';
 import { taskDraftKey } from '../../services/taskDrafts';
 import {
   duplicateHistory,
@@ -1411,5 +1412,115 @@ describe('TaskDetailPage survey entry points', () => {
       expect(screen.getByText('Human Review Checkpoint')).toBeInTheDocument();
     });
     expect(screen.queryByRole('region', { name: /survey awaiting/i })).not.toBeInTheDocument();
+  });
+});
+
+/***
+ * MARK: TaskDetailPage intervention validation tests
+ * @description The full page's follow-up/steer box enforces the same
+ *   submit-time contract as the slide-over inspector: dangling `assets/*`
+ *   refs block with a recovery dialog naming the file, words-only recovery
+ *   sends through the pending action, and a server 422 re-opens the dialog.
+ ***/
+describe('TaskDetailPage intervention submit-time validation', () => {
+  const pageTask = {
+    id: 'task-101',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    goal: 'Build authentication system',
+    title: 'Build authentication system',
+    history: [],
+    timeline: [],
+    currentStageId: 's1',
+    status: 'in_stage',
+  };
+  const pageStages = [
+    { id: 's1', name: 'Planning', type: 'agent' },
+    { id: 's2', name: 'Review', type: 'human' },
+  ];
+  const pageProjects = [{ id: 'proj-1', name: 'KainBain', cwd: '/home/user/kainbain' }];
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    pageApi.listTaskImages.mockResolvedValue({ images: [] });
+  });
+
+  test('blocks a dangling intervention ref and names the file', async () => {
+    const followUpTask = vi.fn().mockResolvedValue({});
+    const steerTask = vi.fn().mockResolvedValue({});
+    renderWithKainBain(<TaskDetailPage task={pageTask} />, {
+      stages: pageStages,
+      projects: pageProjects,
+      followUpTask,
+      steerTask,
+    });
+
+    const textarea = screen.getByPlaceholderText(/Type follow-up prompt or steering instruction/i);
+    fireEvent.change(textarea, {
+      target: { value: 'See ![gone](assets/gone.png) please take a look' },
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('intervention-live-warning')).toHaveTextContent(
+        'assets/gone.png',
+      );
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Send Follow-Up/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+    });
+    expect(screen.getByText('assets/gone.png')).toBeInTheDocument();
+    expect(followUpTask).not.toHaveBeenCalled();
+    expect(steerTask).not.toHaveBeenCalled();
+  });
+
+  test('words-only intervention recovery sends through the pending steer action', async () => {
+    const followUpTask = vi.fn().mockResolvedValue({});
+    const steerTask = vi.fn().mockResolvedValue({});
+    renderWithKainBain(<TaskDetailPage task={pageTask} />, {
+      stages: pageStages,
+      projects: pageProjects,
+      followUpTask,
+      steerTask,
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Type follow-up prompt or steering instruction/i), {
+      target: { value: 'See ![gone](assets/gone.png) please take a look' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Steer Agent/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-validation-dialog')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Send words-only'));
+    await waitFor(() => {
+      expect(steerTask).toHaveBeenCalledWith('proj-1', 'task-101', 'See please take a look');
+    });
+    expect(followUpTask).not.toHaveBeenCalled();
+  });
+
+  test('intervention 422 re-opens the dialog with server-named files', async () => {
+    const err = new Error('API 422 on /tasks/task-101/steer: refused');
+    err.status = 422;
+    err.body = JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing: [{ ref: 'assets/race.png', name: 'race.png' }],
+      imageOnly: false,
+    });
+    const followUpTask = vi.fn().mockRejectedValueOnce(err).mockResolvedValue({});
+    pageApi.listTaskImages.mockResolvedValue({ images: [{ name: 'race.png' }] });
+    renderWithKainBain(<TaskDetailPage task={pageTask} />, {
+      stages: pageStages,
+      projects: pageProjects,
+      followUpTask,
+      steerTask: vi.fn(),
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/Type follow-up prompt or steering instruction/i), {
+      target: { value: 'See ![r](assets/race.png) please take a look' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Send Follow-Up/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('feedback-validation-dialog')).toHaveTextContent(
+        'assets/race.png',
+      );
+    });
   });
 });

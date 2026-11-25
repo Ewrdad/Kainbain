@@ -1,4 +1,5 @@
 import { TaskImageAttach } from '../tasks/TaskImageAttach';
+import { MIN_FEEDBACK_PROSE_CHARS } from '../../../../shared/feedbackValidation/index.js';
 
 /***
  * MARK: FeedbackValidationDialog
@@ -26,7 +27,7 @@ import { TaskImageAttach } from '../tasks/TaskImageAttach';
 export function FeedbackValidationDialog({
   missing = [],
   imageOnly = false,
-  minProseChars = 10,
+  minProseChars = MIN_FEEDBACK_PROSE_CHARS,
   projectId = null,
   taskId = null,
   textareaRef = null,

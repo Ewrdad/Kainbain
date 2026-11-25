@@ -17,13 +17,15 @@ import { feedbackProseChars } from "./feedbackProseChars.js";
  * @example isImageOnlyFeedback('![shot](assets/shot.png)') => true
  * @example isImageOnlyFeedback('The retry path drops the error — see ![shot](assets/shot.png)') => false
  * @example isImageOnlyFeedback('fix it') => false
+ * @example isImageOnlyFeedback('![a](assets/a.png)', null) => true
  * @param {string} markdown - Draft text to classify.
  * @param {Object} [opts]
  * @param {number} [opts.minProseChars] - Prose bar (default `MIN_FEEDBACK_PROSE_CHARS`).
  * @returns {boolean} True when a written description is required first.
  ***/
-export function isImageOnlyFeedback(markdown, { minProseChars } = {}) {
+export function isImageOnlyFeedback(markdown, opts) {
 	if (!markdown || typeof markdown !== "string") return false;
+	const minProseChars = opts?.minProseChars;
 	const bar =
 		Number.isFinite(minProseChars) && minProseChars > 0
 			? Math.floor(minProseChars)

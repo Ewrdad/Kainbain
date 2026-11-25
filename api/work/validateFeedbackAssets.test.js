@@ -222,9 +222,16 @@ describe("validateFeedbackForTask", () => {
 
 	it("never throws on garbage input", () => {
 		expect(validateFeedbackForTask().ok).toBe(true);
+		expect(validateFeedbackForTask(null).ok).toBe(true);
+		expect(validateFeedbackForTask("nope").ok).toBe(true);
 		expect(validateFeedbackForTask({ text: null }).ok).toBe(true);
 		expect(
 			validateFeedbackForTask({ projectCwd: null, taskId: 42, text: 42 }).ok,
+		).toBe(true);
+		// Image-only still applies when presence cannot be verified.
+		expect(validateFeedbackForTask(null).imageOnly).toBe(false);
+		expect(
+			validateFeedbackForTask({ text: "![a](assets/a.png)" }).imageOnly,
 		).toBe(true);
 	});
 });

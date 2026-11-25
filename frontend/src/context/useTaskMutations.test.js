@@ -10,6 +10,7 @@ vi.mock('../services/api', () => ({
     failbackTask: vi.fn(),
     followUpTask: vi.fn(),
     steerTask: vi.fn(),
+    rejectTaskWithFeedback: vi.fn(),
   },
 }));
 
@@ -263,5 +264,34 @@ describe('useTaskMutations', () => {
       outcome = await result.current.steerTask('proj-1', 't1', 'plain guidance here');
     });
     expect(outcome).toBe(undefined);
+  });
+
+  it('rejectTaskWithFeedback names the file in plain words on a 422 (no raw JSON toast)', async () => {
+    const err = new Error(
+      'API 422 on /tasks/t1/reject: {"error":"Feedback references 1 file…","code":"FEEDBACK_VALIDATION_FAILED"}',
+    );
+    err.status = 422;
+    err.body = JSON.stringify({
+      code: 'FEEDBACK_VALIDATION_FAILED',
+      missing: [{ ref: 'assets/gone.png', name: 'gone.png' }],
+      imageOnly: false,
+    });
+    api.rejectTaskWithFeedback.mockRejectedValue(err);
+    const onNotification = vi.fn();
+    const { result } = renderHook(() =>
+      useTaskMutations({ onNotification, refreshTasks: vi.fn() }),
+    );
+    await expect(
+      result.current.rejectTaskWithFeedback('proj-1', 't1', 'See ![g](assets/gone.png)'),
+    ).rejects.toBe(err);
+    expect(onNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Rejection Failed',
+        message: expect.stringContaining('assets/gone.png'),
+      }),
+    );
+    const toast = onNotification.mock.calls[0][0].message;
+    expect(toast).not.toContain('API 422');
+    expect(toast).not.toContain('FEEDBACK_VALIDATION_FAILED');
   });
 });

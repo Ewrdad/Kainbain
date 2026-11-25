@@ -24,6 +24,7 @@ import {
  *   rule still applies. Never throws.
  * @example validateFeedbackForTask({ text: 'Please add tests' }).ok => true
  * @example validateFeedbackForTask({ text: '![a](assets/gone.png)' }).ok => false
+ * @example validateFeedbackForTask(null).ok => true
  * @param {Object} [args]
  * @param {string} [args.projectCwd] - Checkout root holding the task folder.
  * @param {string} [args.taskId]
@@ -33,14 +34,12 @@ import {
  * @param {number} [args.minProseChars] - Prose bar (default `MIN_FEEDBACK_PROSE_CHARS`).
  * @returns {{ok: boolean, missing: Array, imageOnly: boolean, proseChars: number, error: string}} The decision.
  ***/
-export function validateFeedbackForTask({
-	projectCwd,
-	taskId,
-	branch,
-	docsProject,
-	text,
-	minProseChars,
-} = {}) {
+export function validateFeedbackForTask(args) {
+	// Null-safe on purpose: this guard sits on every human-text route and
+	// promises never to throw, so a missing argument reads as "nothing to
+	// verify" (presence fails open, the image-only rule still applies).
+	const { projectCwd, taskId, branch, docsProject, text, minProseChars } =
+		args && typeof args === "object" ? args : {};
 	const content = typeof text === "string" ? text : "";
 	const bar =
 		Number.isFinite(minProseChars) && minProseChars > 0

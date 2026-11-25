@@ -345,10 +345,17 @@ export function useTaskMutations({
         return result;
       } catch (e) {
         logger.error('Failed to reject task with feedback', e);
+        // A 422 feedback-validation refusal names the missing files in plain
+        // words (like the approve/follow-up/steer paths) instead of leaking
+        // the raw `API 422 … {json}` transport message into the toast; the
+        // error still propagates so the dialog re-opens its recovery surface.
+        const validationBlock = parseFeedbackValidationError(e);
         onNotificationRef.current?.({
           type: 'error',
           title: 'Rejection Failed',
-          message: e?.message || 'Could not record the rejection; your feedback was kept.',
+          message: validationBlock
+            ? formatFeedbackValidationError(validationBlock)
+            : e?.message || 'Could not record the rejection; your feedback was kept.',
         });
         throw e;
       }
