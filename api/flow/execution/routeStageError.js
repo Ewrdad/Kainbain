@@ -11,6 +11,48 @@ import {
 	commitFailedStageWork,
 } from '../../work/taskFinalize.js';
 import { withCompactionHint } from './withCompactionHint.js';
+import { ingestOutOfTaskRefs, rewriteRefsToAssets } from '../../work/taskAssets.js';
+import { config } from '../../config.js';
+
+/***
+ * MARK: ingestFailureText
+ * @description Rewrites a routed failure's text fields (`message`, `stdout`,
+ *   `stderr`) through attachment ingest: out-of-task files the failure
+ *   references are copied into the task's `assets/` folder and the refs
+ *   rewritten to the stored names, in place on Error/object failures (so
+ *   `failureKind`, `gitDiagnostics`, and every other own prop survives).
+ *   Plain-string failures return the rewritten string. One mapping is
+ *   shared across the fields, so a file named by both `message` and
+ *   `stdout` ingests once (no `-2` fork). Failures without resolvable
+ *   refs come back unchanged (same object, same string).
+ * @example ingestFailureText(store, 'p', 't', new Error('see [l](/tmp/o.log)'), '/repo') => (error with assets/o.log)
+ ***/
+const ingestFailureText = (store, projectId, taskId, error, projectCwd) => {
+	if (error === null || error === undefined) return error;
+	const project = store?.projectStore?.getProject?.(projectId) || null;
+	const mapping = {};
+	const rewrite = (text) => {
+		const outcome = ingestOutOfTaskRefs({
+			projectCwd: projectCwd || project?.cwd,
+			taskId,
+			markdown: rewriteRefsToAssets(text, mapping),
+			docsProject: project,
+			maxFileBytes: config.taskAttachmentMaxBytes,
+			maxPerTask: config.taskAttachmentMaxPerTask,
+		});
+		for (const entry of outcome.ingested) mapping[entry.from] = entry.to;
+		return outcome.markdown;
+	};
+	if (typeof error === "string") return rewrite(error);
+	if (typeof error === "object") {
+		for (const key of ["message", "stdout", "stderr"]) {
+			if (typeof error[key] === "string" && error[key]) {
+				error[key] = rewrite(error[key]);
+			}
+		}
+	}
+	return error;
+};
 
 /***
  * MARK: routeStageError
@@ -77,6 +119,20 @@ export async function routeStageError(
 			bridge,
 			projectCwd,
 		});
+	}
+	// Attachment ingest: files the failure text references that resolve
+	// on THIS box are copied into the task's `assets/` folder and the
+	// failure text rewritten BEFORE the failed-work commit below, so the
+	// bytes ride that same commit onto the task branch. Runs after
+	// classification (the original text classifies) and before every
+	// report, so failureReason, lastError, and the failure report carry
+	// the rewritten refs. Runner-worktree paths from remote boxes never
+	// resolve here and keep their text (documented limit: the completion
+	// payload ships text only). Best-effort: routing continues regardless.
+	try {
+		error = ingestFailureText(store, projectId, taskId, error, projectCwd);
+	} catch {
+		// Best-effort: the original failure routes unchanged.
 	}
 	// Failure-path absorption guard (plan §2.2): best-effort auto-commit
 	// of the failed attempt's partial work on the task branch BEFORE any

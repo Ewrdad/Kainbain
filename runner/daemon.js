@@ -1852,7 +1852,7 @@ export function runCiCommand({ command, workdir, timeoutMs = 600000, onLog = () 
  *   dispatched CI command (opaque string bag, e.g. continuity markers the
  *   command needs to recognise a re-dispatch). Sanitized and merged under
  *   the daemon-owned identity keys, which always win.
- * @param {Array|null} [opts.taskAssets] - Claim-shipped task images from the
+ * @param {Array|null} [opts.taskAssets] - Claim-shipped task attachments from the
  *   dispatch answer (`[{ name, contentBase64 }]`); written into the
  *   worktree when the local task-doc sync cannot deliver them (remote
  *   Runner). Single-assignment mode reads them from the claim instead.
@@ -1955,7 +1955,7 @@ async function executeAssignment({
 		if (!primaryBranch && typeof claim.primaryBranch === "string") primaryBranch = claim.primaryBranch;
 		if (ciEnv === null || ciEnv === undefined) ciEnv = claim.env;
 		if (integration === null || integration === undefined) integration = claim.integration ?? null;
-		// Claim-shipped task images: the dispatch loop passes them
+		// Claim-shipped task attachments: the dispatch loop passes them
 		// explicitly, single-assignment mode reads them from the claim.
 		const claimTaskAssets = Array.isArray(taskAssets)
 			? taskAssets
