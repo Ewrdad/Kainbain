@@ -1374,7 +1374,14 @@ export const registerRunnerRoutes = async (app, { deps }) => {
 		const dispatchScanStartedAt = Date.now();
 		const candidates = scanClaimableTasks(
 			{ projectStore, taskStore, claimStore },
-			{ projectIds, maxWaitMs: config.dispatchMaxWaitMs || 0 },
+			{
+				projectIds,
+				maxWaitMs: config.dispatchMaxWaitMs || 0,
+				// Task 3b82f6ae (S1): name the requesting runner so the scan
+				// can hide tasks it just capacity-refused (~2min window) and
+				// honor the re-dispatch backoff.
+				runnerId: runner.runnerId,
+			},
 		);
 		if (candidates.length === 0) {
 			recordDispatchLatency(taskStore, Date.now() - dispatchScanStartedAt);

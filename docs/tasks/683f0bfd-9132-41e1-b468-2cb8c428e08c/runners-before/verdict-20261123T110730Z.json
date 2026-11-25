@@ -1,0 +1,32 @@
+[
+  {
+    "runnerId": "local-alpha",
+    "status": "active",
+    "runnerVersion": "0.1.0",
+    "buildSha": "fbcf8442ee031e2edbc9f0b30195afa410296cf3",
+    "recommendedVersion": "0.1.0",
+    "updateAvailable": false,
+    "versionOk": false,
+    "fixInBuild": false,
+    "converged": false,
+    "reasons": [
+      "runnerVersion 0.1.0 is below 0.2.0",
+      "running build fbcf8442ee031e2edbc9f0b30195afa410296cf3 does not contain the deterministic-git-failure fix commit"
+    ]
+  },
+  {
+    "runnerId": "server2-alpha",
+    "status": "active",
+    "runnerVersion": "0.1.0",
+    "buildSha": null,
+    "recommendedVersion": "0.1.0",
+    "updateAvailable": false,
+    "versionOk": false,
+    "fixInBuild": null,
+    "converged": false,
+    "reasons": [
+      "runnerVersion 0.1.0 is below 0.2.0",
+      "no build sha reported (or unknown locally) — cannot verify the fix is in the running build"
+    ]
+  }
+]

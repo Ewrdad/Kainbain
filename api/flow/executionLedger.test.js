@@ -727,6 +727,27 @@ describe("ExecutionLedger", () => {
 		expect(ledger.snapshot().divergences).toBe(1);
 	});
 
+	test("completions: clear the runner-interrupt marker (real progress ends the story)", async () => {
+		const { executionId, epoch } = claimed(ctx);
+		ctx.taskStore.getTask().interruptedBy = {
+			runnerId: "r1",
+			reason: "old death",
+			at: "2026-11-23T00:00:00.000Z",
+		};
+		await ledger.completeExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectStore: ctx.projectStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			epoch,
+		});
+		// A later crash resume must read as a restart, not as this old death.
+		expect(ctx.taskStore.getTask().interruptedBy).toBeUndefined();
+	});
+
 	test("interrupts: drops the lease and parks the task", () => {
 		const { executionId } = claimed(ctx);
 		const out = ledger.interruptExecution({
@@ -754,12 +775,92 @@ describe("ExecutionLedger", () => {
 			executionId,
 			reason: "Runner workdir unavailable: Worktree cap reached (~5)",
 		});
-		expect(out).toEqual({ interrupted: true, interruptCount: 1, escalated: false });
+		// Task 3b82f6ae (S1): this reason is a capacity refusal, not a runner
+		// death — interruptCount stays 0 and the refusal lands on
+		// capacityRefusalCount instead; the reason is still recorded below.
+		expect(out).toEqual({
+			interrupted: true,
+			interruptCount: 0,
+			escalated: false,
+			capacityRefusal: true,
+			capacityRefusalCount: 1,
+			lastCapacityRefusalRunnerId: "r1",
+		});
 		const actions = ctx.taskStore.getTask().history.map((h) => String(h.action));
 		expect(actions.some((a) => a.includes("lease dropped"))).toBe(true);
 		expect(
 			actions.some((a) => a.includes("Reason: Runner workdir unavailable: Worktree cap reached")),
 		).toBe(true);
+	});
+
+	test("interrupts: stamps a cleaned single-line runner marker", () => {
+		const { executionId } = claimed(ctx);
+		ledger.interruptExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			reason: "socket hangup",
+		});
+		const task = ctx.taskStore.getTask();
+		expect(task.interruptedBy).toEqual({
+			runnerId: "r1",
+			reason: "socket hangup",
+			at: expect.any(String),
+		});
+	});
+
+	test("interrupts: collapses a hostile reason to one bounded line in marker and history", () => {
+		const { executionId } = claimed(ctx);
+		ledger.interruptExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			reason: "x\n- 2026-01-01: FAKE\ny",
+		});
+		const task = ctx.taskStore.getTask();
+		expect(task.interruptedBy.reason).toBe("x - 2026-01-01: FAKE y");
+		for (const entry of task.history) {
+			expect(String(entry.action)).not.toMatch(/[\n\r]/);
+		}
+	});
+
+	test("interrupts: keeps history single-line when the execution id is hostile and no lease validates it", () => {
+		// No claim: hold is null, so the request-body execution id reaches
+		// the history line unvalidated — it must still collapse to one line.
+		ledger.interruptExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId: "x\n- 2026-01-01: FAKE",
+		});
+		const actions = ctx.taskStore.getTask().history.map((h) => String(h.action));
+		expect(actions.length).toBeGreaterThan(0);
+		for (const action of actions) {
+			expect(action).not.toMatch(/[\n\r]/);
+		}
+		expect(actions.some((a) => a.includes("x - 2026-01-01: FAKE"))).toBe(true);
+	});
+
+	test("interrupts: caps a long reason at the 500-char budget", () => {
+		const { executionId } = claimed(ctx);
+		ledger.interruptExecution({
+			claimStore: ctx.claimStore,
+			taskStore: ctx.taskStore,
+			projectId: "p1",
+			taskId: "t1",
+			runnerId: "r1",
+			executionId,
+			reason: `  ${"z".repeat(600)}  `,
+		});
+		expect(ctx.taskStore.getTask().interruptedBy.reason).toBe("z".repeat(500));
 	});
 
 	test("interrupts: escalates past the consecutive bound on the same stage", () => {

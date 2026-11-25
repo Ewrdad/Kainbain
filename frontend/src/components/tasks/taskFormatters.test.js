@@ -14,6 +14,7 @@ import {
   formatTryCount,
   getBlockedState,
   isAutoIterationInProgress,
+  isInfraResumeRow,
   isTaskCompleted,
   isTaskFailed,
   isWaitingForPickupTask,
@@ -964,6 +965,9 @@ describe('taskFormatters', () => {
       ]);
       expect(display[0].harnessId).toBe('pi');
       expect(display[1].tryCount).toBeUndefined();
+      // S6 trap pin: suppression still treats Resumed as a same-stage visit
+      // outcome, and the surviving row now carries its resume count.
+      expect(display[1].resumeCount).toBe(1);
     });
 
     it('keeps a same-stage arrival when a different-stage row is newer (past visit stays visible)', () => {
@@ -1364,6 +1368,118 @@ describe('taskFormatters', () => {
       expect(summarizeStageRuns(undefined, [])).toEqual([]);
       expect(summarizeStageRuns(null)).toEqual([]);
     });
+
+    it('excludes Resumed rows from tryCount and counts them separately as resumeCount', () => {
+      // S6: 2 real tries + 4 infra resumes used to render "Tried 6 times".
+      const entries = [
+        { stage: 'Plan', status: 'Resumed', timestamp: '2026-01-06T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Resumed', timestamp: '2026-01-05T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Failed', timestamp: '2026-01-04T00:00:00.000Z', reason: 'boom' },
+        { stage: 'Plan', status: 'Resumed', timestamp: '2026-01-03T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Resumed', timestamp: '2026-01-02T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(1);
+      expect(result[0].tryCount).toBe(2);
+      expect(result[0].resumeCount).toBe(4);
+    });
+
+    it('sets no tryCount for a group of only Resumed rows but still renders the row', () => {
+      const entries = [
+        { stage: 'Plan', status: 'Resumed', timestamp: '2026-01-02T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Resumed', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(1);
+      expect(result[0].stage).toBe('Plan');
+      expect(result[0].status).toBe('Resumed');
+      expect(result[0].tryCount).toBeUndefined();
+      expect(result[0].resumeCount).toBe(2);
+    });
+
+    it('keeps the representative-row rule: the latest row wins even when it is Resumed', () => {
+      const entries = [
+        { stage: 'Plan', status: 'Resumed', timestamp: '2026-01-03T00:00:00.000Z', reason: 'auto-resume' },
+        { stage: 'Plan', status: 'Failed', timestamp: '2026-01-02T00:00:00.000Z', reason: 'boom' },
+        { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(1);
+      expect(result[0].status).toBe('Resumed');
+      expect(result[0].reason).toBe('auto-resume');
+      expect(result[0].tryCount).toBe(2);
+      expect(result[0].resumeCount).toBe(1);
+    });
+
+    it('caps resumeCount at STAGE_RUN_TRY_COUNT_CAP like tryCount', () => {
+      const entries = Array.from({ length: STAGE_RUN_TRY_COUNT_CAP + 10 }, (_, i) => ({
+        stage: 'Plan',
+        status: 'Resumed',
+        timestamp: `2026-01-01T00:${String(i % 60).padStart(2, '0')}:00.000Z`,
+      }));
+      entries.push(
+        { stage: 'Plan', status: 'Failed', timestamp: '2026-02-01T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+      );
+      const result = summarizeStageRuns(entries, []);
+      expect(result).toHaveLength(1);
+      expect(result[0].tryCount).toBe(2);
+      expect(result[0].resumeCount).toBe(STAGE_RUN_TRY_COUNT_CAP);
+    });
+
+    it('matches Resumed rows case-insensitively', () => {
+      const entries = [
+        { stage: 'Plan', status: 'RESUMED', timestamp: '2026-01-03T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Failed', timestamp: '2026-01-02T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result[0].tryCount).toBe(2);
+      expect(result[0].resumeCount).toBe(1);
+    });
+
+    it('matches Resumed rows with stray whitespace in the status', () => {
+      const entries = [
+        { stage: 'Plan', status: '  resumed  ', timestamp: '2026-01-02T00:00:00.000Z' },
+        { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+      ];
+      const result = summarizeStageRuns(entries, []);
+      expect(result[0].tryCount).toBeUndefined();
+      expect(result[0].resumeCount).toBe(1);
+    });
+
+    it('recomputes counts from the rows it sees, dropping stale ones', () => {
+      // A row that already carries counts (re-summarized, or hand-built) must
+      // never keep a badge its group does not earn: one real try earns none.
+      const once = summarizeStageRuns(
+        [
+          { stage: 'Plan', status: 'Failed', timestamp: '2026-01-02T00:00:00.000Z' },
+          { stage: 'Plan', status: 'Moved', timestamp: '2026-01-01T00:00:00.000Z' },
+        ],
+        [],
+      );
+      expect(once[0].tryCount).toBe(2);
+      const twice = summarizeStageRuns(once, []);
+      expect(twice).toHaveLength(1);
+      expect(twice[0].tryCount).toBeUndefined();
+      expect(twice[0].resumeCount).toBeUndefined();
+
+      const stale = summarizeStageRuns(
+        [
+          {
+            stage: 'Plan',
+            status: 'Moved',
+            timestamp: '2026-01-01T00:00:00.000Z',
+            tryCount: 9,
+            resumeCount: 9,
+          },
+        ],
+        [],
+      );
+      expect(stale[0].tryCount).toBeUndefined();
+      expect(stale[0].resumeCount).toBeUndefined();
+    });
   });
 
   describe('formatTryCount', () => {
@@ -1381,6 +1497,56 @@ describe('taskFormatters', () => {
       expect(formatTryCount({ tryCount: 99 })).toBe('Tried 99 times');
       expect(formatTryCount({ tryCount: 2.9 })).toBe('Tried 2 times');
       expect(formatTryCount({ tryCount: '4' })).toBe('Tried 4 times');
+      // Flooring happens before the threshold: 1.x is one try, not two, so
+      // no badge — never the nonsense "Tried 1 times".
+      expect(formatTryCount({ tryCount: 1.5 })).toBeNull();
+      expect(formatTryCount({ tryCount: 1.9 })).toBeNull();
+      expect(formatTryCount({ tryCount: -3 })).toBeNull();
+      expect(formatTryCount({ resumeCount: -2 })).toBeNull();
+    });
+
+    it('shows infra resumes alongside real tries (S6 show-both contract)', () => {
+      expect(formatTryCount({ tryCount: 2, resumeCount: 4 })).toBe(
+        'Tried 2 times, 4 infra resumes',
+      );
+      expect(formatTryCount({ tryCount: 2 })).toBe('Tried 2 times');
+      expect(formatTryCount({ tryCount: 2, resumeCount: 0 })).toBe('Tried 2 times');
+    });
+
+    it('renders resume-only text when the stage ran once but resumed', () => {
+      expect(formatTryCount({ tryCount: 1, resumeCount: 3 })).toBe('3 infra resumes');
+      expect(formatTryCount({ resumeCount: 3 })).toBe('3 infra resumes');
+      expect(formatTryCount({ resumeCount: 1 })).toBe('1 infra resume');
+      expect(formatTryCount({ tryCount: 2, resumeCount: 1 })).toBe(
+        'Tried 2 times, 1 infra resume',
+      );
+    });
+
+    it('clamps and fails safe on resume counts like try counts', () => {
+      expect(formatTryCount({ tryCount: 2, resumeCount: 500 })).toBe(
+        'Tried 2 times, 99 infra resumes',
+      );
+      expect(formatTryCount({ tryCount: 2, resumeCount: 2.9 })).toBe(
+        'Tried 2 times, 2 infra resumes',
+      );
+      expect(formatTryCount({ tryCount: 2, resumeCount: 'x' })).toBe('Tried 2 times');
+      expect(formatTryCount({ resumeCount: 'x' })).toBeNull();
+      expect(formatTryCount({ tryCount: 1, resumeCount: 0 })).toBeNull();
+    });
+  });
+
+  describe('isInfraResumeRow', () => {
+    it('matches Resumed rows case-insensitively and nothing else', () => {
+      expect(isInfraResumeRow({ status: 'Resumed' })).toBe(true);
+      expect(isInfraResumeRow({ status: 'resumed' })).toBe(true);
+      expect(isInfraResumeRow({ status: 'RESUMED' })).toBe(true);
+      expect(isInfraResumeRow({ status: '  resumed  ' })).toBe(true);
+      expect(isInfraResumeRow({ status: 'Failed' })).toBe(false);
+      expect(isInfraResumeRow({ status: 'Retrying' })).toBe(false);
+      expect(isInfraResumeRow({ status: 'Moved' })).toBe(false);
+      expect(isInfraResumeRow({})).toBe(false);
+      expect(isInfraResumeRow(null)).toBe(false);
+      expect(isInfraResumeRow(undefined)).toBe(false);
     });
   });
 

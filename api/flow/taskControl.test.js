@@ -220,6 +220,21 @@ describe("abortTask", () => {
 		const persisted = store._saveTaskMarkdown.mock.calls.at(-1)[1];
 		expect(persisted.resumedAfterInterruption).toBe(false);
 	});
+
+	it("consumes any runner-interrupt marker on abort", () => {
+		const store = makeStore();
+		store.seed(
+			"p-1",
+			task({
+				status: "interrupted",
+				wasInterrupted: true,
+				interruptedBy: { runnerId: "r-7", reason: "socket hangup" },
+			}),
+		);
+		const aborted = abortTask(store, "p-1", "t-1", "/repo");
+		expect(aborted.status).toBe("in_stage");
+		expect(aborted.interruptedBy).toBeUndefined();
+	});
 });
 
 describe("rejectTask", () => {

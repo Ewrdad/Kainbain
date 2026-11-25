@@ -1,0 +1,251 @@
+[
+ {
+  "task": "0f0213b7",
+  "ts": "2026-11-14T18:45:48.600Z",
+  "runner": "local-alpha",
+  "delta_s": 245,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-14T18:45:45.769000+00:00",
+   "2026-11-14T18:46:18.600000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "3318cbce",
+  "ts": "2026-11-11T00:14:12.848Z",
+  "runner": "local-alpha",
+  "delta_s": 12,
+  "prev": "Runner local-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-11T00:14:10.483000+00:00",
+   "2026-11-11T00:14:42.848000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "3c12ffcd",
+  "ts": "2026-11-16T08:22:14.057Z",
+  "runner": "local-alpha",
+  "delta_s": 8,
+  "prev": "Runner local-alpha stage stage-1790707081501: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-16T08:22:11.918000+00:00",
+   "2026-11-16T08:22:44.057000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "8dafdce1",
+  "ts": "2026-11-09T19:41:35.456Z",
+  "runner": "local-alpha",
+  "delta_s": 53,
+  "prev": "Runner local-alpha stage stage-1790707081501: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-09T19:41:31.524000+00:00",
+   "2026-11-09T19:42:05.456000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "94e3072d",
+  "ts": "2026-11-10T08:19:56.278Z",
+  "runner": "local-alpha",
+  "delta_s": 1031,
+  "prev": "Runner local-alpha stage stage-1791398677900: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-10T08:19:56.168000+00:00",
+   "2026-11-10T08:20:26.278000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "9be2458f",
+  "ts": "2026-11-11T01:00:30.024Z",
+  "runner": "local-alpha",
+  "delta_s": 18,
+  "prev": "Runner local-alpha stage stage-1791738383862: finished",
+  "journal_match": null,
+  "classification": "stage-output commit IN execution window -> Cause 2/4 territory",
+  "window": [
+   "2026-11-11T01:00:28.035000+00:00",
+   "2026-11-11T01:01:00.024000+00:00"
+  ],
+  "window_commits": [
+   [
+    "6dae8a64",
+    "2026-11-11T01:00:56Z",
+    "kb/9be2458f-c691-4772-90e7-eef1cc2f27c4 stage-1791738383862: Runner local-alpha stage outp"
+   ],
+   [
+    "6dae8a64",
+    "2026-11-11T01:00:56Z",
+    "kb/9be2458f-c691-4772-90e7-eef1cc2f27c4 stage-1791738383862: Runner local-alpha stage outp"
+   ]
+  ]
+ },
+ {
+  "task": "ac988ba8",
+  "ts": "2026-11-11T01:48:36.314Z",
+  "runner": "local-alpha",
+  "delta_s": 1717,
+  "prev": "Runner local-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-11T01:48:33.996000+00:00",
+   "2026-11-11T01:49:06.314000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "b31cab50",
+  "ts": "2026-11-16T11:38:25.735Z",
+  "runner": "local-alpha",
+  "delta_s": 627,
+  "prev": "Runner local-alpha stage stage-1791398677900: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-16T11:38:23.673000+00:00",
+   "2026-11-16T11:38:55.735000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "b3ab7335",
+  "ts": "2026-11-16T20:40:34.566Z",
+  "runner": "local-alpha",
+  "delta_s": 58,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-16T20:40:32.095000+00:00",
+   "2026-11-16T20:41:04.566000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "b3dec9b0",
+  "ts": "2026-11-13T23:54:37.992Z",
+  "runner": "local-alpha",
+  "delta_s": 37,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-13T23:54:35.279000+00:00",
+   "2026-11-13T23:55:07.992000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "db24c124",
+  "ts": "2026-11-16T23:52:08.807Z",
+  "runner": "local-alpha",
+  "delta_s": 917,
+  "prev": "Runner local-alpha stage stage-1791398677900: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-16T23:52:06.802000+00:00",
+   "2026-11-16T23:52:38.807000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "e1fb125a",
+  "ts": "2026-11-10T21:26:00.601Z",
+  "runner": "server2-alpha",
+  "delta_s": 647,
+  "prev": "Runner server2-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-10T21:25:59.071000+00:00",
+   "2026-11-10T21:26:30.601000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "e3369ccb",
+  "ts": "2026-11-10T21:19:23.593Z",
+  "runner": "local-alpha",
+  "delta_s": 1176,
+  "prev": "Runner local-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-10T21:19:21.415000+00:00",
+   "2026-11-10T21:19:53.593000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "ed00c209",
+  "ts": "2026-11-11T11:21:49.625Z",
+  "runner": "local-alpha",
+  "delta_s": 216,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-11T11:21:46.932000+00:00",
+   "2026-11-11T11:22:19.625000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "ee3ca5d2",
+  "ts": "2026-11-16T07:37:54.864Z",
+  "runner": "local-alpha",
+  "delta_s": 9,
+  "prev": "Runner local-alpha stage stage-1791738383862: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-16T07:37:52.708000+00:00",
+   "2026-11-16T07:38:24.864000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "ee3ca5d2",
+  "ts": "2026-11-16T11:27:14.076Z",
+  "runner": "local-alpha",
+  "delta_s": 205,
+  "prev": "Runner local-alpha stage stage-1787744723298: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-16T11:27:12.115000+00:00",
+   "2026-11-16T11:27:44.076000+00:00"
+  ],
+  "window_commits": []
+ },
+ {
+  "task": "ef569a1a",
+  "ts": "2026-11-16T07:40:44.587Z",
+  "runner": "local-alpha",
+  "delta_s": 130,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "no stage-output commit in window on origin branch -> Cause 5 suspect (window-matched)",
+  "window": [
+   "2026-11-16T07:40:42.449000+00:00",
+   "2026-11-16T07:41:14.587000+00:00"
+  ],
+  "window_commits": []
+ }
+]

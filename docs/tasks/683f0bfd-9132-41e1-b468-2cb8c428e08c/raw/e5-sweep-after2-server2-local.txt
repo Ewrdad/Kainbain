@@ -1,0 +1,57 @@
+## E5 sweep host=local work_root=/home/server2/.kainbain/runner-work unit=kainbain-runner-server2-alpha origin_repo=/home/server2/.kainbain/runner-work/mirrors/Kainbain since=2026-11-19 at 2026-11-24T02:41:55Z
+== task kb-7f6220c3
+-- worktrees under /home/server2/.kainbain/runner-work:
+   worktree: /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21 (branch: kb/7f6220c3-c536-489c-b952-9858aae9ef21)
+     33a558a5 2026-11-24 02:37:45 +0000 docs(task 7f6220c3): stage10 verification — branch 0-behind/conflict-free vs origin/main, 218 frontend tests pass, fresh bundle + 5 live-DOM stage10 proofs from real scratch API+vite (12/12)
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     stage-output-commit: PRESENT in worktree HEAD history (subject ^kb/7f6220c3.*stage output)
+   origin ref: refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     33a558a5 2026-11-24 02:37:45 +0000 docs(task 7f6220c3): stage10 verification — branch 0-behind/conflict-free vs origin/main, 218 frontend tests pass, fresh bundle + 5 live-DOM stage10 proofs from real scratch API+vite (12/12)
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+-- origin branch refs in /home/server2/.kainbain/runner-work/mirrors/Kainbain (durable, survives worktree reaping):
+   refs/heads/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     33a558a5 2026-11-24 02:37:45 +0000 docs(task 7f6220c3): stage10 verification — branch 0-behind/conflict-free vs origin/main, 218 frontend tests pass, fresh bundle + 5 live-DOM stage10 proofs from real scratch API+vite (12/12)
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     10a9f7c8 2026-11-23 14:28:36 +0000 Merge remote-tracking branch 'origin/kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7' into kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7
+     356df2ce 2026-11-23 14:28:35 +0000 kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 stage-1793609583261: Runner server2-alpha stage output
+     5b53cbcd 2026-11-23 13:37:56 +0000 S1 cleanup stage: harden re-dispatch backoff, co-locate unit tests, verify red/green
+     stage-output-commit: PRESENT on refs/heads/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+   refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     33a558a5 2026-11-24 02:37:45 +0000 docs(task 7f6220c3): stage10 verification — branch 0-behind/conflict-free vs origin/main, 218 frontend tests pass, fresh bundle + 5 live-DOM stage10 proofs from real scratch API+vite (12/12)
+     c68de47b 2026-11-24 01:26:29 +0000 docs(task 7f6220c3): stage9 verification — merge origin/main (0-behind/conflict-free), 159 frontend + 15 API + 16 runner + 18 capacity tests pass, fresh bundle + 5 live-DOM stage9 proofs from scratch stack
+     fec8f7eb 2026-11-24 01:21:38 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring capacity-refusal re-dispatch backoff (CAPACITY_REFUSAL_REASON_PREFIX, resumeBackoff, scanClaimableTasks) up to date; preserve docs-repo pair preservation and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs, landing-tab summary row)
+     e85d88a3 2026-11-24 00:49:24 +0000 Merge kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into main: Stop counting worktree-cap refusals as runner deaths; add re-dispatch backoff
+     0c0739b9 2026-11-24 00:48:12 +0000 docs: stage review verdict for S1 (cap-refusal counter exclusion + re-dispatch backoff) — PASS
+     10a9f7c8 2026-11-23 14:28:36 +0000 Merge remote-tracking branch 'origin/kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7' into kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7
+     356df2ce 2026-11-23 14:28:35 +0000 kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 stage-1793609583261: Runner server2-alpha stage output
+     5b53cbcd 2026-11-23 13:37:56 +0000 S1 cleanup stage: harden re-dispatch backoff, co-locate unit tests, verify red/green
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+-- journal (kainbain-runner-server2-alpha, since 2026-11-19) lines matching 7f6220c3:
+   Nov 20 21:19:13 server2 node[3551721]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:29:04 server2 node[3579581]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:35:03 server2 node[3581302]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:43:25 server2 node[3582455]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:47:12 server2 node[3583878]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 21 22:08:15 server2 node[3943276]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 22 13:06:41 server2 node[3954135]: Orphaned workdirs (left alone, may hold unpushed work): /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21
+   Nov 23 11:40:52 server2 node[115582]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:44:38 server2 node[134229]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:48:18 server2 node[143663]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:50:46 server2 node[144277]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:56:30 server2 node[146738]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 12:12:38 server2 node[166025]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 24 01:26:44 server2 node[666072]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 24 02:38:01 server2 node[679246]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+VERDICT kb-7f6220c3: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+## E5 sweep done: 1 task(s), 0 probe failure(s) at 2026-11-24T02:41:56Z

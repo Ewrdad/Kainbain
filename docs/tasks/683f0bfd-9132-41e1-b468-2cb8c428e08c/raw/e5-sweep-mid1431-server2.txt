@@ -1,0 +1,100 @@
+## E5 sweep host=local work_root=/home/server2/.kainbain/runner-work unit=kainbain-runner-server2-alpha origin_repo=/home/server2/.kainbain/runner-work/mirrors/Kainbain since=2026-11-19 at 2026-11-23T14:34:42Z
+== task kb-7f6220c3
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/mirrors/Kainbain (durable, survives worktree reaping):
+   refs/heads/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     1fb31854 2026-11-23 12:12:28 +0000 docs(task 7f6220c3): stage8 verification — branch 0-behind/merge-clean vs origin/main, 82+77 frontend + 15 API + 16 runner tests pass, fresh bundle + live-bundle forensics re-confirmed
+     971a28c5 2026-11-23 11:56:26 +0000 kb/7f6220c3-c536-489c-b952-9858aae9ef21 stage-1793806729200: Runner server2-alpha stage output
+     f2e66547 2026-11-23 11:38:01 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring S4 transient backend-outage handling (retryTransient, isTransientBackendError, client.backendOutage) and boot-reconcile hardening; auto-merge clean, docs-repo pair preservation (preserveWorkdirPairForRemoval, runnerTaskDocsRelPath) and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs) preserved
+     65580333 2026-11-23 11:14:07 +0000 Merge kb/78eac844-250a-44d1-810e-6f047eb5a59e into main: Make in-assignment transient backend errors non-fatal to the runner
+     ca37923c 2026-11-23 11:13:52 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1787744723298: Runner server2-alpha stage output
+     c7b3633c 2026-11-23 11:11:16 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1792767028679: Runner server2-alpha stage output
+     48621808 2026-11-23 11:08:26 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1793609583261: Runner server2-alpha stage output
+     65b518e4 2026-11-23 11:06:53 +0000 Merge kb/05b5d046-9480-40e3-8ec9-c06596c51acc into main: Regression-pin boot reconcile so server-restart orphans stay at zero
+     stage-output-commit: PRESENT on refs/heads/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+   refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21
+     1fb31854 2026-11-23 12:12:28 +0000 docs(task 7f6220c3): stage8 verification — branch 0-behind/merge-clean vs origin/main, 82+77 frontend + 15 API + 16 runner tests pass, fresh bundle + live-bundle forensics re-confirmed
+     971a28c5 2026-11-23 11:56:26 +0000 kb/7f6220c3-c536-489c-b952-9858aae9ef21 stage-1793806729200: Runner server2-alpha stage output
+     f2e66547 2026-11-23 11:38:01 +0000 Merge origin/main into kb/7f6220c3-c536-489c-b952-9858aae9ef21: bring S4 transient backend-outage handling (retryTransient, isTransientBackendError, client.backendOutage) and boot-reconcile hardening; auto-merge clean, docs-repo pair preservation (preserveWorkdirPairForRemoval, runnerTaskDocsRelPath) and UI visibility (expanded Advanced by default, named toggle, scrollable dialogs) preserved
+     65580333 2026-11-23 11:14:07 +0000 Merge kb/78eac844-250a-44d1-810e-6f047eb5a59e into main: Make in-assignment transient backend errors non-fatal to the runner
+     ca37923c 2026-11-23 11:13:52 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1787744723298: Runner server2-alpha stage output
+     c7b3633c 2026-11-23 11:11:16 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1792767028679: Runner server2-alpha stage output
+     48621808 2026-11-23 11:08:26 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1793609583261: Runner server2-alpha stage output
+     65b518e4 2026-11-23 11:06:53 +0000 Merge kb/05b5d046-9480-40e3-8ec9-c06596c51acc into main: Regression-pin boot reconcile so server-restart orphans stay at zero
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/7f6220c3-c536-489c-b952-9858aae9ef21 (subject ^kb/7f6220c3.*stage output)
+-- journal (kainbain-runner-server2-alpha, since 2026-11-19) lines matching 7f6220c3:
+   Nov 20 20:36:28 server2 node[3550245]: Orphaned workdirs (left alone, may hold unpushed work): /home/server2/.kainbain/runner-work/kb-158394ab-3b43-4813-b94a-32d772a79972, /home/server2/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd, /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21, /home/server2/.kainbain/runner-work/kb-cf4b6847-11eb-4d59-b39e-e31b31df1150, /home/server2/.kainbain/runner-work/kb-db49d6c6-bdd5-4600-aaea-15a71042ae20
+   Nov 20 20:36:37 server2 node[3550289]: Orphaned workdirs (left alone, may hold unpushed work): /home/server2/.kainbain/runner-work/kb-158394ab-3b43-4813-b94a-32d772a79972, /home/server2/.kainbain/runner-work/kb-1cae113f-43ab-4613-801b-2de6297637fd, /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21, /home/server2/.kainbain/runner-work/kb-cf4b6847-11eb-4d59-b39e-e31b31df1150, /home/server2/.kainbain/runner-work/kb-db49d6c6-bdd5-4600-aaea-15a71042ae20
+   Nov 20 21:19:13 server2 node[3551721]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:29:04 server2 node[3579581]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:35:03 server2 node[3581302]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:43:25 server2 node[3582455]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 20 21:47:12 server2 node[3583878]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 21 22:08:15 server2 node[3943276]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 22 13:06:41 server2 node[3954135]: Orphaned workdirs (left alone, may hold unpushed work): /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21
+   Nov 23 11:40:52 server2 node[115582]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:44:38 server2 node[134229]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:48:18 server2 node[143663]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:50:46 server2 node[144277]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 11:56:30 server2 node[146738]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+   Nov 23 12:12:38 server2 node[166025]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+VERDICT kb-7f6220c3: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+== task kb-44125086
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/mirrors/Kainbain (durable, survives worktree reaping):
+   refs/heads/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b
+     e0cde7ef 2026-11-23 13:01:04 +0000 kb/44125086-d5aa-4bd3-a6c7-04eef809f59b stage-1792362077711: Runner server2-alpha stage output
+     65580333 2026-11-23 11:14:07 +0000 Merge kb/78eac844-250a-44d1-810e-6f047eb5a59e into main: Make in-assignment transient backend errors non-fatal to the runner
+     ca37923c 2026-11-23 11:13:52 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1787744723298: Runner server2-alpha stage output
+     c7b3633c 2026-11-23 11:11:16 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1792767028679: Runner server2-alpha stage output
+     48621808 2026-11-23 11:08:26 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1793609583261: Runner server2-alpha stage output
+     65b518e4 2026-11-23 11:06:53 +0000 Merge kb/05b5d046-9480-40e3-8ec9-c06596c51acc into main: Regression-pin boot reconcile so server-restart orphans stay at zero
+     c9b221f1 2026-11-23 11:06:38 +0000 kb/05b5d046-9480-40e3-8ec9-c06596c51acc stage-1787744723298: Runner server2-alpha stage output
+     8bab1871 2026-11-23 10:45:46 +0000 kb/78eac844-250a-44d1-810e-6f047eb5a59e stage-1791398677900: Runner server2-alpha stage output
+     stage-output-commit: PRESENT on refs/heads/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b (subject ^kb/44125086.*stage output)
+   refs/remotes/origin/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b
+     a72eb18e 2026-11-23 13:07:49 +0000 kb/44125086-d5aa-4bd3-a6c7-04eef809f59b stage-1792362077711: Runner local-alpha stage output
+     8b4bfceb 2026-11-22 18:17:39 +0000 kb/44125086-d5aa-4bd3-a6c7-04eef809f59b stage-1792362077711: Runner local-alpha stage output
+     7ac148ce 2026-11-21 09:38:57 +0000 Merge kb/1cae113f-43ab-4613-801b-2de6297637fd into main: Surface runner git/commit and pre-commit hook failures clearly in the UI
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b (subject ^kb/44125086.*stage output)
+-- journal (kainbain-runner-server2-alpha, since 2026-11-19) lines matching 44125086:
+   Nov 23 13:01:05 server2 node[167566]: Runner failed: merging origin/kb/44125086-d5aa-4bd3-a6c7-04eef809f59b into kb/44125086-d5aa-4bd3-a6c7-04eef809f59b conflicts (docs/tasks/44125086-d5aa-4bd3-a6c7-04eef809f59b/SURVEY.md) — refusing to resolve on the push path
+VERDICT kb-44125086: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+== task kb-7f347a7a
+-- worktrees under /home/server2/.kainbain/runner-work:
+   (no worktree on this host)
+-- origin branch refs in /home/server2/.kainbain/runner-work/mirrors/Kainbain (durable, survives worktree reaping):
+   refs/heads/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219
+     fbc0457e 2026-11-23 12:57:25 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     ea02dc17 2026-11-22 18:17:38 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     7ac148ce 2026-11-21 09:38:57 +0000 Merge kb/1cae113f-43ab-4613-801b-2de6297637fd into main: Surface runner git/commit and pre-commit hook failures clearly in the UI
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     stage-output-commit: PRESENT on refs/heads/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 (subject ^kb/7f347a7a.*stage output)
+   refs/remotes/origin/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219
+     fbc0457e 2026-11-23 12:57:25 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     ea02dc17 2026-11-22 18:17:38 +0000 kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 stage-1792362077711: Runner server2-alpha stage output
+     7ac148ce 2026-11-21 09:38:57 +0000 Merge kb/1cae113f-43ab-4613-801b-2de6297637fd into main: Surface runner git/commit and pre-commit hook failures clearly in the UI
+     eafc5292 2026-11-21 09:38:44 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787744723298: Runner server2-alpha stage output
+     b3f38f5f 2026-11-21 09:32:49 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1793609583261: Runner server2-alpha stage output
+     5d118739 2026-11-21 09:24:33 +0000 kb/1cae113f cleanup: honest summary count under file cap, precise streak docs
+     b63d06fd 2026-11-21 09:07:38 +0000 kb/1cae113f-43ab-4613-801b-2de6297637fd stage-1787914510327: Runner local-alpha stage output
+     d6fa0c44 2026-11-21 08:50:13 +0000 Reconcile commit/hook-failure surfacing with main's recovery bypass (db49d6c6)
+     stage-output-commit: PRESENT on refs/remotes/origin/kb/7f347a7a-0bfd-4a37-9500-a34eb5ee3219 (subject ^kb/7f347a7a.*stage output)
+-- journal (kainbain-runner-server2-alpha, since 2026-11-19) lines matching 7f347a7a:
+   (no matching journal lines)
+VERDICT kb-7f347a7a: stage-output commit PRESENT -> Cause 2/4 territory (GUIDE-05 §4)
+
+## E5 sweep done: 3 task(s), 0 probe failure(s) at 2026-11-23T14:34:45Z

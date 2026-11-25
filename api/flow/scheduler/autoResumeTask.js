@@ -3,6 +3,7 @@ import {
 	resolveStagesForTask,
 } from '../stageResolution.js';
 import { collectResumeEvidence } from './collectResumeEvidence.js';
+import { resolveResumeLabel } from './resolveResumeLabel.js';
 
 /***
  * MARK: autoResumeTask
@@ -17,7 +18,13 @@ import { collectResumeEvidence } from './collectResumeEvidence.js';
  *   `scheduleTick` then dispatches under the busy gate) or `scheduleTick`
  *   (which dispatches immediately after). Never calls `executeStage`
  *   directly, so the single-active invariant holds. Idempotent: a
- *   non-interrupted task is returned untouched.
+ *   non-interrupted task is returned untouched. The history label names the
+ *   recovery route (see `resolveResumeLabel`): server restart for genuine
+ *   reconcile recoveries, runner interrupt (with runner id + reason) for
+ *   runner-path resumes. The runner marker is consumed (deleted) once the
+ *   label is resolved: the interruption is over, so a later crash-path
+ *   resume in this same process must read as a restart, not as this old
+ *   runner death.
  * @param {Object} store
  * @param {string} projectId
  * @param {string} taskId
@@ -36,11 +43,36 @@ export function autoResumeTask(store, projectId, taskId, projectCwd, { reason } 
 	task.wasInterrupted = false;
 	task.status = "in_stage";
 	task.updatedAt = new Date().toISOString();
+	// Task 3b82f6ae (S1): count consecutive resumes per task+stage so the
+	// scheduler can slow re-dispatch of a repeatedly interrupted task
+	// (resumeBackoff). A stage change restarts the streak at 1; completion
+	// clears it (executionLedger.completeExecution). Like the
+	// runnerInterruptCount death streak, this counter is in-memory per
+	// process (task markdown does not persist it) — a restart restarts the
+	// streak at 1, which fails safe: the backoff can only ever delay, never
+	// park, and a fresh process always gives the first resumes the fast
+	// path while the live refusal loop rebuilds the streak within seconds.
+	const resumeStageId = task.currentStageId ?? null;
+	if (
+		task.consecutiveResumeStage === resumeStageId &&
+		Number.isInteger(task.consecutiveResumes)
+	) {
+		task.consecutiveResumes += 1;
+	} else {
+		task.consecutiveResumes = 1;
+		task.consecutiveResumeStage = resumeStageId;
+	}
+	task.lastResumedAt = task.updatedAt;
 	if (typeof store._resetAutoIteration === "function") {
 		store._resetAutoIteration(task);
 	}
-	const historyAction =
-		"Auto-resumed after server restart — prioritised in queue";
+	// S6: the label names the actual recovery route — server restart for
+	// genuine reconcile recoveries, runner interrupt (with id + reason) for
+	// runner-path resumes — instead of one string for both. The marker is
+	// consumed once the label is resolved: it names the CURRENT interruption
+	// only, and the interruption ends with this flip.
+	const historyAction = resolveResumeLabel(task);
+	delete task.interruptedBy;
 	if (typeof store._recordHistory === "function") {
 		try {
 			store._recordHistory(task, historyAction, task.updatedAt);

@@ -1,0 +1,3 @@
+local-alpha v=0.1.0 rec=0.1.0 avail=0.1.0 upd=false pend=0 sha=fbcf8442ee031e2edbc9f0b30195afa410296cf3
+local-bravo v=0.1.0 rec=0.1.0 avail=0.1.0 upd=false pend=0 sha=fbcf8442ee031e2edbc9f0b30195afa410296cf3
+server2-alpha v=0.1.0 rec=0.1.0 avail=0.1.0 upd=false pend=0 sha=none

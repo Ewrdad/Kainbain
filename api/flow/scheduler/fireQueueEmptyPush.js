@@ -8,6 +8,11 @@ import { findNextCandidateTask } from './findNextCandidateTask.js';
 import { countHumanPendingTasks } from './countHumanPendingTasks.js';
 import { cancelQueueEmptyTimer } from './cancelQueueEmptyTimer.js';
 
+// Task 3b82f6ae (S1): the re-check asks "is ANY work pending?", so a resumed
+// task held in its re-dispatch backoff still counts — the queue is not
+// empty, it is merely waiting out a short delay, and must not page the
+// operator as drained.
+
 /***
  * MARK: fireQueueEmptyPush
  * @description Best-effort queue-empty push hook with debounce. Arms a timer
@@ -38,7 +43,7 @@ export function fireQueueEmptyPush(store, opts = {}) {
 				// A candidate appeared during the window (the next stage
 				// landed after the handover): preserve lastCompletedTask if checked, then stay silent.
 				const prevLastCompleted = store.lastCompletedTask;
-				const hasCandidate = !!findNextCandidateTask(store);
+				const hasCandidate = !!findNextCandidateTask(store, { ignoreBackoff: true });
 				if (hasCandidate && prevLastCompleted && !store.lastCompletedTask) {
 					store.lastCompletedTask = prevLastCompleted;
 				}

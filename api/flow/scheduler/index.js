@@ -35,6 +35,7 @@ export { resolveRunningWedge } from './resolveRunningWedge.js';
 export { scheduleTick } from './scheduleTick.js';
 export { ORPHANED_RUNNING_STATUSES } from './orphanedRunningStatuses.js';
 export { autoResumeTask } from './autoResumeTask.js';
+export { resolveResumeLabel } from './resolveResumeLabel.js';
 export { collectResumeEvidence } from './collectResumeEvidence.js';
 export { reconcileInterruptedRuns } from './reconcileInterruptedRuns.js';
 export { runScheduledTick } from './runScheduledTick.js';

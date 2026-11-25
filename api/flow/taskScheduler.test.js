@@ -905,9 +905,32 @@ describe("autoResumeTask", () => {
 		expect(done.wasInterrupted).toBe(false);
 		expect(done).toBe(seeded);
 		expect(store._resetAutoIteration).toHaveBeenCalledWith(seeded);
+		// S6: no runner marker → genuine restart route keeps the exact
+		// server-restart string.
 		expect(store._recordHistory).toHaveBeenCalledWith(
 			seeded,
-			expect.stringContaining("Auto-resumed"),
+			"Auto-resumed after server restart — prioritised in queue",
+			expect.any(String),
+		);
+		expect(store._saveTaskMarkdown).toHaveBeenCalledWith("/repo", seeded);
+	});
+
+	it("names the runner route (id + reason) when the interrupt marker is present", () => {
+		const store = makeStore();
+		const seeded = store.seed(
+			"p-1",
+			task({
+				status: "interrupted",
+				wasInterrupted: true,
+				interruptedBy: { runnerId: "r-7", reason: "socket hangup" },
+			}),
+		);
+		const done = autoResumeTask(store, "p-1", "t-1", "/repo");
+		expect(done.status).toBe("in_stage");
+		expect(done.wasInterrupted).toBe(false);
+		expect(store._recordHistory).toHaveBeenCalledWith(
+			seeded,
+			"Auto-resumed after runner interrupt — prioritised in queue (runner r-7, reason: socket hangup)",
 			expect.any(String),
 		);
 		expect(store._saveTaskMarkdown).toHaveBeenCalledWith("/repo", seeded);
