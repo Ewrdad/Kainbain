@@ -14,6 +14,9 @@ vi.mock('../services/api', async (importOriginal) => {
       listTaskImages: vi.fn().mockResolvedValue({ images: [] }),
       uploadTaskImage: vi.fn(),
       deleteTaskImage: vi.fn(),
+      listTaskAttachments: vi.fn().mockResolvedValue({ attachments: [] }),
+      uploadTaskAttachment: vi.fn(),
+      deleteTaskAttachment: vi.fn(),
     },
   };
 });

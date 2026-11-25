@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useId, useEffect } from 'react';
 import { API_BASE } from '../../services/apiBase';
-import { resolveTaskImageUrl } from '../../services/taskImages';
+import { resolveTaskAttachmentUrl, resolveTaskImageUrl } from '../../services/taskImages';
 import { useImageRetry } from '../../services/imageRetry';
 import { logger } from '../../services/logger';
 import { groupBlocksIntoSections } from './markdownSections';
@@ -364,9 +364,12 @@ export function parseInlineMarkdown(text, imageContext = {}) {
         <MdImage key={`${key}:${src}`} src={src} alt={alt} hasTaskContext={hasTaskContext} />,
       );
     } else if (match[2] !== undefined && match[3] !== undefined) {
-      // Link: [label](url)
+      // Link: [label](url) — relative task-asset paths resolve to the
+      // header-safe attachment endpoint (so `[log](assets/out.log)` downloads
+      // instead of 404ing against the SPA route); external and
+      // context-less hrefs render exactly as before.
       const label = match[2];
-      const href = sanitizeUrl(match[3]);
+      const href = sanitizeUrl(resolveTaskAttachmentUrl({ ...imageContext, src: match[3] }));
       nodes.push(
         <a
           key={key}
@@ -848,8 +851,8 @@ function renderMarkdownBlock({ block, blockKey, imageContext, enableCopy }) {
  * @param {string} [props.content=''] - The markdown content to render.
  * @param {string} [props.className=''] - Optional outer container CSS classes.
  * @param {boolean} [props.enableCopy=true] - Whether code blocks have copy buttons.
- * @param {string} [props.projectId] - Task context so relative `assets/...` image references resolve to the raw image endpoint.
- * @param {string} [props.taskId] - Task context for image resolution (see resolveTaskImageUrl).
+ * @param {string} [props.projectId] - Task context so relative `assets/...` image references resolve to the raw image endpoint and `assets/...` link references to the attachment endpoint.
+ * @param {string} [props.taskId] - Task context for asset resolution (see resolveTaskImageUrl).
  * @param {Function|null} [props.renderBlockWrapper] - Optional `(block, rendered, index) => ReactNode` seam for review UIs: wraps each parsed block (which carries `startLine`/`endLine`) with hover affordances. `null` renders byte-identical default output.
  * @param {boolean} [props.collapsibleSections=false] - Opt-in: each `h2` becomes a collapsible toggle with a chevron; the `h1` title and pre-`h2` content stay always visible. A blank `##` heading shows an "Untitled section" fallback so the toggle always keeps a name. `false` renders the flat path (identical blocks, no toggle chrome).
  * @param {boolean} [props.defaultCollapsed=false] - Initial state when `collapsibleSections` is on: `false` starts every section open. Applies on mount and whenever the article changes; later prop flips alone do nothing.

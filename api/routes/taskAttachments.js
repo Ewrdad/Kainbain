@@ -80,6 +80,7 @@ const attachmentErrorBody = (err) => {
 /***
  * MARK: taskAttachmentsRoutes
  * @description Registers the task attachment endpoints on the Fastify app.
+ * @example app.register(taskAttachmentsRoutes, { deps })
  * @param {Object} app - Fastify application instance.
  * @param {Object} opts - Options including injected deps.
  ***/

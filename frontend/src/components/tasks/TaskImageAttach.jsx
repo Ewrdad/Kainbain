@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api, API_BASE } from '../../services/api';
-import { isImageFile, resolveTaskImageUrl } from '../../services/taskImages';
+import {
+  ATTACHMENT_EXTENSIONS,
+  attachmentKindFor,
+  isAttachmentFile,
+  isImageFile,
+  resolveTaskAttachmentUrl,
+  resolveTaskImageUrl,
+} from '../../services/taskImages';
 import { useImageRetry } from '../../services/imageRetry';
 
 /***
@@ -17,22 +24,56 @@ async function fetchTaskImages(projectId, taskId) {
 }
 
 /***
+ * MARK: fetchTaskFiles
+ * @description Reads a task's non-image attachments from the API (the
+ *   generalized listing minus the viewable images, which keep their own
+ *   thumbnail strip). Throws on request failure so callers decide how to
+ *   surface it.
+ * @example await fetchTaskFiles('p1', 't1') => [{ name: 'out.log', path: 'assets/out.log' }]
+ * @param {string} projectId
+ * @param {string} taskId
+ * @returns {Promise<Array<{name: string, path: string, size: number, mtime: string, kind: string}>>}
+ ***/
+async function fetchTaskFiles(projectId, taskId) {
+  const result = await api.listTaskAttachments(projectId, taskId);
+  const entries = Array.isArray(result?.attachments) ? result.attachments : [];
+  return entries.filter((entry) => entry?.kind !== 'image');
+}
+
+/***
+ * MARK: attachmentAccept
+ * @description The file picker's `accept` value: the viewable image MIME types
+ *   plus every generalized attachment extension, so the OS dialog offers all
+ *   attachable files while the upload path still re-checks each pick.
+ * @example attachmentAccept() => 'image/png,image/jpeg,...,.txt,.log,...'
+ * @returns {string}
+ ***/
+function attachmentAccept() {
+  const nonImage = ATTACHMENT_EXTENSIONS.filter(
+    (ext) => !['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext),
+  );
+  return ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+    .concat(nonImage.map((ext) => `.${ext}`))
+    .join(',');
+}
+
+/***
  * MARK: buildSkippedMessage
  * @description Explains why picked files were not uploaded. Names HEIC/HEIF
- *   explicitly (common iPhone output outside the png/jpg/gif/webp allowlist)
+ *   explicitly (common iPhone output outside the attachment allowlist)
  *   so mobile users learn the format — not the picker — is the blocker.
- * @example buildSkippedMessage([{ name: 'a.heic' }]) => 'Skipped 1 non-image file ...'
- * @param {Array} skipped - Picked files rejected by `isImageFile`.
+ * @example buildSkippedMessage([{ name: 'a.heic' }]) => 'Skipped 1 unsupported file ...'
+ * @param {Array} skipped - Picked files rejected by `isAttachmentFile`.
  * @returns {string} Inline notice for the alert area.
  ***/
 function buildSkippedMessage(skipped) {
-  const names = (skipped || []).map((file) => file?.name || 'image');
+  const names = (skipped || []).map((file) => file?.name || 'file');
   const heic = names.filter((name) => /\.(heic|heif)$/i.test(name));
   const detail =
     heic.length > 0
       ? `HEIC/HEIF is not supported (${heic.slice(0, 3).join(', ')}${heic.length > 3 ? ', …' : ''}); use PNG/JPG/GIF/WebP`
-      : `only PNG/JPG/GIF/WebP can be attached (${names.slice(0, 3).join(', ')}${names.length > 3 ? ', …' : ''})`;
-  return `Skipped ${names.length} non-image file${names.length === 1 ? '' : 's'} — ${detail}.`;
+      : `only image, text, document, archive, and media files can be attached (${names.slice(0, 3).join(', ')}${names.length > 3 ? ', …' : ''})`;
+  return `Skipped ${names.length} unsupported file${names.length === 1 ? '' : 's'} — ${detail}.`;
 }
 
 /***
@@ -109,13 +150,69 @@ export function TaskImageThumb({ projectId, taskId, image, onRemove }) {
 }
 
 /***
+ * MARK: TaskFileChip
+ * @description One listed non-image attachment: a download link plus name and
+ *   remove control. The sibling of `TaskImageThumb` for the generalized
+ *   listing — files resolve through the header-safe attachment endpoint and
+ *   carry the `download` hint so the browser saves rather than navigates.
+ * @example <TaskFileChip projectId="p1" taskId="t1" file={{ name: 'out.log' }} onRemove={remove} />
+ * @param {Object} props
+ * @param {string} props.projectId - Owning project id.
+ * @param {string} props.taskId - Owning task id.
+ * @param {Object} props.file - Listed attachment (`{ name }`).
+ * @param {Function} [props.onRemove] - Called with the file name.
+ ***/
+export function TaskFileChip({ projectId, taskId, file, onRemove }) {
+  const href = resolveTaskAttachmentUrl({
+    apiBase: API_BASE,
+    projectId,
+    taskId,
+    src: `assets/${file.name}`,
+  });
+
+  return (
+    <span className="inline-flex items-center gap-1 border border-border-standard rounded bg-surface-deep px-1 py-0.5">
+      <a
+        href={href}
+        download={file.name}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Download ${file.name}`}
+        className="font-mono text-[9px] text-text-muted hover:text-on-surface transition-colors"
+        title={`Download ${file.name}`}
+      >
+        <span role="img" aria-label={file.name}>
+          📎
+        </span>
+      </a>
+      <span className="font-mono text-[9px] text-text-muted max-w-[110px] truncate">
+        {file.name}
+      </span>
+      <button
+        type="button"
+        aria-label={`Remove file ${file.name}`}
+        data-testid={`task-file-remove-${file.name}`}
+        onClick={() => onRemove?.(file.name)}
+        className="text-[9px] font-mono text-text-muted hover:text-error cursor-pointer px-0.5"
+        title="Delete this file attachment"
+      >
+        ✕
+      </button>
+    </span>
+  );
+}
+
+/***
  * MARK: TaskImageAttach
- * @description The task-image upload affordance: a file picker (plus paste-to-upload
- *   on the goal textarea), the task's existing image assets as removable thumbnails,
- *   and upload/error feedback. On a successful upload it reports the stored asset to
- *   the parent, which appends the markdown reference (`![name](assets/name)`) at
- *   the end of the goal text on a new line. Images live server-side in the task's `assets/`
- *   folder; nothing lands in the goal markdown but a relative reference.
+ * @description The task-attachment upload affordance: a file picker (plus paste-to-upload
+ *   on the goal textarea), the task's existing attachments as removable thumbnails
+ *   (images) and download chips (every other allowed file type), and upload/error
+ *   feedback. Images upload through the image endpoint and everything else through
+ *   the generalized attachment endpoint. On a successful upload it reports the stored
+ *   asset to the parent, which appends the markdown reference (`![name](assets/name)`
+ *   for images, `[name](assets/name)` for files) at the end of the goal text on a new
+ *   line. Files live server-side in the task's `assets/` folder; nothing lands in the
+ *   goal markdown but a relative reference.
  * @param {Object} props
  * @param {string} props.projectId - Owning project id.
  * @param {string} props.taskId - Owning task id (assets live in docs/tasks/<taskId>/assets/).
@@ -131,7 +228,7 @@ export function TaskImageThumb({ projectId, taskId, image, onRemove }) {
  *   that throws is logged and ignored; the picker still resets and later
  *   uploads still proceed. Skipped (with an inline notice) when the task
  *   changed mid-upload, so a batch started on task A never lands in B's draft.
- * @param {Function} [props.onRemoved] - Called with the removed image name.
+ * @param {Function} [props.onRemoved] - Called with the removed attachment name.
  * @param {Function} [props.onUploadingChange] - Called with `true`/`false` as uploads start/finish (lets modal parents disable submit mid-upload).
  * @example <TaskImageAttach projectId="p1" taskId="t1" textareaRef={ref} onUploaded={insertImageMarkdown} onUploadedBatch={insertImagesMarkdown} />
  ***/
@@ -145,6 +242,7 @@ export function TaskImageAttach({
   onUploadingChange,
 }) {
   const [images, setImages] = useState([]);
+  const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
@@ -159,7 +257,9 @@ export function TaskImageAttach({
   }, [projectId, taskId]);
 
   // Initial asset listing: subscribe-on-mount pattern — setState happens in
-  // the fetch callbacks (never synchronously in the effect body).
+  // the fetch callbacks (never synchronously in the effect body). Images and
+  // files list independently so one endpoint's failure never hides the other
+  // strip.
   useEffect(() => {
     if (!projectId || !taskId) return undefined;
     let cancelled = false;
@@ -170,6 +270,13 @@ export function TaskImageAttach({
       .catch((err) => {
         // Listing failures leave the strip empty; upload errors surface separately.
         console.error('[TaskImageAttach] listing task images failed', err);
+      });
+    fetchTaskFiles(projectId, taskId)
+      .then((list) => {
+        if (!cancelled) setFiles(list);
+      })
+      .catch((err) => {
+        console.error('[TaskImageAttach] listing task files failed', err);
       });
     return () => {
       cancelled = true;
@@ -186,15 +293,15 @@ export function TaskImageAttach({
   const uploadFiles = useCallback(
     async (fileList) => {
       const picked = Array.from(fileList || []);
-      const skipped = picked.filter((file) => !isImageFile(file));
-      const files = picked.filter(isImageFile);
+      const skipped = picked.filter((file) => !isAttachmentFile(file));
+      const uploadable = picked.filter(isAttachmentFile);
       if (!projectId || !taskId) {
         // No task context: nothing can be stored. Say so instead of dropping
         // the gesture silently, so a miswired parent is visible immediately.
-        setError('Select a task before attaching images.');
+        setError('Select a task before attaching files.');
         return;
       }
-      if (files.length === 0) {
+      if (uploadable.length === 0) {
         // Nothing uploadable: say so inline instead of succeeding silently,
         // so mobile users learn why no reference appeared.
         if (skipped.length > 0) setError(buildSkippedMessage(skipped));
@@ -222,15 +329,18 @@ export function TaskImageAttach({
         scopeRef.current.taskId !== batchScope.taskId;
       try {
         // Per-file try/catch: one oversized/rejected file must not drop the
-        // rest of the batch — successes stay linked and listed.
+        // rest of the batch — successes stay linked and listed. Images keep
+        // the image endpoint; every other attachment rides the generalized
+        // endpoint. Selection order is preserved across the two.
         const storedBatch = [];
         const failures = [];
-        for (const file of files) {
+        for (const file of uploadable) {
           let stored;
           try {
-            stored = await api.uploadTaskImage(batchScope.projectId, batchScope.taskId, file);
+            const upload = isImageFile(file) ? api.uploadTaskImage : api.uploadTaskAttachment;
+            stored = await upload(batchScope.projectId, batchScope.taskId, file);
           } catch (err) {
-            failures.push(`${file?.name || 'image'}: ${err?.message || 'upload failed'}`);
+            failures.push(`${file?.name || 'file'}: ${err?.message || 'upload failed'}`);
             continue;
           }
           const asset = { name: stored?.name, path: stored?.path };
@@ -250,15 +360,20 @@ export function TaskImageAttach({
           // task's folder (visible in its strip on return), but no reference
           // is appended anywhere — the current draft belongs to another task.
           notices.push(
-            `Upload finished after switching tasks — ${storedBatch.length} image(s) stored in task ${batchScope.taskId}; no reference was added to the current task.`,
+            `Upload finished after switching tasks — ${storedBatch.length} file(s) stored in task ${batchScope.taskId}; no reference was added to the current task.`,
           );
         } else if (storedBatch.length > 0) {
           // Refresh before notifying: a throwing parent batch listener must
-          // not skip the thumbnail update for uploads that already succeeded.
+          // not skip the strip updates for uploads that already succeeded.
           try {
-            setImages(await fetchTaskImages(batchScope.projectId, batchScope.taskId));
+            const [nextImages, nextFiles] = await Promise.all([
+              fetchTaskImages(batchScope.projectId, batchScope.taskId),
+              fetchTaskFiles(batchScope.projectId, batchScope.taskId),
+            ]);
+            setImages(nextImages);
+            setFiles(nextFiles);
           } catch (err) {
-            console.error('[TaskImageAttach] listing task images failed', err);
+            console.error('[TaskImageAttach] listing task attachments failed', err);
           }
           try {
             onUploadedBatch?.(storedBatch);
@@ -268,7 +383,7 @@ export function TaskImageAttach({
         }
         if (skipped.length > 0) notices.push(buildSkippedMessage(skipped));
         if (failures.length > 0)
-          notices.push(`Failed to upload ${failures.length} image(s): ${failures.join('; ')}`);
+          notices.push(`Failed to upload ${failures.length} file(s): ${failures.join('; ')}`);
         setError(notices.length > 0 ? notices.join(' ') : null);
       } finally {
         // Always release: a throwing parent listener or any unexpected error
@@ -305,13 +420,17 @@ export function TaskImageAttach({
 
   const handleRemove = async (name) => {
     if (!projectId || !taskId) {
-      setError('Select a task before attaching images.');
+      setError('Select a task before attaching files.');
       return;
     }
+    // Images keep the image endpoint; files ride the generalized one. The
+    // name classifies (stored names are extension-bearing by construction).
+    const remove =
+      attachmentKindFor(name) === 'file' ? api.deleteTaskAttachment : api.deleteTaskImage;
     try {
-      await api.deleteTaskImage(projectId, taskId, name);
+      await remove(projectId, taskId, name);
     } catch (err) {
-      setError(err?.message || 'Image removal failed');
+      setError(err?.message || 'Attachment removal failed');
       return;
     }
     // A listener or listing failure after a confirmed delete must not report
@@ -322,9 +441,14 @@ export function TaskImageAttach({
       console.error('[TaskImageAttach] onRemoved listener failed', err);
     }
     try {
-      setImages(await fetchTaskImages(projectId, taskId));
+      const [nextImages, nextFiles] = await Promise.all([
+        fetchTaskImages(projectId, taskId),
+        fetchTaskFiles(projectId, taskId),
+      ]);
+      setImages(nextImages);
+      setFiles(nextFiles);
     } catch (err) {
-      console.error('[TaskImageAttach] listing task images failed', err);
+      console.error('[TaskImageAttach] listing task attachments failed', err);
     }
   };
 
@@ -337,14 +461,14 @@ export function TaskImageAttach({
           disabled={uploading}
           data-testid="task-image-upload-button"
           className="px-2 py-1 rounded border border-border-standard bg-surface-deep text-[10px] font-mono font-bold uppercase tracking-wider text-text-muted hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Upload images into this task's assets folder and reference each in markdown on its own line"
+          title="Upload files into this task's assets folder and reference each in markdown on its own line"
         >
-          {uploading ? 'Uploading…' : '🖼 Attach image'}
+          {uploading ? 'Uploading…' : '📎 Attach file'}
         </button>
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp"
+          accept={attachmentAccept()}
           multiple
           className="hidden"
           data-testid="task-image-input"
@@ -354,7 +478,7 @@ export function TaskImageAttach({
           }}
         />
         <span className="text-[9px] font-mono text-text-muted">
-          PNG/JPG/GIF/WebP · select multiple allowed — each image is added on its own line
+          Images, logs, docs &amp; more · select multiple allowed — each file is added on its own line
         </span>
       </div>
 
@@ -372,6 +496,20 @@ export function TaskImageAttach({
               projectId={projectId}
               taskId={taskId}
               image={image}
+              onRemove={handleRemove}
+            />
+          ))}
+        </div>
+      )}
+
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" data-testid="task-file-list">
+          {files.map((file) => (
+            <TaskFileChip
+              key={`${projectId}:${taskId}:${file.name}`}
+              projectId={projectId}
+              taskId={taskId}
+              file={file}
               onRemove={handleRemove}
             />
           ))}

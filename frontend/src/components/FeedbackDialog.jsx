@@ -4,7 +4,7 @@ import { useKainBain } from '../context/KainBainContext';
 import { Modal } from './Modal';
 import { usePendingAction } from '../hooks/usePendingAction';
 import { TaskImageAttach } from './tasks/TaskImageAttach';
-import { appendImagesMarkdown, removeImageMarkdown } from '../services/taskImages';
+import { appendAttachmentsMarkdown, removeAttachmentMarkdown } from '../services/taskImages';
 
 /**
  * MARK: FeedbackDialog
@@ -42,11 +42,11 @@ export function FeedbackDialog() {
   // untouched reject path carries them to the agent's retry prompt.
   const handleImagesUploadedBatch = (images) => {
     if (!Array.isArray(images) || images.length === 0) return;
-    setFeedback((draft) => appendImagesMarkdown(draft, images));
+    setFeedback((draft) => appendAttachmentsMarkdown(draft, images));
   };
 
   const handleImageRemoved = (name) => {
-    setFeedback((draft) => removeImageMarkdown(draft, name));
+    setFeedback((draft) => removeAttachmentMarkdown(draft, name));
   };
 
   const handleSubmit = (e) => {

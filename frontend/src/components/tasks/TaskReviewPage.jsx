@@ -17,7 +17,7 @@ import { ReportNavigator } from '../review/ReportNavigator';
 import { normalizeReportPath } from '../review/reportPaths';
 import { ReviewCommentThread } from '../review/ReviewCommentThread';
 import { TaskImageAttach } from './TaskImageAttach';
-import { appendImagesMarkdown, removeImageMarkdown } from '../../services/taskImages';
+import { appendAttachmentsMarkdown, removeAttachmentMarkdown } from '../../services/taskImages';
 import { useIsGlassesViewport } from '../util/viewport';
 import {
   GlassesQuickReviewView,
@@ -241,11 +241,11 @@ export function TaskReviewPage({ task: propTask, onBack }) {
   // (the existing reject path carries them to the retry prompt verbatim).
   const handleFailImagesUploadedBatch = (images) => {
     if (!Array.isArray(images) || images.length === 0) return;
-    setFailFeedback((draft) => appendImagesMarkdown(draft, images));
+    setFailFeedback((draft) => appendAttachmentsMarkdown(draft, images));
   };
 
   const handleFailImageRemoved = (name) => {
-    setFailFeedback((draft) => removeImageMarkdown(draft, name));
+    setFailFeedback((draft) => removeAttachmentMarkdown(draft, name));
   };
 
   /***

@@ -13,6 +13,9 @@ vi.mock('../../services/api', () => ({
     listTaskImages: vi.fn(),
     uploadTaskImage: vi.fn(),
     deleteTaskImage: vi.fn(),
+    listTaskAttachments: vi.fn(),
+    uploadTaskAttachment: vi.fn(),
+    deleteTaskAttachment: vi.fn(),
   },
 }));
 
@@ -28,6 +31,7 @@ describe('TaskImageAttach Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.listTaskImages.mockResolvedValue({ images: [] });
+    api.listTaskAttachments.mockResolvedValue({ attachments: [] });
   });
 
   afterEach(() => {
@@ -68,14 +72,15 @@ describe('TaskImageAttach Component', () => {
     await waitFor(() => expect(onUploaded).toHaveBeenCalledWith({ name: 'shot.png', path: 'assets/shot.png' }));
   });
 
-  it('ignores non-image files without calling the API', async () => {
+  it('ignores disallowed files without calling the API', async () => {
     const onUploaded = vi.fn();
     const { container } = renderAttach({ onUploaded });
     const input = container.querySelector('[data-testid="task-image-input"]');
-    const file = new File(['text'], 'notes.txt', { type: 'text/plain' });
+    const file = new File(['text'], 'run.sh', { type: 'text/x-sh' });
     fireEvent.change(input, { target: { files: [file] } });
 
     await waitFor(() => expect(api.uploadTaskImage).not.toHaveBeenCalled());
+    expect(api.uploadTaskAttachment).not.toHaveBeenCalled();
     expect(onUploaded).not.toHaveBeenCalled();
   });
 
@@ -154,17 +159,19 @@ describe('TaskImageAttach Component', () => {
     );
   });
 
-  it('shows a skip notice instead of silent success when all files are non-images', async () => {
+  it('shows a skip notice instead of silent success when all files are unsupported', async () => {
     const onUploadedBatch = vi.fn();
     const { container } = renderAttach({ onUploadedBatch });
     const input = container.querySelector('[data-testid="task-image-input"]');
     fireEvent.change(input, {
-      target: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })] },
+      target: { files: [new File(['x'], 'run.sh', { type: 'text/x-sh' })] },
     });
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toMatch(/skipped 1 non-image file/i);
+    expect(alert.textContent).toMatch(/skipped 1 unsupported file/i);
+    expect(alert.textContent).toContain('run.sh');
     expect(api.uploadTaskImage).not.toHaveBeenCalled();
+    expect(api.uploadTaskAttachment).not.toHaveBeenCalled();
     expect(onUploadedBatch).not.toHaveBeenCalled();
   });
 
@@ -179,6 +186,7 @@ describe('TaskImageAttach Component', () => {
     expect(alert.textContent).toMatch(/HEIC/i);
     expect(alert.textContent).toContain('IMG_001.heic');
     expect(api.uploadTaskImage).not.toHaveBeenCalled();
+    expect(api.uploadTaskAttachment).not.toHaveBeenCalled();
   });
 
   it('uploads the images and notes the skipped files when a batch is mixed', async () => {
@@ -190,7 +198,7 @@ describe('TaskImageAttach Component', () => {
       target: {
         files: [
           new File([new Uint8Array([1])], 'a.png', { type: 'image/png' }),
-          new File(['x'], 'notes.txt', { type: 'text/plain' }),
+          new File(['x'], 'run.sh', { type: 'text/x-sh' }),
         ],
       },
     });
@@ -199,7 +207,7 @@ describe('TaskImageAttach Component', () => {
       expect(onUploadedBatch).toHaveBeenCalledWith([{ name: 'a.png', path: 'assets/a.png' }]),
     );
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toMatch(/skipped 1 non-image file/i);
+    expect(alert.textContent).toMatch(/skipped 1 unsupported file/i);
   });
 
   it('surfaces upload failures as an alert', async () => {
@@ -482,5 +490,116 @@ describe('TaskImageAttach Component', () => {
     // Exactly one true and one false — no duplicate notifications.
     expect(onUploadingChange.mock.calls.filter(([v]) => v === true)).toHaveLength(1);
     expect(onUploadingChange.mock.calls.filter(([v]) => v === false)).toHaveLength(1);
+  });
+
+  it('lists existing file attachments as removable download chips', async () => {
+    api.listTaskAttachments.mockResolvedValue({
+      attachments: [
+        { name: 'out.log', path: 'assets/out.log', size: 9, kind: 'file' },
+        { name: 'a.png', path: 'assets/a.png', size: 12, kind: 'image' },
+      ],
+    });
+    renderAttach();
+    await waitFor(() => expect(api.listTaskAttachments).toHaveBeenCalledWith('proj-1', 'task-1'));
+    const list = await screen.findByTestId('task-file-list');
+    expect(list).toBeInTheDocument();
+    expect(screen.getByText('out.log')).toBeInTheDocument();
+    // The download chip resolves through the attachment endpoint.
+    const download = screen.getByRole('link', { name: /download out\.log/i });
+    expect(download.getAttribute('href')).toContain(
+      '/projects/proj-1/tasks/task-1/attachments/out.log',
+    );
+    // Images from the generalized listing stay out of the file strip.
+    expect(screen.queryByTestId('task-file-remove-a.png')).toBeNull();
+  });
+
+  it('uploads non-image files through the attachment endpoint and reports each stored asset', async () => {
+    const onUploaded = vi.fn();
+    api.uploadTaskAttachment.mockResolvedValue({ name: 'out.log', path: 'assets/out.log' });
+    const { container } = renderAttach({ onUploaded });
+
+    const input = container.querySelector('[data-testid="task-image-input"]');
+    const file = new File(['log bytes'], 'out.log', { type: 'text/plain' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(api.uploadTaskAttachment).toHaveBeenCalledWith('proj-1', 'task-1', file),
+    );
+    expect(api.uploadTaskImage).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onUploaded).toHaveBeenCalledWith({ name: 'out.log', path: 'assets/out.log' }),
+    );
+  });
+
+  it('routes a mixed image+file batch to each endpoint in selection order', async () => {
+    const onUploadedBatch = vi.fn();
+    api.uploadTaskImage.mockImplementation(async (projectId, taskId, file) => ({
+      name: file.name,
+      path: `assets/${file.name}`,
+    }));
+    api.uploadTaskAttachment.mockImplementation(async (projectId, taskId, file) => ({
+      name: file.name,
+      path: `assets/${file.name}`,
+    }));
+    const { container } = renderAttach({ onUploadedBatch });
+    const input = container.querySelector('[data-testid="task-image-input"]');
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File(['x'], 'notes.txt', { type: 'text/plain' }),
+          new File([new Uint8Array([1])], 'a.png', { type: 'image/png' }),
+          new File(['y'], 'run.log', { type: 'text/plain' }),
+        ],
+      },
+    });
+
+    await waitFor(() => expect(api.uploadTaskImage).toHaveBeenCalledTimes(1));
+    expect(api.uploadTaskAttachment).toHaveBeenCalledTimes(2);
+    await waitFor(() =>
+      expect(onUploadedBatch).toHaveBeenCalledWith([
+        { name: 'notes.txt', path: 'assets/notes.txt' },
+        { name: 'a.png', path: 'assets/a.png' },
+        { name: 'run.log', path: 'assets/run.log' },
+      ]),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('removes a file chip via the attachment delete endpoint and refreshes', async () => {
+    api.listTaskAttachments
+      .mockResolvedValueOnce({
+        attachments: [{ name: 'doomed.log', path: 'assets/doomed.log', size: 3, kind: 'file' }],
+      })
+      .mockResolvedValueOnce({ attachments: [] });
+    api.deleteTaskAttachment.mockResolvedValue({ status: 'deleted' });
+    const onRemoved = vi.fn();
+    renderAttach({ onRemoved });
+
+    const removeButton = await screen.findByTestId('task-file-remove-doomed.log');
+    fireEvent.click(removeButton);
+
+    await waitFor(() =>
+      expect(api.deleteTaskAttachment).toHaveBeenCalledWith('proj-1', 'task-1', 'doomed.log'),
+    );
+    expect(api.deleteTaskImage).not.toHaveBeenCalled();
+    await waitFor(() => expect(onRemoved).toHaveBeenCalledWith('doomed.log'));
+    await waitFor(() => expect(screen.queryByTestId('task-file-list')).toBeNull());
+  });
+
+  it('offers attachment extensions in the picker accept list', async () => {
+    const { container } = renderAttach();
+    const input = container.querySelector('[data-testid="task-image-input"]');
+    const accept = input.getAttribute('accept');
+    expect(accept).toContain('image/png');
+    expect(accept).toContain('.txt');
+    expect(accept).toContain('.log');
+    expect(accept).toContain('.pdf');
+    expect(accept).toContain('.zip');
+  });
+
+  it('renders no file strip when the task has no file attachments', async () => {
+    renderAttach();
+    await waitFor(() => expect(api.listTaskAttachments).toHaveBeenCalledWith('proj-1', 'task-1'));
+    expect(screen.queryByTestId('task-file-list')).toBeNull();
   });
 });

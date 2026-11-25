@@ -1,51 +1,83 @@
-# Task images lifecycle
+# Task images & attachments lifecycle
 
-How pictures attached to tasks are stored, referenced, resolved, served, and
+How files attached to tasks — pictures plus every other allowed type (logs,
+docs, archives, media) — are stored, referenced, resolved, served, and
 cached — and how to diagnose and repair broken ones. Written for the
 "images randomly not loading" fix (task `4e1a0424`); see the triage note at
 `docs/tasks/4e1a0424-21fe-4b8f-a95f-223bd67abbdd/TRIAGE.md` for the field
-evidence behind the transient handling below.
+evidence behind the transient handling below. Generalized to all
+attachments by task `0a5cad0b`: the image path below is unchanged, and each
+step notes the generalized sibling.
 
 ## Lifecycle
 
-1. **Upload** (`POST /projects/:id/tasks/:taskId/images`, `api/routes/taskImages.js`).
-   Multipart `image` file, extension allowlist (`png/jpg/jpeg/gif/webp`),
+1. **Upload** (`POST /projects/:id/tasks/:taskId/images`, `api/routes/taskImages.js`;
+   generalized sibling `POST .../attachments`, `api/routes/taskAttachments.js`).
+   Multipart file (`image` field on the image endpoint, `file` field on the
+   generalized one), extension allowlist (images: `png/jpg/jpeg/gif/webp`;
+   attachments: those plus text/log/data, documents, archives, audio/video,
+   and download-only web files — executables and scripts stay rejected),
    per-file size cap and per-task count cap. The stored name is
-   `sanitizeImageName` + `dedupeImageName` (`api/work/taskAssets.js`): flat,
-   lowercased, and never overwriting (`foo.png` → `foo-2.png`). A batch that
-   finishes after the user switched tasks still lands in the origin task, but
-   no reference is appended to the new draft (`TaskImageAttach.jsx` scope
-   guard) — bytes stay with their task.
-2. **Reference.** Only a relative path is stored in markdown:
-   `![name](assets/name)`, appended at the end of the goal/feedback draft
-   (`appendImageMarkdown`). Never base64-embedded.
-3. **Resolve** (`resolveTaskImageUrl`, `frontend/src/services/taskImages.js`).
-   `assets/<name>` (with optional `./`, `/`, or task-folder prefix, and an
-   optional trailing quoted title) becomes
-   `/projects/:id/tasks/:taskId/images/<name>` on the API origin. Absolute
-   URLs pass through; `javascript:`/`data:`/`vbscript:` pass through for
+   `sanitizeAttachmentName` + `dedupeAttachmentName` (`api/work/taskAssets.js`;
+   the `sanitizeImageName`/`dedupeImageName` wrappers delegate, so image
+   naming is byte-identical): flat, lowercased, and never overwriting
+   (`foo.png` → `foo-2.png`). A batch that finishes after the user switched
+   tasks still lands in the origin task, but no reference is appended to the
+   new draft (`TaskImageAttach.jsx` scope guard) — bytes stay with their task.
+   Uploaded bytes are commit-assured on the task branch at ingest time
+   (`api/work/commitTaskAssets.js`: `assets/` only, never `task.md`,
+   best-effort) instead of waiting for the next stage auto-commit.
+2. **Ingest & rewrite.** Task text that names a file outside the task folder
+   (absolute path, `/tmp/...` path, worktree-relative path) is ingested on
+   write: the goal create/update handlers, rejection feedback (`rejectTask`),
+   routed failure text (`routeStageError`), and review comments/replies all
+   run `ingestOutOfTaskRefs` — resolvable bytes are copied into `assets/`
+   under a sanitized, deduped name and the text rewritten to the stored
+   `assets/<name>` (`rewriteRefsToAssets`, idempotent), so a Runner on any
+   box resolves the reference. Unresolvable refs keep their text and gain
+   `MISSING-ASSET` coverage via the warning arm below.
+3. **Reference.** Only a relative path is stored in markdown:
+   `![name](assets/name)` for images, `[name](assets/name)` for every other
+   attachment, appended at the end of the goal/feedback draft
+   (`appendAttachmentsMarkdown`; images keep the exact `appendImageMarkdown`
+   form). Never base64-embedded.
+4. **Resolve** (`resolveTaskImageUrl` / `resolveTaskAttachmentUrl`,
+   `frontend/src/services/taskImages.js`). `assets/<name>` (with optional
+   `./`, `/`, or task-folder prefix, and an optional trailing quoted title)
+   becomes `/projects/:id/tasks/:taskId/images/<name>` (image refs) or
+   `.../attachments/<name>` (file links) on the API origin. Absolute URLs
+   pass through; `javascript:`/`data:`/`vbscript:` pass through for
    `sanitizeUrl` to neutralise. Without `projectId`/`taskId` the src is
    returned as-is (legacy; only non-task surfaces render without context).
-4. **Serve** (`GET .../images/:name`). Exact stored bytes, correct
-   Content-Type, `inline` disposition, `nosniff`. A canonicalisation fallback
-   resolves stale refs (wrong case, spaces) to the on-disk asset whose
-   sanitized name matches. Every error carries a structured `reason`
-   (`unknown-project`, `invalid-task-id`, `task-not-found`, `path-traversal`,
-   `invalid-image-name`, `image-not-found`) and `Cache-Control: no-store`.
-5. **Cache.** Successes are `private, max-age=31536000, immutable` (stored
+5. **Serve** (`GET .../images/:name`, `GET .../attachments/:name`). Exact
+   stored bytes, allowlist Content-Type, `nosniff`, and the serving-matrix
+   disposition — `inline` for viewable images, text-ish files, and PDF;
+   `attachment` download for everything else (office docs, archives, media,
+   and always html/svg, so user markup never renders in the app's origin).
+   A canonicalisation fallback resolves stale refs (wrong case, spaces) to
+   the on-disk asset whose sanitized name matches. Every error carries a
+   structured `reason` (image routes: `unknown-project`, `invalid-task-id`,
+   `task-not-found`, `path-traversal`, `invalid-image-name`,
+   `image-not-found`; attachment routes: the matching `invalid-attachment-name`
+   / `attachment-not-found` plus ingest codes like `attachment-too-large`)
+   and `Cache-Control: no-store`.
+6. **Cache.** Successes are `private, max-age=31536000, immutable` (stored
    names are write-once, so refreshes never revalidate into a transient
    miss). Errors are never cached.
 
 ## Client recovery
 
-All renderers (`MdImage`, `TaskImageThumb`, `FailureMessageImage`, explorer
-`FilePreview`, survey illustrations) share `useImageRetry`
+All image renderers (`MdImage`, `TaskImageThumb`, `FailureMessageImage`,
+explorer `FilePreview`, survey illustrations) share `useImageRetry`
 (`frontend/src/services/imageRetry.js`): up to three automatic reloads at
 1.5s/3s/6s backoff, then a latched filename-visible chip with manual Retry
 (which restarts the budget). A latched image also revalidates when the tab
 becomes visible or the browser comes back online, and any new `src` resets
 to a clean attempt. There is intentionally no endless polling: a still-dead
-image after the budget is a real miss, not a flap.
+image after the budget is a real miss, not a flap. Non-image attachments
+render as download chips (`TaskFileChip`, `FailureMessage` file strip,
+viewer links) — plain anchors against the attachment endpoint, so the
+browser's own download/retry behaviour applies and no retry seam is needed.
 
 ## Failure observability
 
@@ -82,6 +114,10 @@ stage prompt opens with an explicit `MISSING-ASSET` warning naming the
 file — agents fail fast instead of silently planning around a phantom
 screenshot (task `b31cab50`; case study `0d29c64c`, whose settings-page
 plan had to be grounded in source because `assets/image.png` was absent).
+The whole arm is type-agnostic: images and non-image attachments share the
+grammar, the warning block (image-only blocks keep the historical
+visual-content wording; mixed blocks use the generic file wording), and
+both delivery arms.
 
 - **Shared grammar.** `shared/taskAssetRefs/` (`normalizeAssetSrc`,
   `extractAssetRefs`) is the single owner of the `assets/<name>`
@@ -113,18 +149,28 @@ plan had to be grounded in source because `assets/image.png` was absent).
   worktree before the first stage runs; the daemon log now reports the
   synced asset count alongside the file total.
 - **Delivery arm, remote Runners.** Claims and dispatch leases ship
-  `taskAssets` (`collectTaskAssetPayload`: images only, sorted, per-file
-  `taskImageMaxBytes`, total `taskImageMaxAttachBytes`), and the daemon
-  writes entries the worktree lacks (`writeClaimTaskAssets`: flat
-  allowlisted names only, size-capped, never overwrites) before the first
-  stage runs.
+  `taskAssets` (`collectTaskAssetPayload`: images first for vision priority,
+  then other attachments by name; per-file `taskAttachmentMaxBytes`, total
+  `taskAttachmentMaxAttachBytes`), and the daemon writes entries the
+  worktree lacks (`writeClaimTaskAssets`: flat allowlisted attachment names
+  only, strict-base64 decodes, size-capped, never overwrites) before the
+  first stage runs.
 
 ## Repairs
 
 - **Dangling refs (bytes nowhere).** Unrepairable automatically; the chip shows
   the filename so the gap is actionable, and agent prompts carry the
-  `MISSING-ASSET` warning above. Re-upload the picture (heals the next run
+  `MISSING-ASSET` warning above. Re-upload the file (heals the next run
   automatically) or drop the reference line.
+- **Out-of-task refs on old tasks** (absolute/`/tmp`/worktree-relative paths
+  from before ingest-and-rewrite). Run the backfill auditor dry first, then
+  repair:
+  `node scripts/audit-task-attachments.mjs` (read-only report:
+  `surface → ref → expected path → recoverable?`),
+  `node scripts/audit-task-attachments.mjs --apply` (ingests resolvable
+  bytes, rewrites to `assets/<name>`, byte-backups first, best-effort branch
+  commit). Dangling refs are left visible, never deleted, never
+  cross-task-merged. Scope with `--task <id>` / `--root <dir>`.
 - **Branch-stranded bytes** (ref 404s on main but bytes sit on the task's own
   branch — check with
   `git cat-file -e kb/<taskId>:docs/tasks/<taskId>/assets/<name>`). Recover
@@ -140,16 +186,20 @@ plan had to be grounded in source because `assets/image.png` was absent).
 ## API-created tasks (create-task skill)
 
 Tickets created through the create-task skill have no task id until after
-`POST /tasks`. Their image bytes therefore follow a strict ordering:
+`POST /tasks`. Their attachment bytes therefore follow a strict ordering:
 
-1. `POST /tasks` with the goal's text-only draft (image refs omitted or left
-   as placeholders).
-2. For each picture, `POST /projects/:id/tasks/:taskId/images` and capture the
-   returned stored `name`.
-3. `PATCH /tasks/:taskId` with a `goal` whose `![alt](assets/<name>)` refs
-   use only those returned names.
+1. `POST /tasks` with the goal's text-only draft (attachment refs omitted or
+   left as placeholders).
+2. For each picture, `POST /projects/:id/tasks/:taskId/images`; for each
+   other file, `POST /projects/:id/tasks/:taskId/attachments` — and capture
+   each returned stored `name`.
+3. `PATCH /tasks/:taskId` with a `goal` whose `![alt](assets/<name>)` (images)
+   or `[label](assets/<name>)` (files) refs use only those returned names.
 
 Absolute `https://` URLs may be left untouched (they pass through resolution
-and sanitization as before). Guessing a filename is unsafe: `sanitizeImageName`
-and `dedupeImageName` may rewrite (`foo.png` → `foo-2.png`) and the request
-will 404.
+and sanitization as before). Guessing a filename is unsafe:
+`sanitizeAttachmentName` and `dedupeAttachmentName` may rewrite
+(`foo.png` → `foo-2.png`) and the request will 404. (Goals that reference
+out-of-task files directly are ingested-and-rewritten server-side at
+create/update time, with the mapping reported in `ingestedAttachments` —
+but the upload-then-patch ordering above stays the deterministic path.)
