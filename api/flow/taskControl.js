@@ -79,6 +79,10 @@ export function abortTask(store, projectId, taskId, projectCwd) {
 	// An abort parks the task: any startup-recovery priority is consumed so
 	// the scheduler does not instantly re-dispatch what the operator stopped.
 	clearResumedMarker(task);
+	// The operator takes over from here: consume any runner-interrupt marker
+	// so a later crash-path auto-resume reads as a restart, not as this old
+	// runner death.
+	delete task.interruptedBy;
 	// Aborting out of a human checkpoint cancels its auto-approve wait
 	// (re-parking re-stamps a fresh visit).
 	task.autoApproveAt = null;

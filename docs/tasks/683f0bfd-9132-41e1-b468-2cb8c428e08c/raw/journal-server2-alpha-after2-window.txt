@@ -1,0 +1,19 @@
+Nov 24 02:33:06 server2 node[679246]: Committed 76c513632fa96c3a1009ac1f809eabaa6d1dec28 (pushed: true, base was 6175bb9).
+Nov 24 02:33:12 server2 node[679246]: Workdir /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21 (clone, reused, base c68de47).
+Nov 24 02:38:01 server2 node[679246]: Committed 33a558a5536db2188d4fb7715c99f2f091ad8df7 (pushed: true).
+Nov 24 02:38:01 server2 node[679246]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution
+Nov 24 02:38:01 server2 systemd[184005]: kainbain-runner-server2-alpha.service: Main process exited, code=exited, status=1/FAILURE
+Nov 24 02:38:01 server2 systemd[184005]: kainbain-runner-server2-alpha.service: Failed with result 'exit-code'.
+Nov 24 02:38:01 server2 systemd[184005]: kainbain-runner-server2-alpha.service: Consumed 1h 21min 14.676s CPU time over 1h 11min 17.629s wall clock time, 6.1G memory peak, 219.6M memory swap peak.
+Nov 24 02:38:06 server2 systemd[184005]: kainbain-runner-server2-alpha.service: Scheduled restart job, restart counter is at 3872.
+Nov 24 02:38:06 server2 systemd[184005]: Started kainbain-runner-server2-alpha.service - KainBain Runner server2-alpha.
+Nov 24 02:38:07 server2 node[845804]: Orphaned workdirs (left alone, may hold unpushed work): /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c, /home/server2/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server2/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21, /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server2/.kainbain/runner-work/kb-d164fb3f-ed08-4221-814e-e9e3a5d75a1a
+Nov 24 02:38:10 server2 node[845804]: Model discovery: 33 model(s) (pi:0, muse:6, antigravity:27); next refresh per modelDiscoveryIntervalMs.
+Nov 24 02:38:10 server2 node[845804]: Model discovery warning (ERR_MODULE_NOT_FOUND): Cannot find package 'cross-spawn' imported from /home/server2/apps/kainbain/runner/api/node_modules/@earendil-works/pi-coding-agent/dist/utils/child-process.js; keeping the previous list for that harness.
+Nov 24 02:38:14 server2 node[845804]: Dispatch: no work (NO_CAPABLE_MATCH); idle 1/∞ (persistent).
+Nov 24 02:38:19 server2 node[845804]: Dispatch: no work (NO_CAPABLE_MATCH); idle 2/∞ (persistent).
+Nov 24 02:38:25 server2 node[845804]: Dispatch: no work (NO_CAPABLE_MATCH); idle 3/∞ (persistent).
+Nov 24 02:38:35 server2 node[845804]: Workdir /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83 (clone, reused, base 76c5136).
+Nov 24 02:39:44 server2 node[845804]: Committed 76c513632fa96c3a1009ac1f809eabaa6d1dec28 (pushed: true).
+Nov 24 02:39:45 server2 node[845804]: Dispatch: no work (NO_CAPABLE_MATCH); idle 1/∞ (persistent).
+Nov 24 02:39:55 server2 node[845804]: Workdir /home/server2/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (clone, reused, base 08ff0d8).

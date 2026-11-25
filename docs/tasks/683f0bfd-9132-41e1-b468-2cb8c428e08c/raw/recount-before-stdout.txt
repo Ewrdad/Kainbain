@@ -1,0 +1,355 @@
+## WIDE_NET_ANALYSIS.md §2 table — label=before, project 0fd41821-d8a5-4e49-bc2e-28ce8c739a0a, 2026-11-23T11:46:55Z
+{
+  "tasks_total": 81,
+  "tasks_with_interrupts": 35,
+  "runner_interrupts": 149,
+  "with_reason": 72,
+  "bare": 77,
+  "per_runner": [
+    {
+      "runner": "local-alpha",
+      "n": 108
+    },
+    {
+      "runner": "server2-alpha",
+      "n": 41
+    }
+  ],
+  "le15s_after_started": 125,
+  "ge120s_after_started": 18,
+  "post_finished_interrupts": 28,
+  "median_delta_s": 4,
+  "auto_resumed": 125,
+  "server_restart": 0,
+  "recovered_server_restart": 0,
+  "escalated": 49,
+  "failed_stage_actions": 182,
+  "tasks_with_git_failure_streak": 0,
+  "reason_vocabulary": [
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-1f8959ca-265a-4f85-bb3a-c82eaa612e27 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server/.kainbain/runner-work/kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-1f8959ca-265a-4f85-bb3a-c82eaa612e27 (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server2/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server2/.kainbain/runner-work/kb-c5c465c4-9904-47ae-8661-63f08b9fbede, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-1f8959ca-265a-4f85-bb3a-c82eaa612e27 (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server2/.kainbain/runner-work/kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b, /home/server2/.kainbain/runner-work/kb-c5c465c4-9904-47ae-8661-63f08b9fbede, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-350ca162-afaf-4d33-9d58-25955887db82 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-0faa3d87-fd70-402d-839f-e2cced302d9b, /home/server/.kainbain/runner-work/kb-3c45b620-6cd0-4fab-a30f-a034ca85ed98, /home/server/.kainbain/runner-work/kb-6d3c9317-bfb5-4dd2-b25b-19ca347f043f, /home/server/.kainbain/runner-work/kb-712ce327-abc7-4518-89e1-961a50efb8e1, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-350ca162-afaf-4d33-9d58-25955887db82 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-202ebd9b-4018-486b-a066-9c8eac3535a3, /home/server/.kainbain/runner-work/kb-3c45b620-6cd0-4fab-a30f-a034ca85ed98, /home/server/.kainbain/runner-work/kb-6d3c9317-bfb5-4dd2-b25b-19ca347f043f, /home/server/.kainbain/runner-work/kb-712ce327-abc7-4518-89e1-961a50efb8e1, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-4f927ecb-ba3a-423c-ace3-5f7dd7d36896, /home/server/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server/.kainbain/runner-work/kb-ef21e99b-88db-4d73-8648-658094820dcd, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-b31cab50-3ece-4678-a933-3192288fbefd, /home/server/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server/.kainbain/runner-work/kb-ef21e99b-88db-4d73-8648-658094820dcd, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-4ec027a7-0566-4d48-9fbc-37fc95ceea50 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-1c91140c-7bb9-43a1-b58f-82ad8d91f4ac, /home/server/.kainbain/runner-work/kb-5a38ad45-74a6-4d00-b6fd-a1796e5f4f1f, /home/server/.kainbain/runner-work/kb-77a4072e-3b0b-42b1-bd0b-3b21e129dd4b, /home/server/.kainbain/runner-work/kb-ae1ae677-7eb5-432c-b0d5-20c72e833084, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-4f927ecb-ba3a-423c-ace3-5f7dd7d36896 (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551, /home/server2/.kainbain/runner-work/kb-b31cab50-3ece-4678-a933-3192288fbefd, /home/server2/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server2/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-683f0bfd-9132-41e1-b468-2cb8c428e08c (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498, /home/server2/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server2/.kainbain/runner-work/kb-7f347a7a-0bfd-4a37-9500-a34eb5ee3219, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-78eac844-250a-44d1-810e-6f047eb5a59e (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-3b82f6ae-8c54-44bf-b283-0ffab76e7ab7, /home/server/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c, /home/server/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-78eac844-250a-44d1-810e-6f047eb5a59e (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498, /home/server2/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server2/.kainbain/runner-work/kb-7f347a7a-0bfd-4a37-9500-a34eb5ee3219, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-79c51992-ab52-4f97-b35e-5a2aa605505d (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server/.kainbain/runner-work/kb-683f0bfd-9132-41e1-b468-2cb8c428e08c, /home/server/.kainbain/runner-work/kb-78eac844-250a-44d1-810e-6f047eb5a59e, /home/server/.kainbain/runner-work/kb-7f6220c3-c536-489c-b952-9858aae9ef21, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-7b69d365-44ba-4942-875a-7fc121e6ab4a (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-0faa3d87-fd70-402d-839f-e2cced302d9b, /home/server/.kainbain/runner-work/kb-3c45b620-6cd0-4fab-a30f-a034ca85ed98, /home/server/.kainbain/runner-work/kb-6d3c9317-bfb5-4dd2-b25b-19ca347f043f, /home/server/.kainbain/runner-work/kb-712ce327-abc7-4518-89e1-961a50efb8e1, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-78e0522a-430d-4659-9e2f-7db6444d13f9, /home/server/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server/.kainbain/runner-work/kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b, /home/server/.kainbain/runner-work/kb-c5c465c4-9904-47ae-8661-63f08b9fbede, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-b31cab50-3ece-4678-a933-3192288fbefd (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551, /home/server2/.kainbain/runner-work/kb-4f927ecb-ba3a-423c-ace3-5f7dd7d36896, /home/server2/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server2/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server2/.kainbain/runner-work/kb-78e0522a-430d-4659-9e2f-7db6444d13f9, /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server2/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-bae668cb-1f18-4034-8f10-d8fff31bfb8b (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server2/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server2/.kainbain/runner-work/kb-c5c465c4-9904-47ae-8661-63f08b9fbede, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-d164fb3f-ed08-4221-814e-e9e3a5d75a1a (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-05b5d046-9480-40e3-8ec9-c06596c51acc, /home/server2/.kainbain/runner-work/kb-64fb8fbb-a1b6-4004-9986-90662cfc4498, /home/server2/.kainbain/runner-work/kb-79c51992-ab52-4f97-b35e-5a2aa605505d, /home/server2/.kainbain/runner-work/kb-7f347a7a-0bfd-4a37-9500-a34eb5ee3219, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-db24c124-4244-4341-9d23-bad111889645 (every orphan was used recently, nothing stale to evict). Orphans: /home/server/.kainbain/runner-work/kb-1f8959ca-265a-4f85-bb3a-c82eaa612e27, /home/server/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server/.kainbain/runner-work/kb-78e0522a-430d-4659-9e2f-7db6444d13f9, /home/server/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server/.kain",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-db24c124-4244-4341-9d23-bad111889645 (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3232f6c6-9d02-4654-8d08-1a3fa27ab403, /home/server2/.kainbain/runner-work/kb-78e0522a-430d-4659-9e2f-7db6444d13f9, /home/server2/.kainbain/runner-work/kb-8c7e2d15-3f17-41a1-b905-99ca5e536c83, /home/server2/.kainbain/runner-work/kb-b3ab7335-f277-4aa7-b265-ad421e09ad1a, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-ef21e99b-88db-4d73-8648-658094820dcd (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551, /home/server2/.kainbain/runner-work/kb-4f927ecb-ba3a-423c-ace3-5f7dd7d36896, /home/server2/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server2/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-ef21e99b-88db-4d73-8648-658094820dcd (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3c12ffcd-16a2-4bb4-9924-2e0fc2086551, /home/server2/.kainbain/runner-work/kb-b31cab50-3ece-4678-a933-3192288fbefd, /home/server2/.kainbain/runner-work/kb-d8fe9ad9-da9d-4618-a5ce-878497132b0b, /home/server2/.kainbain/runner-work/kb-ee3ca5d2-8b05-4908-bbd1-808c667d1175, /home/server2/",
+    "Runner workdir unavailable: Worktree cap reached (~5); refusing to add kb-f56e9878-3677-4c0b-9f0b-9ad8fb6cffc9 (every orphan was used recently, nothing stale to evict). Orphans: /home/server2/.kainbain/runner-work/kb-3318cbce-6fe4-453c-b9f0-0c05cbf8c5b3, /home/server2/.kainbain/runner-work/kb-9be2458f-c691-4772-90e7-eef1cc2f27c4, /home/server2/.kainbain/runner-work/kb-ac988ba8-1302-48a7-b4ba-845eafbc1dae, /home/server2/.kainbain/runner-work/kb-b8c9bb8e-ec2c-4296-9580-6d70ed161526, /home/server2/"
+  ]
+}
+
+## E5 worklist — post-finished interrupts (GUIDE-05 §4 scope), label=before
+[
+  {
+    "task": "0f0213b7-25f6-4930-8470-a73dc0611529",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-14T18:45:48.600Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 245,
+        "prev_progress_event": "Runner local-alpha stage 3: finished"
+      }
+    ]
+  },
+  {
+    "task": "3318cbce-6fe4-453c-b9f0-0c05cbf8c5b3",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-11T00:14:12.848Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 12,
+        "prev_progress_event": "Runner local-alpha stage 5: finished"
+      }
+    ]
+  },
+  {
+    "task": "3b82f6ae-8c54-44bf-b283-0ffab76e7ab7",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-23T08:25:23.803Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 82,
+        "prev_progress_event": "Runner server2-alpha stage stage-1792362077711: finished"
+      }
+    ]
+  },
+  {
+    "task": "3c12ffcd-16a2-4bb4-9924-2e0fc2086551",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-16T08:22:14.057Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 8,
+        "prev_progress_event": "Runner local-alpha stage stage-1790707081501: finished"
+      }
+    ]
+  },
+  {
+    "task": "79c51992-ab52-4f97-b35e-5a2aa605505d",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-23T09:19:30.347Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 10,
+        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
+      }
+    ]
+  },
+  {
+    "task": "7f6220c3-c536-489c-b952-9858aae9ef21",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-20T21:19:13.330Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 228,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-20T21:29:04.469Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 555,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-20T21:35:03.065Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 322,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-20T21:43:25.178Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 466,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-20T21:47:12.100Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 191,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-21T22:08:15.663Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 353,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-23T11:40:52.034Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 241,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      },
+      {
+        "ts": "2026-11-23T11:44:38.854Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 188,
+        "prev_progress_event": "Runner server2-alpha stage stage-1793806729200: finished"
+      }
+    ]
+  },
+  {
+    "task": "8dafdce1-a3ed-4086-a9cb-b382ecacc757",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-09T19:41:35.456Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 53,
+        "prev_progress_event": "Runner local-alpha stage stage-1790707081501: finished"
+      }
+    ]
+  },
+  {
+    "task": "94e3072d-a847-4533-bd99-244070f2805c",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-10T08:19:56.278Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 1031,
+        "prev_progress_event": "Runner local-alpha stage stage-1791398677900: finished"
+      }
+    ]
+  },
+  {
+    "task": "9be2458f-c691-4772-90e7-eef1cc2f27c4",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-11T01:00:30.024Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 18,
+        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
+      }
+    ]
+  },
+  {
+    "task": "ac988ba8-1302-48a7-b4ba-845eafbc1dae",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-11T01:48:36.314Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 1717,
+        "prev_progress_event": "Runner local-alpha stage 5: finished"
+      }
+    ]
+  },
+  {
+    "task": "b31cab50-3ece-4678-a933-3192288fbefd",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-16T11:38:25.735Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 627,
+        "prev_progress_event": "Runner local-alpha stage stage-1791398677900: finished"
+      }
+    ]
+  },
+  {
+    "task": "b3ab7335-f277-4aa7-b265-ad421e09ad1a",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-16T20:40:34.566Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 58,
+        "prev_progress_event": "Runner local-alpha stage 3: finished"
+      }
+    ]
+  },
+  {
+    "task": "b3dec9b0-1319-45ed-bb7e-2ff2c484a7ae",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-13T23:54:37.992Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 37,
+        "prev_progress_event": "Runner local-alpha stage 3: finished"
+      }
+    ]
+  },
+  {
+    "task": "db24c124-4244-4341-9d23-bad111889645",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-16T23:52:08.807Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 917,
+        "prev_progress_event": "Runner local-alpha stage stage-1791398677900: finished"
+      }
+    ]
+  },
+  {
+    "task": "db49d6c6-bdd5-4600-aaea-15a71042ae20",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-20T17:13:24.669Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 9,
+        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
+      }
+    ]
+  },
+  {
+    "task": "e1fb125a-7fe5-4f57-ad35-6b5ab875f410",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-10T21:26:00.601Z",
+        "runner": "server2-alpha",
+        "reason": null,
+        "delta_s_from_started": 647,
+        "prev_progress_event": "Runner server2-alpha stage 5: finished"
+      }
+    ]
+  },
+  {
+    "task": "e3369ccb-10e9-443f-934b-78c7f8d34583",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-10T21:19:23.593Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 1176,
+        "prev_progress_event": "Runner local-alpha stage 5: finished"
+      }
+    ]
+  },
+  {
+    "task": "ed00c209-4dd5-4899-ad24-c06ca8f9416c",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-11T11:21:49.625Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 216,
+        "prev_progress_event": "Runner local-alpha stage 3: finished"
+      }
+    ]
+  },
+  {
+    "task": "ee3ca5d2-8b05-4908-bbd1-808c667d1175",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-16T07:37:54.864Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 9,
+        "prev_progress_event": "Runner local-alpha stage stage-1791738383862: finished"
+      },
+      {
+        "ts": "2026-11-16T11:27:14.076Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 205,
+        "prev_progress_event": "Runner local-alpha stage stage-1787744723298: finished"
+      }
+    ]
+  },
+  {
+    "task": "ef569a1a-d301-4e10-aaba-8cde942b97e8",
+    "interrupt_details": [
+      {
+        "ts": "2026-11-16T07:40:44.587Z",
+        "runner": "local-alpha",
+        "reason": null,
+        "delta_s_from_started": 130,
+        "prev_progress_event": "Runner local-alpha stage 3: finished"
+      }
+    ]
+  }
+]
+

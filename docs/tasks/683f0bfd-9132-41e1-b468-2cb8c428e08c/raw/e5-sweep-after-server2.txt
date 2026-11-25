@@ -1,0 +1,27 @@
+## E5 sweep host=server2 work_root=/home/server2/.kainbain/runner-work unit=kainbain-runner-server2-alpha origin_repo=/home/server2/.kainbain/runner-work/mirrors/Kainbain since=2026-11-19 at 2026-11-24T02:15:49Z
+FATAL: password file /home/server2/.passwrd not found (expected mode 600, first line = password)
+[2026-11-24T02:15:49Z] WARN: probe for kb-7f6220c3 on server2 failed — recorded, continuing with the next task
+VERDICT kb-7f6220c3: PROBE FAILED on server2 (see stderr) — treat as evidence gap
+
+FATAL: password file /home/server2/.passwrd not found (expected mode 600, first line = password)
+[2026-11-24T02:15:49Z] WARN: probe for kb-44125086 on server2 failed — recorded, continuing with the next task
+VERDICT kb-44125086: PROBE FAILED on server2 (see stderr) — treat as evidence gap
+
+FATAL: password file /home/server2/.passwrd not found (expected mode 600, first line = password)
+[2026-11-24T02:15:49Z] WARN: probe for kb-7f347a7a on server2 failed — recorded, continuing with the next task
+VERDICT kb-7f347a7a: PROBE FAILED on server2 (see stderr) — treat as evidence gap
+
+FATAL: password file /home/server2/.passwrd not found (expected mode 600, first line = password)
+[2026-11-24T02:15:49Z] WARN: probe for kb-db49d6c6 on server2 failed — recorded, continuing with the next task
+VERDICT kb-db49d6c6: PROBE FAILED on server2 (see stderr) — treat as evidence gap
+
+FATAL: password file /home/server2/.passwrd not found (expected mode 600, first line = password)
+[2026-11-24T02:15:49Z] WARN: probe for kb-158394ab on server2 failed — recorded, continuing with the next task
+VERDICT kb-158394ab: PROBE FAILED on server2 (see stderr) — treat as evidence gap
+
+FATAL: password file /home/server2/.passwrd not found (expected mode 600, first line = password)
+[2026-11-24T02:15:49Z] WARN: probe for kb-1cae113f on server2 failed — recorded, continuing with the next task
+VERDICT kb-1cae113f: PROBE FAILED on server2 (see stderr) — treat as evidence gap
+
+## E5 sweep done: 6 task(s), 6 probe failure(s) at 2026-11-24T02:15:49Z
+[2026-11-24T02:15:49Z] exiting 2: 6 probe(s) failed

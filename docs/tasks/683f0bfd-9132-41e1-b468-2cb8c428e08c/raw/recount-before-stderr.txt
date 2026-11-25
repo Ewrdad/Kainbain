@@ -1,0 +1,4 @@
+[2026-11-23T11:46:49Z] fleet-recount label=before api=http://192.168.1.206:3100 project=0fd41821-d8a5-4e49-bc2e-28ce8c739a0a task_dir=. started=2026-11-23T11:46:49Z
+[2026-11-23T11:46:49Z] task list ok: 81 tasks
+[2026-11-23T11:46:55Z] fetched 81 tasks, 0 failed
+[2026-11-23T11:46:55Z] done: label=before ok=81 failed=0

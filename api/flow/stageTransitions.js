@@ -870,6 +870,10 @@ export async function resumeTask(
 	// An operator resume serves the pickup directly (dispatch below), so any
 	// startup-recovery priority is consumed here rather than lingering.
 	clearResumedMarker(task);
+	// The runner-interrupt marker names the CURRENT interruption only: the
+	// operator takes over from here, so consume it — a later crash-path
+	// auto-resume must read as a restart, not as this old runner death.
+	delete task.interruptedBy;
 	// An operator resume takes the task back: any git-failure parking lifts.
 	clearGitFailureStreak(task);
 	task.status = "in_stage";
@@ -929,6 +933,9 @@ export async function retryStage(
 	// A manual retry serves the pickup directly (dispatch below), so any
 	// startup-recovery priority is consumed here rather than lingering.
 	clearResumedMarker(task);
+	// A retry starts a fresh attempt: consume any leftover runner-interrupt
+	// marker so a later crash-path auto-resume cannot inherit its id.
+	delete task.interruptedBy;
 	// A manual retry is a fresh attempt with a fresh budget: any git-failure
 	// parking lifts (the preserved failureReason/lastError below still feed
 	// the next attempt's prompt — only the streak clears).

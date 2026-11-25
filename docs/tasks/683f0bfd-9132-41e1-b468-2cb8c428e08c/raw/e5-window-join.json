@@ -1,0 +1,254 @@
+[
+ {
+  "task": "0f0213b7",
+  "ts": "2026-11-14T18:45:48.600Z",
+  "runner": "local-alpha",
+  "delta_s": 245,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "3318cbce",
+  "ts": "2026-11-11T00:14:12.848Z",
+  "runner": "local-alpha",
+  "delta_s": 12,
+  "prev": "Runner local-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "3b82f6ae",
+  "ts": "2026-11-23T08:25:23.803Z",
+  "runner": "server2-alpha",
+  "delta_s": 82,
+  "prev": "Runner server2-alpha stage stage-1792362077711: finished",
+  "journal_match": "Nov 23 08:25:23 server2 node[3959669]: Runner failed: merging origin/kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 into kb/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7 conflicts (docs/tasks/3b82f6ae-8c54-44bf-b283-0ffab76e7ab7/SURVEY.",
+  "classification": "Cause 5 MERGE_CONFLICT \u2014 deterministic, covered by 046a6391"
+ },
+ {
+  "task": "3c12ffcd",
+  "ts": "2026-11-16T08:22:14.057Z",
+  "runner": "local-alpha",
+  "delta_s": 8,
+  "prev": "Runner local-alpha stage stage-1790707081501: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "79c51992",
+  "ts": "2026-11-23T09:19:30.347Z",
+  "runner": "local-alpha",
+  "delta_s": 10,
+  "prev": "Runner local-alpha stage stage-1791738383862: finished",
+  "journal_match": "Nov 23 09:19:30 server-HP-ProDesk-400-G4-SFF kainbain-runner[588205]: Runner failed: merging origin/kb/79c51992-ab52-4f97-b35e-5a2aa605505d into kb/79c51992-ab52-4f97-b35e-5a2aa605505d conflicts (docs/tasks/79c51992-ab52",
+  "classification": "Cause 5 MERGE_CONFLICT \u2014 deterministic, covered by 046a6391"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-20T21:19:13.330Z",
+  "runner": "server2-alpha",
+  "delta_s": 228,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 20 21:19:13 server2 node[3551721]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-20T21:29:04.469Z",
+  "runner": "server2-alpha",
+  "delta_s": 555,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 20 21:29:04 server2 node[3579581]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-20T21:35:03.065Z",
+  "runner": "server2-alpha",
+  "delta_s": 322,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 20 21:35:03 server2 node[3581302]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-20T21:43:25.178Z",
+  "runner": "server2-alpha",
+  "delta_s": 466,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 20 21:43:25 server2 node[3582455]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-20T21:47:12.100Z",
+  "runner": "server2-alpha",
+  "delta_s": 191,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 20 21:47:12 server2 node[3583878]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-21T22:08:15.663Z",
+  "runner": "server2-alpha",
+  "delta_s": 353,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 21 22:08:15 server2 node[3943276]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-23T11:40:52.034Z",
+  "runner": "server2-alpha",
+  "delta_s": 241,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 23 11:40:52 server2 node[115582]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "7f6220c3",
+  "ts": "2026-11-23T11:44:38.854Z",
+  "runner": "server2-alpha",
+  "delta_s": 188,
+  "prev": "Runner server2-alpha stage stage-1793806729200: finished",
+  "journal_match": "Nov 23 11:44:38 server2 node[134229]: Runner failed: Backend 413 on /tasks/7f6220c3-c536-489c-b952-9858aae9ef21/complete-execution",
+  "classification": "Cause 2 (HTTP 413 on complete/progress)"
+ },
+ {
+  "task": "8dafdce1",
+  "ts": "2026-11-09T19:41:35.456Z",
+  "runner": "local-alpha",
+  "delta_s": 53,
+  "prev": "Runner local-alpha stage stage-1790707081501: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "94e3072d",
+  "ts": "2026-11-10T08:19:56.278Z",
+  "runner": "local-alpha",
+  "delta_s": 1031,
+  "prev": "Runner local-alpha stage stage-1791398677900: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "9be2458f",
+  "ts": "2026-11-11T01:00:30.024Z",
+  "runner": "local-alpha",
+  "delta_s": 18,
+  "prev": "Runner local-alpha stage stage-1791738383862: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "ac988ba8",
+  "ts": "2026-11-11T01:48:36.314Z",
+  "runner": "local-alpha",
+  "delta_s": 1717,
+  "prev": "Runner local-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "b31cab50",
+  "ts": "2026-11-16T11:38:25.735Z",
+  "runner": "local-alpha",
+  "delta_s": 627,
+  "prev": "Runner local-alpha stage stage-1791398677900: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "b3ab7335",
+  "ts": "2026-11-16T20:40:34.566Z",
+  "runner": "local-alpha",
+  "delta_s": 58,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "b3dec9b0",
+  "ts": "2026-11-13T23:54:37.992Z",
+  "runner": "local-alpha",
+  "delta_s": 37,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "db24c124",
+  "ts": "2026-11-16T23:52:08.807Z",
+  "runner": "local-alpha",
+  "delta_s": 917,
+  "prev": "Runner local-alpha stage stage-1791398677900: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "db49d6c6",
+  "ts": "2026-11-20T17:13:24.669Z",
+  "runner": "local-alpha",
+  "delta_s": 9,
+  "prev": "Runner local-alpha stage stage-1791738383862: finished",
+  "journal_match": "Nov 20 17:13:24 server-HP-ProDesk-400-G4-SFF kainbain-runner[1248534]: Runner failed: merging origin/kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 into kb/db49d6c6-bdd5-4600-aaea-15a71042ae20 conflicts (docs/tasks/db49d6c6-bdd",
+  "classification": "Cause 5 MERGE_CONFLICT \u2014 deterministic, covered by 046a6391"
+ },
+ {
+  "task": "e1fb125a",
+  "ts": "2026-11-10T21:26:00.601Z",
+  "runner": "server2-alpha",
+  "delta_s": 647,
+  "prev": "Runner server2-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "e3369ccb",
+  "ts": "2026-11-10T21:19:23.593Z",
+  "runner": "local-alpha",
+  "delta_s": 1176,
+  "prev": "Runner local-alpha stage 5: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "ed00c209",
+  "ts": "2026-11-11T11:21:49.625Z",
+  "runner": "local-alpha",
+  "delta_s": 216,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "ee3ca5d2",
+  "ts": "2026-11-16T07:37:54.864Z",
+  "runner": "local-alpha",
+  "delta_s": 9,
+  "prev": "Runner local-alpha stage stage-1791738383862: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "ee3ca5d2",
+  "ts": "2026-11-16T11:27:14.076Z",
+  "runner": "local-alpha",
+  "delta_s": 205,
+  "prev": "Runner local-alpha stage stage-1787744723298: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ },
+ {
+  "task": "ef569a1a",
+  "ts": "2026-11-16T07:40:44.587Z",
+  "runner": "local-alpha",
+  "delta_s": 130,
+  "prev": "Runner local-alpha stage 3: finished",
+  "journal_match": null,
+  "classification": "NO JOURNAL MATCH (evidence gap)"
+ }
+]
