@@ -71,6 +71,14 @@ describe("matchInfraFlake — negative fixtures (genuine failures stay red)", ()
 		// Near-misses: contain 'closed' but not the browser-death signatures.
 		"The page was closed gracefully by the application teardown",
 		"Target was closed by a user gesture, not by a crash",
+		// App-level "connection has been closed" errors are GENUINE failures
+		// (a broken WebSocket/DB), not browser death — the review-proven false
+		// positives of the old bare /has been closed/ pattern. They must
+		// classify as null so they stay red.
+		"Error: WebSocket connection has been closed unexpectedly",
+		"WebSocket connection to 'ws://localhost:3399/ws' failed: Error: WebSocket is closed before the connection is established",
+		"Error: Database connection has been closed",
+		"Error: connection has been closed by the server",
 		"",
 	];
 	for (const text of negatives) {
@@ -83,6 +91,18 @@ describe("matchInfraFlake — negative fixtures (genuine failures stay red)", ()
 		assert.equal(matchInfraFlake(null), null);
 		assert.equal(matchInfraFlake(undefined), null);
 		assert.equal(matchInfraFlake(42), null);
+	});
+});
+
+describe("signature patterns stay narrow (re-broadening guard)", () => {
+	it("browser-closed matches only the full Playwright target-death sentence", () => {
+		const sig = INFRA_FLAKE_SIGNATURES.find((s) => s.id === "browser-closed");
+		assert.ok(sig, "browser-closed signature exists");
+		assert.equal(sig.pattern.source, "Target page, context or browser has been closed");
+		// The exact observed sentence matches; the bare substring alone does not.
+		assert.equal(matchInfraFlake("page.goto: Target page, context or browser has been closed"), "browser-closed");
+		assert.equal(matchInfraFlake("something has been closed"), null);
+		assert.equal(matchInfraFlake("WebSocket connection has been closed"), null);
 	});
 });
 

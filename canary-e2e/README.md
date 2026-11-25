@@ -87,14 +87,26 @@ weakening the gate for real regressions:
 
 ### Adding an infra-flake signature
 
-1. Add one entry to `INFRA_FLAKE_SIGNATURES` in `tests/infra-flakes.mjs`
-   (id, narrow pattern, one-line description, link to a failing log).
+Paths below are written from the **repo root** unless stated otherwise;
+run every command from the repo root. (The signature list and baseline live
+under `canary-e2e/`; the unit tests live at the repo-root `tests/`, NOT under
+`canary-e2e/tests/` — the spec files there are Playwright specs.)
+
+1. Add one entry to `INFRA_FLAKE_SIGNATURES` in
+   `canary-e2e/tests/infra-flakes.mjs` (id, narrow pattern, one-line
+   description, link to a failing log).
 2. Add one positive fixture (the exact error text) and one near-miss
-   negative fixture to `tests/infra-flakes.test.mjs`; run
-   `node --test tests/infra-flakes.test.mjs tests/canary-quarantine.test.mjs`.
-3. Add the id to `infra-flake-baseline.json` with `firstSeen` = today.
-4. Rerun the affected spec 3× (`node scripts/repeat-tests.mjs --suite
-   canary`); paste the `KAINBAIN_CANARY_QUARANTINE` line into the task/PR.
+   negative fixture to the repo-root `tests/infra-flakes.test.mjs`; run
+   `node --test tests/infra-flakes.test.mjs tests/canary-quarantine.test.mjs`
+   (from the repo root).
+3. Add the id to `canary-e2e/infra-flake-baseline.json` with `firstSeen` =
+   today.
+4. Rerun only the affected spec 3× (from the repo root):
+   `node scripts/repeat-tests.mjs --suite canary --pattern tests/<spec-file>.spec.js --runs 3`
+   — the `--pattern` selects just that spec (a bare spec name like
+   `--pattern task-lifecycle` works too) and `--runs 3` repeats it; without
+   them the command reruns the whole ~17-minute suite. Paste the
+   `KAINBAIN_CANARY_QUARANTINE` line into the task/PR.
 5. Never add a pattern that matches assertion text, app-wait timeouts, or
    HTTP 4xx/5xx / `ERR_CONNECTION_REFUSED`-class errors — the negative
    fixtures in `tests/infra-flakes.test.mjs` are the guardrail: genuine app

@@ -20,7 +20,8 @@
  *   Patterns are deliberately narrow substrings/regexes: genuine app failures
  *   (dead backend `net::ERR_CONNECTION_REFUSED`, bad URL, a broken shell that
  *   fails twice, assertion diffs, app-wait timeouts) must NEVER match — the
- *   negative fixtures in `tests/infra-flakes.test.mjs` pin that.
+ *   negative fixtures in the repo-root `tests/infra-flakes.test.mjs` pin that
+ *   (note: the test file lives at the REPO ROOT, not under canary-e2e/).
  * @example import { isInfraFlake, matchInfraFlake, markInfraFlakeError } from "./infra-flakes.mjs";
  ***/
 
@@ -54,15 +55,24 @@ export const INFRA_FLAKE_TAG_PATTERN = /\[infra-flake:([a-z0-9-]+)\]/;
  *   - `insufficient-resources` — `net::ERR_INSUFFICIENT_RESOURCES` (the
  *     browser ran out of resources during the vite module burst).
  *   To add one: append an entry here, add positive + near-miss negative
- *   fixtures in `tests/infra-flakes.test.mjs`, add the id to
+ *   fixtures in the repo-root `tests/infra-flakes.test.mjs`, add the id to
  *   `canary-e2e/infra-flake-baseline.json`, run the unit gate — see
- *   canary-e2e/README.md "Adding an infra-flake signature".
+ *   canary-e2e/README.md "Adding an infra-flake signature" (commands run
+ *   from the repo root).
  * @example INFRA_FLAKE_SIGNATURES.map((s) => s.id) => ["browser-closed", "target-closed", "target-crashed", "page-crashed", "insufficient-resources"]
  ***/
 export const INFRA_FLAKE_SIGNATURES = [
 	{
 		id: "browser-closed",
-		pattern: /has been closed/,
+		// Deliberately the FULL Playwright sentence, not the bare substring
+		// "has been closed": every observed instance (the four 2026-11-19
+		// red-gate tails plus live dead-browser probes) is exactly this
+		// sentence, while app-level errors like "WebSocket connection has
+		// been closed" / "Database connection has been closed" must stay red.
+		// A false negative fails safe (the gate stays red); a false positive
+		// would forgive a genuine app failure green. Pinned by tests in
+		// repo-root tests/infra-flakes.test.mjs.
+		pattern: /Target page, context or browser has been closed/,
 		description:
 			"Target page, context or browser has been closed — the browser/context/page died under gate-host load (2026-11-19 case study, helpers.js:65).",
 	},

@@ -364,6 +364,54 @@ Extend `canary-e2e/README.md` with a short section:
   2026-11-19 failure tails themselves (raw throw at helpers.js:65, red gate);
   pass-after = the live probes above + the unit decision table.
 
+**2026-11-25 deep-review failback fixes (both blocking defects resolved):**
+
+- **Over-broad `browser-closed` pattern narrowed:** `canary-e2e/tests/infra-flakes.mjs`
+  `browser-closed` pattern changed from `/has been closed/` to the full
+  Playwright sentence `/Target page, context or browser has been closed/`
+  (covers 100% of observed evidence — all four 2026-11-19 tails plus every
+  historical `docs/tasks/*` tail and the live probes use exactly this
+  sentence; a false negative fails safe red). Live proof after the change:
+  `matchInfraFlake("page.goto: Target page, context or browser has been
+  closed") === "browser-closed"` while `"Error: WebSocket connection has been
+  closed unexpectedly"`, `"Error: Database connection has been closed"` and
+  `"page.goto: net::ERR_CONNECTION_REFUSED"` all classify `null`, and through
+  the real lane (`collectFailedTests` → `classifyFailures` → `planQuarantine`)
+  the two connection-closed errors give `signature=null, rerun=false,
+  red=true` — genuine failures stay red, no rerun, no forgiveness.
+  `tests/infra-flakes.test.mjs` gained those two strings (plus two more
+  near-misses) as negative fixtures and a re-broadening guard pinning
+  `browser-closed`'s pattern source to the exact sentence.
+- **README checklist corrected + executed once:** `canary-e2e/README.md`
+  "Adding an infra-flake signature" now states the repo-root cwd, roots
+  every path (`canary-e2e/tests/infra-flakes.mjs`, repo-root
+  `tests/infra-flakes.test.mjs`, `canary-e2e/infra-flake-baseline.json`),
+  and step 4 is the affected-spec form `node scripts/repeat-tests.mjs
+  --suite canary --pattern tests/<spec>.spec.js --runs 3`. The
+  `infra-flakes.mjs` header/JSDoc references to the test file now say
+  repo-root explicitly. The checklist was EXECUTED once with a dummy
+  signature (`checklist-probe-dummy` / `CHECKLIST_PROBE_DUMMY_SIGNATURE` +
+  positive/near-miss fixtures + baseline row): `node --test
+  tests/infra-flakes.test.mjs tests/canary-quarantine.test.mjs` from the
+  repo root → 63/63 green with the dummy in place, and the corrected step-4
+  command run against a temporary one-test dummy spec → 3/3 PASS, exit 0,
+  each run executing exactly `1 tests/__checklist-probe__.spec.js` (3-4 s
+  per run, i.e. the pattern selected only the affected spec, not the whole
+  suite; scratch ports :3399/:5299 only, live :3100/:5173 untouched). All
+  dummy edits were then reverted (no traces remain; baseline byte-identical
+  to the committed version).
+- **Re-verification after the fixes:** `node --test
+  tests/infra-flakes.test.mjs tests/canary-quarantine.test.mjs` → **61/61
+  pass**; `node --test tests/run-tests.test.mjs tests/deploy-gates.test.mjs`
+  → **72/72 pass**; full root script suite `node --test tests/*.test.mjs` →
+  **783 pass / 0 fail** (787 total); `check:jsdoc-example` PASS (679 missing
+  vs 680 grandfathered), `check-one-function-per-file` PASS,
+  `check-proof-and-hygiene` PASS. Non-blocking follow-up noted by review
+  (not done, pinned log-line format unchanged): add `outcome=` to the
+  `KAINBAIN_CANARY_QUARANTINE` line so "rerun passed" is distinguishable
+  from "rerun signature-only" in the log (today only
+  `canary-quarantine.json` `rerun.outcome` carries it).
+
 ## 8. Sequencing, effort, risks
 
 Suggested order (research/big pieces first, per the stage brief):
