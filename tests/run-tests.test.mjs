@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { CANARY_SERIAL_START_LINE, FAST_GATE_BRANCH_NAMES, RUNNER_TEST_SUITES, buildBranches, depcheckAvailable, ensureWorkspaceDeps, resolvePhaseOutcome, pruneStaleTestDirectories, reportPreflightFailure, resolveCanary, resolveFailFast, runGatePhases, runnerSuiteArgs, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
+const { CANARY_SERIAL_START_LINE, FAST_GATE_BRANCH_NAMES, RUNNER_TEST_SUITES, buildBranches, buildRunnerSuiteArgs, checkRunnerSuiteList, depcheckAvailable, ensureWorkspaceDeps, resolvePhaseOutcome, pruneStaleTestDirectories, reportPreflightFailure, resolveCanary, resolveFailFast, runGatePhases, splitGatePhases, workspaceDepsInstalled } = await import("../scripts/run-tests.mjs");
 
 /***
  * MARK: run-tests tests
@@ -238,11 +238,60 @@ describe("buildBranches", () => {
 });
 
 describe("RUNNER_TEST_SUITES / --print-runner-suites", () => {
-	it("the gate branch runs exactly runnerSuiteArgs() (one call path, no second literal)", () => {
+	it("the gate branch runs exactly buildRunnerSuiteArgs() (one call path, no second literal)", () => {
 		const { branches } = buildBranches({ hasBash: true, hasDocker: true, hasDepcheck: true, nodeExec: "node", npmExec: "npm" });
 		const runnerTests = branches.find((branch) => branch.name === "Unit Tests (runner)");
-		assert.deepEqual(runnerTests.args, runnerSuiteArgs());
-		assert.deepEqual(runnerSuiteArgs(), ["--test", ...RUNNER_TEST_SUITES]);
+		assert.deepEqual(runnerTests.args, buildRunnerSuiteArgs());
+		assert.deepEqual(buildRunnerSuiteArgs(), ["--test", ...RUNNER_TEST_SUITES]);
+	});
+
+	it("every suite named in RUNNER_TEST_SUITES exists on disk (a typo fails here, not in node --test)", () => {
+		// The on-disk pin above proves every file on disk is NAMED; this is
+		// the reverse direction — every name resolves — so a typo'd
+		// registration fails in Harness Self-Tests with the bad name, instead
+		// of surfacing later as a node --test "file not found" in two gates.
+		for (const suite of RUNNER_TEST_SUITES) {
+			/* eslint-disable security/detect-non-literal-fs-filename -- fixed repo-relative path under test */
+			const exists = fs.existsSync(path.join(path.resolve(import.meta.dirname, ".."), suite));
+			/* eslint-enable security/detect-non-literal-fs-filename */
+			assert.ok(
+				exists,
+				`${suite} is named in RUNNER_TEST_SUITES but missing on disk — fix the registration in scripts/run-tests.mjs`,
+			);
+		}
+	});
+
+	it("checkRunnerSuiteList accepts the real list and rejects malformed lists with a reason", () => {
+		// The print-mode guard, probed directly: publish.sh can only run
+		// what this checker passes, so every rejection shape is pinned here.
+		assert.deepEqual(checkRunnerSuiteList({ suitePaths: [...RUNNER_TEST_SUITES] }), { wellFormed: true, problem: null });
+		assert.deepEqual(checkRunnerSuiteList(), { wellFormed: true, problem: null }, "defaults to the single source");
+		const badLists = [
+			[], // empty: publish.sh must never run a vacuous node --test
+			["runner/"], // bare directory mis-resolves on current Node
+			["runner"], // bare directory without the slash
+			["runner/*.test.js"], // glob needs a shell; the gate never spawns one
+			["runner/harness*.test.js"], // partial glob, same hazard
+			["runner/sub/harness.test.js"], // nested path escapes the flat contract
+			["../runner/harness.test.js"], // parent escape
+			["/repo/runner/harness.test.js"], // absolute path
+			["runner/harness.test.mjs"], // wrong extension
+			["runner/my suite.test.js"], // spaces break shell expansions of the print output
+			["runner/harness.test.js", ""], // empty entry
+			["runner/harness.test.js", 42], // non-string entry
+			"runner/harness.test.js", // not a list at all
+		];
+		for (const suitePaths of badLists) {
+			const check = checkRunnerSuiteList({ suitePaths });
+			assert.equal(check.wellFormed, false, `${JSON.stringify(suitePaths)} must be rejected`);
+			assert.equal(typeof check.problem, "string", "rejection names the problem");
+			assert.ok(check.problem.length > 0, "rejection names the problem");
+		}
+	});
+
+	it("checkRunnerSuiteList stays silent on a repeated suite (wasteful, never under-tested)", () => {
+		const check = checkRunnerSuiteList({ suitePaths: ["runner/harness.test.js", "runner/harness.test.js"] });
+		assert.deepEqual(check, { wellFormed: true, problem: null });
 	});
 
 	it("print mode lists exactly the branch suites, one per line, exit 0", () => {

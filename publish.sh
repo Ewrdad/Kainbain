@@ -273,7 +273,8 @@ gate_for() {
       # closed: a failed or empty lookup refuses with a message instead of
       # running a vacuous `node --test` with no files. Bash + node only.
       local _suites_out _suite
-      local _suites=()
+      local -a _suites
+      _suites=()
       _suites_out="$(node scripts/run-tests.mjs --print-runner-suites)" || { echo "publish.sh: cannot list runner suites (scripts/run-tests.mjs --print-runner-suites failed) — refusing to run a gate with no files" >&2; return 1; }
       [ -n "$_suites_out" ] || { echo "publish.sh: empty runner suite list from scripts/run-tests.mjs --print-runner-suites — refusing to run a gate with no files" >&2; return 1; }
       while IFS= read -r _suite; do

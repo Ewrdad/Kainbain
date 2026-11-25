@@ -443,16 +443,55 @@ export const RUNNER_TEST_SUITES = [
 ];
 
 /***
- * MARK: runnerSuiteArgs
- * @description The argv tail for the "Unit Tests (runner)" branch: `node
- *   --test` plus every suite in RUNNER_TEST_SUITES. One call path shared
- *   by buildBranches() and the --print-runner-suites mode, so the gate
- *   branch and the publish.sh derivation cannot diverge.
- * @example runnerSuiteArgs()[0] => "--test"
+ * MARK: buildRunnerSuiteArgs
+ * @description Builds the argv tail for the "Unit Tests (runner)" branch:
+ *   `node --test` plus every suite in RUNNER_TEST_SUITES. One call path
+ *   shared by buildBranches() and the --print-runner-suites mode, so the
+ *   gate branch and the publish.sh derivation cannot diverge.
+ * @example buildRunnerSuiteArgs()[0] => "--test"
  * @returns {Array<string>} ["--test", ...RUNNER_TEST_SUITES].
  ***/
-export function runnerSuiteArgs() {
+export function buildRunnerSuiteArgs() {
 	return ["--test", ...RUNNER_TEST_SUITES];
+}
+
+/***
+ * MARK: checkRunnerSuiteList
+ * @description Checks one candidate runner suite list against the publish.sh
+ *   derivation contract: a non-empty list where every entry is an explicit
+ *   `runner/<name>.test.js` file path (`<name>` is filename characters
+ *   only — letters, digits, dot, underscore, dash — so a bare directory, a
+ *   glob, a nested path, a parent escape, and spaces are all rejected, and
+ *   every shell expansion of the print-mode output stays exact). Pure: the
+ *   list under test is passed in (defaulting to RUNNER_TEST_SUITES), so
+ *   tests can probe bad lists without touching the single source, and
+ *   printRunnerSuites() fails closed on a `wellFormed: false` result with
+ *   the problem in its stderr line. A repeated suite is still well-formed:
+ *   running a suite twice wastes seconds but can never under-test the
+ *   channel, so the checker stays silent instead of failing a publish over
+ *   a harmless wart.
+ * @example checkRunnerSuiteList({ suitePaths: ["runner/harness.test.js"] }) => { wellFormed: true, problem: null }
+ * @example checkRunnerSuiteList({ suitePaths: [] }) => { wellFormed: false, problem: "the runner suite list is empty" }
+ * @param {Object} [opts]
+ * @param {Array<string>} [opts.suitePaths] - candidate list, defaults to RUNNER_TEST_SUITES.
+ * @returns {{ wellFormed: boolean, problem: (string|null) }} Verdict plus the first problem found, if any.
+ ***/
+export function checkRunnerSuiteList({ suitePaths = RUNNER_TEST_SUITES } = {}) {
+	if (!Array.isArray(suitePaths) || suitePaths.length === 0) {
+		return { wellFormed: false, problem: "the runner suite list is empty" };
+	}
+	for (const suitePath of suitePaths) {
+		if (typeof suitePath !== "string" || suitePath.length === 0) {
+			return { wellFormed: false, problem: "the runner suite list contains an entry that is not a file path" };
+		}
+		if (!/^runner\/[A-Za-z0-9._-]+\.test\.js$/.test(suitePath)) {
+			return {
+				wellFormed: false,
+				problem: `"${suitePath}" is not an explicit runner/*.test.js suite file (bare directories, globs, and nested paths are never allowed)`,
+			};
+		}
+	}
+	return { wellFormed: true, problem: null };
 }
 
 /***
@@ -514,8 +553,8 @@ export function buildBranches({ hasBash = bashAvailable(), hasDocker = dockerAva
 			file: nodeExec,
 			// The suite list lives in RUNNER_TEST_SUITES above (edit there
 			// only) — this branch and --print-runner-suites share
-			// runnerSuiteArgs() so they cannot diverge.
-			args: runnerSuiteArgs(),
+			// buildRunnerSuiteArgs() so they cannot diverge.
+			args: buildRunnerSuiteArgs(),
 		},
 		{ name: "Linting (api)", file: npmExec, args: ["run", "lint:api"], lowPriority: true },
 		{ name: "Linting (frontend)", file: npmExec, args: ["run", "lint:frontend"], lowPriority: true },
@@ -1021,23 +1060,22 @@ async function main() {
 /***
  * MARK: printRunnerSuites
  * @description Print mode for the publish.sh derivation contract: writes the
- *   "Unit Tests (runner)" suite list (the same runnerSuiteArgs() the gate
+ *   "Unit Tests (runner)" suite list (the same buildRunnerSuiteArgs() the gate
  *   branch uses, never a second literal) — one `runner/*.test.js` path per
  *   line, trailing newline, nothing else on stdout — and returns instead of
  *   running any gate logic (no provisioning, pruning, or network). Fails
- *   closed: an empty or malformed list prints one line to stderr and sets a
- *   non-zero exit code, so publish.sh can never run a vacuous `node --test`.
+ *   closed through checkRunnerSuiteList(): an empty or malformed list prints
+ *   one line to stderr naming the problem and sets a non-zero exit code, so
+ *   publish.sh can never run a vacuous or mis-shaped `node --test`.
  * @example printRunnerSuites() prints the 22 runner suites, exit 0
  * @returns {void}
  ***/
 function printRunnerSuites() {
-	const suites = runnerSuiteArgs().slice(1);
-	const wellFormed =
-		suites.length > 0 &&
-		suites.every((suite) => typeof suite === "string" && suite.length > 0);
-	if (!wellFormed) {
+	const suites = buildRunnerSuiteArgs().slice(1);
+	const listCheck = checkRunnerSuiteList({ suitePaths: suites });
+	if (!listCheck.wellFormed) {
 		console.error(
-			"run-tests.mjs: cannot list runner suites (RUNNER_TEST_SUITES is empty or malformed) — refusing to run a gate with no files",
+			`run-tests.mjs: cannot list runner suites (${listCheck.problem}) — refusing to run a gate with no files`,
 		);
 		process.exitCode = 1;
 		return;
