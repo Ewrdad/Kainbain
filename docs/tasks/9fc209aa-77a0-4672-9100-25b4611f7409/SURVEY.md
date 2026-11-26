@@ -74,6 +74,39 @@
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "The helper starts AND does real work on a test job (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q2": {
+      "selected": [
+        "Treat it as a failure so we notice it (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "Check it AND fix it so Antigravity helpers run properly (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "The latest stable version (Recommended)"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Show the version check results",
+        "Show that a failure is reported honestly (no silent pass)",
+        "Short written summary is enough"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
