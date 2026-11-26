@@ -7,12 +7,16 @@
  *   event names and hands the mapper (`agyEventMapper.js`) well-typed rows.
  *   The parser performs no I/O, so it is unit-testable without the CLI.
  *
- *   Wire-format notes (verified against antigravity.google/docs/cli/headless):
- *   - `init` carries its payload nested under the `init` key;
- *   - `step_update` / `result` carry their payload fields at the top level;
- *   - every line carries `conversation_id`.
+ *   Wire-format notes (verified live against agy 1.5.18 stream-json):
+ *   - `init` carries top-level `conversation_id` plus its payload nested
+ *     under the `init` key;
+ *   - `step_update` / `result` nest EVERYTHING (framing fields AND payload)
+ *     under the event-named key — older shapes carried the framing fields
+ *     (`conversation_id`, `step_index`, `state`, `step_type`) flat at the
+ *     top level, which this parser still accepts as a fallback.
  *   To tolerate wire-shape drift, each parsed row's payload is a merged view:
- *   the nested key (when present) wins over the flat fields.
+ *   the nested key (when present) wins over the flat fields — and the
+ *   framing fields read nested-first with the same flat fallback.
  */
 
 import {
@@ -57,6 +61,21 @@ export function createAgyStreamParser({
 }
 
 /***
+ * MARK: frameField (internal)
+ * @description Reads one framing field nested-first with flat fallback: the
+ *   live CLI nests framing under the event-named key, older shapes carry it
+ *   flat — nested wins when well-typed, otherwise the top-level value wins.
+ ***/
+function frameField(frame, json, key, want) {
+	// eslint-disable-next-line security/detect-object-injection -- key is a module-level framing constant below, never user input
+	const fromNested = frame?.[key];
+	if (typeof fromNested === want) return fromNested;
+	// eslint-disable-next-line security/detect-object-injection -- key is a module-level framing constant below, never user input
+	const fromTop = json[key];
+	return typeof fromTop === want ? fromTop : null;
+}
+
+/***
  * MARK: classifyAgyLine (internal)
  * @description Classifies one parsed JSON object into a well-typed agy row,
  *   or returns null for unknown discriminators (counted as droppedUnknown by
@@ -67,14 +86,19 @@ function classifyAgyLine(json) {
 	if (typeof event !== "string" || !AGY_STREAM_EVENTS.has(event)) {
 		return null;
 	}
+	// eslint-disable-next-line security/detect-object-injection -- event is one of AGY_STREAM_EVENT_NAMES, validated by the discriminator check above
+	const nested = json[event];
+	const frame =
+		nested && typeof nested === "object" && !Array.isArray(nested)
+			? nested
+			: null;
 	return {
 		event,
 		payload: buildPayload(json, event),
-		conversationId:
-			typeof json.conversation_id === "string" ? json.conversation_id : null,
-		stepIndex: typeof json.step_index === "number" ? json.step_index : null,
-		state: typeof json.state === "string" ? json.state : null,
-		stepType: typeof json.step_type === "string" ? json.step_type : null,
+		conversationId: frameField(frame, json, "conversation_id", "string"),
+		stepIndex: frameField(frame, json, "step_index", "number"),
+		state: frameField(frame, json, "state", "string"),
+		stepType: frameField(frame, json, "step_type", "string"),
 	};
 }
 

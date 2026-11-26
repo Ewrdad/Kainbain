@@ -63,7 +63,7 @@ export function assertSafeAgyArgs(args) {
  * @param {string} opts.prompt - The stage prompt text (passed via -p).
  * @param {string|null} [opts.conversationId] - agy conversation id to continue.
  * @param {string|null} [opts.modelSlug] - Model slug pinned via --model.
- * @param {string|null} [opts.effort] - Reasoning effort (--effort low|medium|high).
+ * @param {string|null} [opts.effort] - Reasoning effort (--effort low|medium|high|xhigh|max).
  * @param {string} opts.printTimeout - Duration for --print-timeout (e.g. "10m").
  * @param {boolean} [opts.sandbox=false] - Whether to pass --sandbox.
  * @param {boolean} [opts.skipPermissions=false] - Whether to pass

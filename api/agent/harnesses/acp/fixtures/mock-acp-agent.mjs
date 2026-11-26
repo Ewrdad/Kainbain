@@ -28,7 +28,10 @@
  *   directly with a custom env):
  *
  *     ACP_MOCK_MODE (or AGY_ACP_MOCK_MODE)
- *                          success (default) | no_permission | 502_error | hang | hang_handshake | crash | bad_handshake
+ *                          success (default) | no_permission | 502_error | empty_turn | hang | hang_handshake | crash | bad_handshake
+ *                          `empty_turn` ends the turn cleanly with zero
+ *                          notifications (no text, no tool calls — the flavor's
+ *                          empty-turn seam must trap it as run_error);
  *                          `hang` never answers `session/prompt` (a hung TURN);
  *                          `hang_handshake` never answers `initialize` (a hung
  *                          handshake the runtime's start watchdog must settle).
@@ -263,6 +266,13 @@ async function handlePrompt(id, params) {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		fs.writeSync(2, "mock-acp-agent: simulated hard crash (no prompt response follows)\n");
 		process.exit(1);
+	}
+	if (MODE === "empty_turn") {
+		// The spawned-but-idle turn: a CLEAN end with zero notifications
+		// (no assistant text, no tool calls). The flavor's empty-turn seam
+		// must trap it as run_error (never a silent pass).
+		respond(id, { stopReason: "end_turn" });
+		return;
 	}
 	if (MODE === "502_error") {
 		// The swallowed-transport failure: error prose smuggled inside an

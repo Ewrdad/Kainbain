@@ -4,6 +4,7 @@ import { resolveSpawnBinary } from "../../harnessDiscovery.js";
 import { config } from "../../../config.js";
 import {
 	classifyAgyCrashExit,
+	classifyAgyEmptyRun,
 	classifyAgyRunTimeout,
 	classifyAgySpawnError,
 	formatAgyRunError,
@@ -117,6 +118,14 @@ function resolveAgySettings(deps = {}) {
 		// Handshake ceiling for the ACP session start (tests shorten it; the
 		// per-turn watchdog stays engine-side, as with the exec transport).
 		acpStartTimeoutMs: deps.acpStartTimeoutMs || 30000,
+		// Empty SUCCESS runs (no response, no deltas, no tool calls) fail
+		// with AGY_EMPTY_RUN instead of passing silently: a spawned-but-idle
+		// run is an engine failure, never a pass. Explicit opt-out only
+		// (deps.failOnEmptyRun === false) for the legacy lenient behavior.
+		failOnEmptyRun:
+			deps.failOnEmptyRun === undefined
+				? true
+				: Boolean(deps.failOnEmptyRun),
 		sandbox:
 			deps.sandbox === undefined
 				? config.agySandbox === true
@@ -219,6 +228,7 @@ function createAgySession(project, meta, harness, { initialModel } = {}) {
 				error: null,
 				sawResult: false,
 				deltaText: "",
+				toolEvents: 0,
 			};
 			const parser = createAgyStreamParser();
 			// Run facts travel with the mapper into the run_started event so the
@@ -323,10 +333,33 @@ function createAgySession(project, meta, harness, { initialModel } = {}) {
 							runState.response = row.payload.response;
 						}
 					}
+					// Empty SUCCESS runs (the result row is terminal, so the
+					// deltas/tool counts below are final): with failOnEmptyRun
+					// a SUCCESS that produced nothing delivers run_error
+					// AGY_EMPTY_RUN INSTEAD of the mapper's run_finished — a
+					// spawned-but-idle run must fail, never pass open.
+					if (
+						row.event === "result" &&
+						row.payload?.status === "SUCCESS" &&
+						harness.settings.failOnEmptyRun &&
+						!runState.response.trim() &&
+						!runState.deltaText.trim() &&
+						runState.toolEvents === 0
+					) {
+						const classified = classifyAgyEmptyRun();
+						harness.log(`[AGY] run ${runLabel} produced no output [${classified.code}]: ${classified.message} ${classified.hint}`);
+						runState.status = "ERROR";
+						runState.error = formatAgyRunError(classified);
+						deliver({ type: "run_error", error: runState.error, code: classified.code, hint: classified.hint });
+						continue;
+					}
 					for (const event of mapper.map(row)) {
 						if (event.type === "assistant_delta" && typeof event.delta === "string") {
 							runState.deltaText += event.delta;
 							onAssistantDelta?.(event.delta);
+						}
+						if (event.type === "tool_started") {
+							runState.toolEvents += 1;
 						}
 						deliver(event);
 					}
@@ -691,6 +724,17 @@ function createAcpAgySession(project, meta, harness, { initialModel } = {}) {
 		},
 		inspectAssistantText: (text) =>
 			detectSwallowed502(text) ? swallowed502Error(text) : null,
+		// Empty ACP turns (no text, no tool calls) fail with AGY_EMPTY_RUN,
+		// mirroring the exec transport — unless explicitly opted out.
+		inspectEmptyTurn: harness.settings.failOnEmptyRun
+			? ({ text, toolCalls }) => {
+					if ((typeof text === "string" ? text : "").trim() || toolCalls > 0) {
+						return null;
+					}
+					const classified = classifyAgyEmptyRun();
+					return { ...classified, error: formatAgyRunError(classified) };
+				}
+			: undefined,
 		createRuntime: async (hooks) => {
 			const runtime = new AcpSessionRuntime({
 				command: endpoint.command,
@@ -739,6 +783,10 @@ function createAcpAgySession(project, meta, harness, { initialModel } = {}) {
  * @param {string} [deps.acpMode] - Transport selection: "on" (ACP session), "off" (exec), "auto" (ACP only with acpBin).
  * @param {string} [deps.acpBin] - Standalone ACP agent binary (engages the ACP path; tests use the mock fixture).
  * @param {number} [deps.acpStartTimeoutMs] - Handshake ceiling for the ACP session start.
+ * @param {boolean} [deps.failOnEmptyRun] - Fail SUCCESS runs that produced
+ *   no response, no deltas, and no tool calls with AGY_EMPTY_RUN instead of
+ *   passing silently (default true; pass false for the legacy lenient
+ *   behavior).
  * @returns {Object} The AgentHarness for antigravity.
  ***/
 export function createAntigravityHarness(deps = {}) {
@@ -779,7 +827,7 @@ export function createAntigravityHarness(deps = {}) {
 		/** Programmatic model catalogue (`agy models` discovery): the UI
 		 *  renders a model dropdown for this harness. */
 		modelSelection: "list",
-		reasoningLevels: ["low", "medium", "high"],
+		reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 
 		settings,
 

@@ -175,6 +175,22 @@ describe("antigravity ACP session (mock agent)", () => {
 		await session.dispose();
 	});
 
+	it("traps an empty ACP turn as run_error AGY_EMPTY_RUN (exec parity)", async () => {
+		process.env.AGY_ACP_MOCK_MODE = "empty_turn";
+		const { harness } = makeAcpHarness();
+		const { session } = await makeAcpSession(harness, "empty-turn");
+		const seen = [];
+		session.subscribe((event) => seen.push(event));
+		const reply = await session.prompt("Silent turn");
+		expect(reply).toBe("");
+		const errors = seen.filter((event) => event?.type === "run_error");
+		expect(errors).toHaveLength(1);
+		expect(errors[0].code).toBe("AGY_EMPTY_RUN");
+		expect(errors[0].error).toContain("[AGY_EMPTY_RUN]");
+		expect(seen.some((event) => event?.type === "run_finished")).toBe(false);
+		await session.dispose();
+	});
+
 	it("keeps conversation continuity across prompts in one ACP session", async () => {
 		const promptLog = path.join(makeWorkspace("continuity"), "prompts.jsonl");
 		process.env.AGY_ACP_MOCK_PROMPT_LOG = promptLog;

@@ -136,6 +136,123 @@ describe("runHarnessStage", () => {
 		assert.match(output, /do the thing/);
 	});
 
+	it("latches the first run_error as sessionError (prompt resolves empty)", async () => {
+		const frames = [
+			{ type: "run_started" },
+			{ type: "run_error", error: "agy run failed [AGY_CRASHED] retry it", code: "AGY_CRASHED", hint: "retry it" },
+		];
+		const harness = {
+			async createSession() {
+				return {
+					isStreaming: false,
+					messages: [],
+					getLastAssistantText: () => "",
+					subscribe: (handler) => {
+						for (const frame of frames) handler(frame);
+						return () => {};
+					},
+					prompt: async () => "",
+					abort: () => {},
+					dispose: async () => {},
+				};
+			},
+		};
+		const { output, sessionError } = await runHarnessStage({
+			harness,
+			project: { id: "p1" },
+			workdir: "/tmp",
+			taskId: "t",
+			stageId: "s",
+			prompt: "x",
+		});
+		assert.equal(output, "");
+		assert.deepEqual(sessionError, {
+			error: "agy run failed [AGY_CRASHED] retry it",
+			code: "AGY_CRASHED",
+			hint: "retry it",
+		});
+	});
+
+	it("keeps the first run_error when the session emits several", async () => {
+		const frames = [
+			{ type: "run_error", error: "first failure", code: "AGY_CRASHED" },
+			{ type: "run_error", error: "second failure", code: "AGY_RUN_TIMEOUT" },
+		];
+		const harness = {
+			async createSession() {
+				return {
+					isStreaming: false,
+					messages: [],
+					getLastAssistantText: () => "",
+					subscribe: (handler) => {
+						for (const frame of frames) handler(frame);
+						return () => {};
+					},
+					prompt: async () => "",
+					abort: () => {},
+					dispose: async () => {},
+				};
+			},
+		};
+		const { sessionError } = await runHarnessStage({
+			harness,
+			project: { id: "p1" },
+			workdir: "/tmp",
+			taskId: "t",
+			stageId: "s",
+			prompt: "x",
+		});
+		assert.deepEqual(sessionError, { error: "first failure", code: "AGY_CRASHED" });
+	});
+
+	it("reports sessionError null when the session never errors", async () => {
+		const harness = createMockHarness({ models: [] });
+		const { output, sessionError } = await runHarnessStage({
+			harness,
+			project: { id: "p1" },
+			workdir: "/tmp",
+			taskId: "t1",
+			stageId: "s1",
+			prompt: "do the thing",
+		});
+		assert.match(output, /do the thing/);
+		assert.equal(sessionError, null);
+	});
+
+	it("latches run_error even when onEvent throws", async () => {
+		const frames = [
+			{ type: "run_error", error: "latched despite observer", code: "AGY_CRASHED" },
+		];
+		const harness = {
+			async createSession() {
+				return {
+					isStreaming: false,
+					messages: [],
+					getLastAssistantText: () => "",
+					subscribe: (handler) => {
+						for (const frame of frames) handler(frame);
+						return () => {};
+					},
+					prompt: async () => "",
+					abort: () => {},
+					dispose: async () => {},
+				};
+			},
+		};
+		const { sessionError } = await runHarnessStage({
+			harness,
+			project: { id: "p1" },
+			workdir: "/tmp",
+			taskId: "t",
+			stageId: "s",
+			prompt: "x",
+			onEvent: () => {
+				throw new Error("observer boom");
+			},
+		});
+		assert.deepEqual(sessionError, { error: "latched despite observer", code: "AGY_CRASHED" });
+	});
+
 	it("disposes the session even when prompting throws", async () => {
 		let disposed = false;
 		const harness = {

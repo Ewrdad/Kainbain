@@ -920,6 +920,66 @@ describe("runSingleAssignment agent verdict detection", () => {
 		assert.equal(completed.failureKind, "rejected");
 		assert.equal(completed.failureReason, "[Agent Review Rejection] fallback field shapes");
 	});
+
+	it("R9: a latched run_error fails with infrastructure (never a silent pass)", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "",
+			events: [{
+				type: "run_error",
+				error: "agy exited with code 1 without a result: boom [AGY_CRASHED]",
+				code: "AGY_CRASHED",
+				hint: "re-run the stage",
+			}],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "infrastructure");
+		assert.match(completed.failureReason, /\[Harness Run Error\].*boom/);
+		assert.match(completed.failureReason, /\[AGY_CRASHED\]/);
+		assert.match(completed.failureReason, /re-run the stage/);
+	});
+
+	it("R10: a run_error fails even beside a PASS text block (an engine failure is not a verdict)", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all good\nKAINBAIN_VERDICT: PASS",
+			events: [{ type: "run_error", error: "auth login required", code: "AGY_AUTH_REQUIRED" }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "infrastructure");
+		assert.match(completed.failureReason, /\[Harness Run Error\]/);
+	});
+
+	it("R11: a latched fail_stage call still wins over a run_error", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "done",
+			events: [
+				{ type: "tool_started", toolName: "fail_stage", args: { reason: "tests red on main" } },
+				{ type: "run_error", error: "late transport blip", code: "AGY_CRASHED" },
+			],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "rejected");
+		assert.equal(completed.failureReason, "[Agent Review Rejection] tests red on main");
+	});
+
+	it("R12: a run_error shadows a well-formed FAIL block (engine failure, not agent feedback)", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: `Deep review complete.\n${FAIL_BLOCK}`,
+			events: [{ type: "run_error", error: "agy run timed out [AGY_RUN_TIMEOUT]", code: "AGY_RUN_TIMEOUT" }],
+		});
+		assert.equal(completed.outcome, "failed");
+		assert.equal(completed.failureKind, "infrastructure");
+		assert.match(completed.failureReason, /\[Harness Run Error\]/);
+		assert.doesNotMatch(completed.failureReason, /\[Agent Review Rejection\]/);
+	});
+
+	it("R13: no run_error leaves the pass path unchanged (no failureKind)", async () => {
+		const { completed } = await runVerdictAssignment({
+			reply: "all done, nothing to report",
+			events: [{ type: "run_started" }, { type: "run_finished" }],
+		});
+		assert.equal(completed.outcome, "passed");
+		assert.ok(!("failureKind" in completed), "no failureKind on a pass");
+	});
 });
 
 describe("runSingleAssignment stage attestation", () => {

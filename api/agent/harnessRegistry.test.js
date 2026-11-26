@@ -415,6 +415,8 @@ describe("harnessRegistry — resolveHarnessReasoningLevels and harnessReasoning
 			"low",
 			"medium",
 			"high",
+			"xhigh",
+			"max",
 		]);
 		expect(resolveHarnessReasoningLevels("custom")).toBeNull();
 		expect(resolveHarnessReasoningLevels("opencode")).toBeNull();
@@ -437,6 +439,8 @@ describe("harnessRegistry — resolveHarnessReasoningLevels and harnessReasoning
 			"low",
 			"medium",
 			"high",
+			"xhigh",
+			"max",
 		]);
 		expect(resolveHarnessReasoningLevels({ harnessId: "pi" })).toBeTruthy();
 		expect(resolveHarnessReasoningLevels({ name: "pi" })).toBeTruthy();

@@ -242,3 +242,74 @@ describe("agy stream parser", () => {
 function noiseRows(rows) {
 	expect(rows.map((row) => row.event)).toEqual(["init", "step_update", "result"]);
 }
+
+describe("agy stream parser — live nested wire shape (agy 1.5.x)", () => {
+	it("reads framing fields nested under the event-named key", () => {
+		const rows = parseFixture("nested-success");
+		expect(rows.map((row) => row.event)).toEqual([
+			"init",
+			"step_update",
+			"step_update",
+			"step_update",
+			"step_update",
+			"step_update",
+			"step_update",
+			"step_update",
+			"result",
+		]);
+		const init = rows[0];
+		expect(init.conversationId).toBe("conv-nested-1");
+		expect(init.payload.permission_mode).toBe("always-proceed");
+		const delta = rows[2];
+		expect(delta.stepType).toBe("agent_response");
+		expect(delta.stepIndex).toBe(1);
+		expect(delta.state).toBe("ACTIVE");
+		expect(delta.conversationId).toBe("conv-nested-1");
+		expect(delta.payload.text_delta).toBe("Reading the file now.");
+		const toolActive = rows[4];
+		expect(toolActive.stepType).toBe("tool");
+		expect(toolActive.stepIndex).toBe(2);
+		expect(toolActive.state).toBe("ACTIVE");
+		expect(toolActive.payload.tool_info.name).toBe("read_file");
+		const toolDone = rows[5];
+		expect(toolDone.state).toBe("DONE");
+		expect(toolDone.payload.tool_info.output).toBe("3 lines, 24 bytes");
+		const result = rows.at(-1);
+		expect(result.conversationId).toBe("conv-nested-1");
+		expect(result.payload.status).toBe("SUCCESS");
+		expect(result.payload.response).toBe("File contents received.\n");
+	});
+
+	it("prefers nested framing over flat fields when both are present", () => {
+		const parser = createAgyStreamParser();
+		const [row] = parser.push(
+			'{"event":"step_update","step_index":99,"state":"ACTIVE","step_type":"agent_response","step_update":{"conversation_id":"c-nested","step_index":7,"state":"DONE","step_type":"tool"}}\n',
+		);
+		expect(row.stepIndex).toBe(7);
+		expect(row.state).toBe("DONE");
+		expect(row.stepType).toBe("tool");
+		expect(row.conversationId).toBe("c-nested");
+	});
+
+	it("falls back to flat framing when the nested object lacks it", () => {
+		const parser = createAgyStreamParser();
+		const [row] = parser.push(
+			'{"event":"step_update","conversation_id":"c-flat","step_index":3,"state":"ACTIVE","step_type":"agent_response","step_update":{"text_delta":"hi"}}\n',
+		);
+		expect(row.stepIndex).toBe(3);
+		expect(row.state).toBe("ACTIVE");
+		expect(row.stepType).toBe("agent_response");
+		expect(row.conversationId).toBe("c-flat");
+		expect(row.payload.text_delta).toBe("hi");
+	});
+
+	it("ignores a non-object nested key and reads flat framing", () => {
+		const parser = createAgyStreamParser();
+		const [row] = parser.push(
+			'{"event":"result","conversation_id":"c-flat","status":"SUCCESS","response":"ok","result":"garbage"}\n',
+		);
+		expect(row.conversationId).toBe("c-flat");
+		expect(row.payload.status).toBe("SUCCESS");
+		expect(row.payload.response).toBe("ok");
+	});
+});

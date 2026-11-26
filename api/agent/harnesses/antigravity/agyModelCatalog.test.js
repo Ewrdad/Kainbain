@@ -240,6 +240,19 @@ describe("agy model catalog (TTL cache + resolution)", () => {
 			effort: null,
 		});
 	});
+
+	it("splits the full CLI effort set (xhigh/max included, verified live 1.5.18)", () => {
+		for (const level of ["low", "medium", "high", "xhigh", "max"]) {
+			expect(parseAgyModelRef(`gemini-4-neon:${level}`)).toEqual({
+				ref: "gemini-4-neon",
+				effort: level,
+			});
+		}
+		expect(parseAgyModelRef("gemini-4-neon:ultra")).toEqual({
+			ref: "gemini-4-neon:ultra",
+			effort: null,
+		});
+	});
 });
 
 describe("agy models discovery spawn watchdog", () => {

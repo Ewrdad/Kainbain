@@ -49,9 +49,11 @@ Transport selection (`selectAgyTransport` in `agyHarness.js`):
 | otherwise (`auto` default, or `off`) | Legacy exec: one `agy -p` process per `prompt()` |
 
 `auto` deliberately never probes: existing deployments keep zero behavior
-change (no speculative spawn per stage). Enable ACP once the installed CLI
-ships the `acp` subcommand; older CLIs stay on exec untouched. A failed ACP
-start is classified (`AGY_BIN_MISSING` / `AGY_AUTH_REQUIRED` / `AGY_TIMEOUT` /
+change (no speculative spawn per stage). Set `on` once the installed CLI
+ships the `acp` subcommand (verified on 1.5.18: `initialize` protocol
+version 1 + `session/new` + prompt round-trip all confirmed live); older CLIs
+stay on exec untouched. A failed ACP start is classified
+(`AGY_BIN_MISSING` / `AGY_AUTH_REQUIRED` / `AGY_TIMEOUT` /
 `AGY_DISCOVERY_FAILED`, each with a fix hint) on the `[AGY ACP]` log line, and
 the turn reports `run_error` — never a silent success.
 
@@ -72,25 +74,38 @@ for post-mortems.
 | `agyAcpSupport.js` | Antigravity ACP flavor (the ONLY vendor-specific ACP code): entrypoint resolution (`agy acp` vs standalone override), child-env sanitization (`CLAUDECODE` stripped, secrets redacted, `NODE_NO_WARNINGS=1`), swallowed-502 detection (`detectSwallowed502` → typed `AGY_TRANSPORT_502` run_error), permission policy (YOLO auto-allow vs deny-safe cancel), startup-failure classification, handshake/session params. |
 | `agyStreamParser.js` | Line-oriented incremental NDJSON parser (O(chunk) per push — large tool-output lines never pin the event loop), tolerates CRLF/blank/noise lines, drops >1 MiB lines (cap trips incrementally on the partial line), tags each row with its payload (`init`/`step_update`/`result`). |
 | `agyEventMapper.js` | Table-driven mapping to `run_started`, `message_started`, `assistant_delta`, `tool_started`, `tool_updated`, `tool_finished`, `run_finished`, `run_error` — never raw agy names (enforced by `api/agent/harnessBoundary.test.js`). |
-| `agyModelCatalog.js` | Wraps `agy models` (bounded by a 15 s discovery watchdog — a hung CLI degrades to warn + empty list), parses slug/description lines, caches with a TTL, resolves bare slugs, `antigravity::<id>` keys, and `<slug>:<effort>` refs (e.g. `gemini-2.5-pro:high` → `--effort high`; when the stripped base slug is absent, the joined form `gemini-3.1-pro:high` → `gemini-3.1-pro-high` is tried). |
+| `agyModelCatalog.js` | Wraps `agy models` (bounded by a 15 s discovery watchdog — a hung CLI degrades to warn + empty list), parses slug/description lines, caches with a TTL, resolves bare slugs, `antigravity::<id>` keys, and `<slug>:<effort>` refs (e.g. `gemini-2.5-pro:high` → `--effort high`; effort set `low\|medium\|high\|xhigh\|max`, verified against the live CLI; when the stripped base slug is absent, the joined form `gemini-3.1-pro:high` → `gemini-3.1-pro-high` is tried). |
 | `agyPermissions.js` | Builds argv (`-p`, `--output-format stream-json`, `--print-timeout`, `--sandbox`, `--model`, `--effort`, `--conversation`), guards the bypass flag, builds the redacted child env, validates allow rules, parses durations. |
 
 ## Wire format (agy `--output-format stream-json`)
 
-Newline-delimited JSON, one object per line, discriminated by `event`:
+Newline-delimited JSON, one object per line, discriminated by `event`
+(shapes verified live against agy 1.5.18):
 
 | Event | Shape | Mapped to |
 | --- | --- | --- |
 | `init` (first line) | `{ event, conversation_id, init: { cwd, tools, permission_mode, model? } }` | `run_started` |
-| `step_update` (many) | `{ event, conversation_id, step_index, state: "ACTIVE"\|"DONE", step_type, text_delta?, tool_info?: { name, parameters, output, error? } }` | `message_started`/`assistant_delta` (agent_response), `tool_started`/`tool_updated`/`tool_finished` (tool); other step types ignored |
-| `result` (last line) | `{ event, conversation_id, status, response, error?, duration_seconds, num_turns, usage }` | `run_finished` (SUCCESS / INTERRUPTED / CANCELED) or `run_error` (everything else) |
+| `step_update` (many) | `{ event, step_update: { conversation_id, step_index, state: "ACTIVE"\|"DONE", step_type, text_delta?, tool_name?, tool_info?: { name, parameters, output, error? } } }` | `message_started`/`assistant_delta` (agent_response), `tool_started`/`tool_updated`/`tool_finished` (tool); `user_input`/`checkpoint`/unknown step types surface as one `harness_log` line each |
+| `result` (last line) | `{ event, result: { conversation_id, status, response, error?, finished_reason?, duration_seconds, num_turns, usage } }` | `run_finished` (genuine SUCCESS / INTERRUPTED / CANCELED) or `run_error` (ERROR statuses, ceiling-hit SUCCESS rows, everything else) |
 
-The parser tolerates wire-shape drift: payload fields are read from the flat
-line and from the event-named key (nested wins), unknown `step_type`s and
-unknown `event`s are ignored by design. Fixtures under `fixtures/` mirror the
-documented shapes (antigravity.google/docs/cli/headless); re-capture them from
-a live `agy` run when one is available on a dev machine and diff as an extra
-conformance check.
+The parser tolerates wire-shape drift: framing fields (`conversation_id`,
+`step_index`, `state`, `step_type`) and payload fields are read
+nested-first with the legacy flat shape as fallback, unknown `step_type`s
+degrade to a visible `harness_log` line, and unknown `event`s are ignored by
+design. `finished_reason` values naming a ceiling (`print_timeout`,
+`timeout`, `deadline_exceeded`, `max_turns`, `max_tokens`,
+`context_exceeded`) on a SUCCESS row report as `run_error AGY_RUN_TIMEOUT`
+(a partial run is never success). A SUCCESS row with an empty response, no
+deltas, and zero tool calls reports as `run_error AGY_EMPTY_RUN` (a
+spawned-but-idle run is an engine failure, never a pass).
+
+Live conformance is repeatable: `node scripts/agy-conformance.mjs --out
+<dir>` probes a real CLI (version, `--help` flag matrix against
+`buildAgyArgs`, `models`, a canned stream-json run, a forced print-timeout
+partial run, the ACP handshake) and fails non-zero on drift. The suite's
+`mock-agy.mjs` emits the live nested shape by default (`AGY_MOCK_WIRE=flat`
+keeps the legacy emission for tolerance tests); flat fixtures under
+`fixtures/` prove the fallback path.
 
 ## Permission policy (operator-chosen YOLO)
 
@@ -188,33 +203,40 @@ Symptom → cause → fix:
 Runs that fail OUTSIDE the stream protocol (the child never starts, the
 engine watchdog fires, or the child dies without a `result` line) are
 classified by `classifyAgySpawnError` / `classifyAgyRunTimeout` /
-`classifyAgyCrashExit` in `agyRunErrors.js`. Every `run_error` from these
-paths carries `{ code, message, hint }` (the `error` string stays the
-human-readable line `"<message> [<code>] <hint>"`), and the same classified
-line is logged to the project process log, so reliability buckets and the
-log tail agree on the cause:
+`classifyAgyCrashExit` in `agyRunErrors.js`, plus two in-protocol failures
+the stream itself reports (empty SUCCESS, ceiling-hit SUCCESS). Every
+`run_error` from these paths carries `{ code, message, hint }` (the `error`
+string stays the human-readable line `"<message> [<code>] <hint>"`), and the
+same classified line is logged to the project process log, so reliability
+buckets and the log tail agree on the cause:
 
 | Code | Cause | Fix |
 | --- | --- | --- |
 | `AGY_BIN_MISSING` | The `agy` binary is not on PATH (spawn ENOENT). | Install the Antigravity CLI and ensure it is on PATH or in ~/.local/bin, or set `KAINBAIN_AGY_BIN` to its absolute path. |
 | `AGY_SPAWN_FAILED` | The binary exists but could not be started (permissions, bad path). | Check execute permissions on `KAINBAIN_AGY_BIN` and that it points at an executable file. |
-| `AGY_RUN_TIMEOUT` | The engine-side watchdog (`watchdogMs`, derived from `KAINBAIN_AGY_PRINT_TIMEOUT`) tripped before the CLI's own `--print-timeout` ceiling. The message names both ceilings. | Raise `KAINBAIN_AGY_PRINT_TIMEOUT` for long runs, or check the network when a fast prompt hangs. |
+| `AGY_RUN_TIMEOUT` | The engine-side watchdog tripped before the CLI's own `--print-timeout` ceiling (the message names both ceilings), OR the CLI reported SUCCESS with a ceiling `finished_reason` (`print_timeout` et al — a partial run, never success). | Raise `KAINBAIN_AGY_PRINT_TIMEOUT` for long runs, or check the network when a fast prompt hangs. |
 | `AGY_AUTH_REQUIRED` | The child died with an auth-shaped stderr tail (login hint, not logged in). | Run `agy auth login` in a terminal, then retry the stage. |
 | `AGY_CRASHED` | The child died without a `result` line and the tail is not auth-shaped. | Re-run the stage; if it repeats, run the same prompt with the agy CLI by hand to see the crash. |
+| `AGY_EMPTY_RUN` | The CLI reported SUCCESS with an empty response, no assistant deltas, and zero tool calls — the run did no work (same classification on the ACP path for turns with no text and no tool calls). | Check auth/model/quota (run `agy models` by hand), then re-run the stage; if a real prompt returns nothing, the CLI install may be broken. |
+
+Any `run_error` fails the stage as `infrastructure` on both the embedded
+path and the Runner path (via the shared `sessionError` verdict input) —
+with the harness code + fix hint in the failure reason — so a broken agy
+run can never pass open on empty output.
 
 `run_started` runFacts for every exec run also carry the ceilings and
 redacted prompt capture actually used: `timeout` (the `--print-timeout`
 value), `promptChars` (instruction size), and `promptHash` (SHA-256 of the
 prompt — correlation without storing prompt text or secrets).
 
-Live-conformance gap (2026-09-27): no machine with the `agy` CLI installed
-was available during this change, so the `agy models` output parser and the
-`init`-echo model field handling are verified against the mock + documented
-shapes only — not against live CLI output. Re-capture
-`fixtures/noise-lines.ndjson` from a real `agy models` run when one is
-available and diff it against `parseAgyModelsOutput` assumptions; likewise
-confirm whether `gemini-3.8-flash-medium` (seen in one stored stage ref) is a
-real slug. Unknown slugs are never silently mapped.
+Live conformance (verified 2026-11-26 against agy 1.5.18, the latest
+stable): flags, `agy models` parsing, the nested stream-json wire shape,
+the `--effort low|medium|high|xhigh|max` value set, the print-timeout
+partial shape (exit 3, `status: ERROR` + `finished_reason: print_timeout`),
+and the ACP handshake (protocol version 1) were all confirmed against a
+real authenticated CLI; unknown slugs are never silently mapped. Re-run
+`node scripts/agy-conformance.mjs --out <dir>` after any CLI upgrade and
+diff the captures.
 
 ## Mock binary (tests)
 
@@ -227,6 +249,7 @@ subcommand; and is controlled via environment variables
 - `AGY_MOCK_MODE`: `success` (default) | `error` | `auth` | `crash` | `hang` | `utf8split` (a multi-byte UTF-8 line deliberately split mid-character across two stdout writes)
 - `AGY_MOCK_MODELS_MODE`: `success` (default) | `hang` (the `models` subcommand never answers — exercises the discovery watchdog) | `auth` (exit 1, login hint) | `error` (exit 1, generic failure) | `unparseable` (exit 0, prose with zero slugs) | `empty` (exit 0, no output)
 - `AGY_MOCK_FIXTURE`: replay a `.ndjson` fixture verbatim
+- `AGY_MOCK_WIRE`: `nested` (default, the live shape) | `flat` (legacy flat framing — tolerance tests only)
 - `AGY_MOCK_CHUNK_DELAY_MS`: per-line output delay (slow-stream/abort tests)
 - `AGY_MOCK_ARGV_LOG`: append the received argv as a JSON line (argv assertions)
 

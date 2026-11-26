@@ -17,3 +17,4 @@ export { normalizeStageType } from "./normalizeStageType.js";
 export { stageExpectsAgentVerdict } from "./stageExpectsAgentVerdict.js";
 export { parseStageVerdict } from "./parseStageVerdict.js";
 export { decideAgentStageVerdict } from "./decideAgentStageVerdict.js";
+export { formatSessionErrorReason } from "./formatSessionErrorReason.js";
