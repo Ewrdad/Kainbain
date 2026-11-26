@@ -94,7 +94,8 @@ nested-first with the legacy flat shape as fallback, unknown `step_type`s
 degrade to a visible `harness_log` line, and unknown `event`s are ignored by
 design. `finished_reason` values naming a ceiling (`print_timeout`,
 `timeout`, `deadline_exceeded`, `max_turns`, `max_tokens`,
-`context_exceeded`) on a SUCCESS row report as `run_error AGY_RUN_TIMEOUT`
+`context_exceeded`, `cancelled`/`canceled`) on a SUCCESS row report as
+`run_error AGY_RUN_TIMEOUT`
 (a partial run is never success). A SUCCESS row with an empty response, no
 deltas, and zero tool calls reports as `run_error AGY_EMPTY_RUN` (a
 spawned-but-idle run is an engine failure, never a pass).

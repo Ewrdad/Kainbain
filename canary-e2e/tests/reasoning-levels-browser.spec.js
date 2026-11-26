@@ -98,7 +98,7 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     if (piSection) {
       expect(levelsOf("pi")).toEqual(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
     }
-    expect(levelsOf("antigravity")).toEqual(["low", "medium", "high"]);
+    expect(levelsOf("antigravity")).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(levelsOf("mock")).toEqual(["low", "medium", "high"]);
     expect(levelsOf("muse")).toBeNull();
     expect(mockModels).toBeGreaterThan(0);
@@ -138,7 +138,7 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
     await expect(picker.getByRole("combobox", { name: "Reasoning" })).toContainText("high");
     await page.screenshot({ path: `${SHOTS}/03-picker-reloaded-high.png` });
 
-    // --- 2. antigravity harness: low/medium/high when the catalogue is non-empty.
+    // --- 2. antigravity harness: low/medium/high/xhigh/max when the catalogue is non-empty.
     await picker.getByRole("combobox", { name: "AI Harness" }).click();
     await page.getByRole("option", { name: "Antigravity" }).first().click();
     if (agyModels > 0) {
@@ -146,7 +146,7 @@ test.describe("Reasoning levels browser verification (scratch stack)", () => {
       await page.getByRole("listbox").getByRole("option").first().click();
       await expect(picker.getByRole("combobox", { name: "Reasoning" })).toBeVisible({ timeout: 10000 });
       await picker.getByRole("combobox", { name: "Reasoning" }).click();
-      for (const label of ["low", "medium", "high"]) {
+      for (const label of ["low", "medium", "high", "xhigh", "max"]) {
         await expect(page.getByRole("option", { name: label, exact: true }).first()).toBeVisible();
       }
       await page.screenshot({ path: `${SHOTS}/04-picker-antigravity-levels-open.png` });
