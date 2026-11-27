@@ -12,7 +12,13 @@
       "id": "q1",
       "type": "single",
       "text": "How consistently is the PR/review Files Changed view blank (\"Nothing to review yet\")?",
-      "options": ["All MRs / every task I open", "Most MRs, but a few show diffs", "Some MRs — only certain tasks or stages", "Once or twice (one-off event)", "I don't know"],
+      "options": [
+        "All MRs / every task I open",
+        "Most MRs, but a few show diffs",
+        "Some MRs — only certain tasks or stages",
+        "Once or twice (one-off event)",
+        "I don't know"
+      ],
       "required": true,
       "showIf": null
     },
@@ -20,7 +26,13 @@
       "id": "q2",
       "type": "single",
       "text": "In the blank-review MRs, did the agent actually edit code files?",
-      "options": ["Yes — I saw commits or edits on the task branch elsewhere (git log / Files & Repo / upstream)", "Yes — stage reports describe code edits", "No — those stages were docs-only / no-code (plan, survey, reports)", "No — reports say the agent made no file changes", "I don't know"],
+      "options": [
+        "Yes — I saw commits or edits on the task branch elsewhere (git log / Files & Repo / upstream)",
+        "Yes — stage reports describe code edits",
+        "No — those stages were docs-only / no-code (plan, survey, reports)",
+        "No — reports say the agent made no file changes",
+        "I don't know"
+      ],
       "required": true,
       "showIf": null
     },
@@ -28,7 +40,12 @@
       "id": "q3",
       "type": "single",
       "text": "What does the review header show for branch → base (like kb/<task> → main in the screenshot)?",
-      "options": ["kb/<task> → main", "kb/<task> → a custom per-pipeline base branch", "kb/<task> → different bases on different MRs", "I don't know"],
+      "options": [
+        "kb/<task> → main",
+        "kb/<task> → a custom per-pipeline base branch",
+        "kb/<task> → different bases on different MRs",
+        "I don't know"
+      ],
       "required": false,
       "showIf": null
     },
@@ -36,15 +53,33 @@
       "id": "q4",
       "type": "single",
       "text": "What do the ahead/behind counts show in the review header (like ↑0 ↓0 in the screenshot)?",
-      "options": ["0 ahead / 0 behind", "Nonzero ahead (agent commits exist) but Files Changed is still empty", "Nonzero behind only", "I don't know"],
+      "options": [
+        "0 ahead / 0 behind",
+        "Nonzero ahead (agent commits exist) but Files Changed is still empty",
+        "Nonzero behind only",
+        "I don't know"
+      ],
       "required": false,
-      "showIf": { "questionId": "q1", "values": ["All MRs / every task I open", "Most MRs, but a few show diffs"] }
+      "showIf": {
+        "questionId": "q1",
+        "values": [
+          "All MRs / every task I open",
+          "Most MRs, but a few show diffs"
+        ]
+      }
     },
     {
       "id": "q5",
       "type": "multiple",
       "text": "What happened just before you opened the blank review? (pick all that apply)",
-      "options": ["Agent ran a code-editing stage and exited successfully", "Agent ran a docs-only stage (plan, survey, question — no code)", "Stage failed or errored and was retried or skipped", "Task was merged or preserved, then re-opened for review", "Another task ran concurrently in the same shared worktree", "I don't know"],
+      "options": [
+        "Agent ran a code-editing stage and exited successfully",
+        "Agent ran a docs-only stage (plan, survey, question — no code)",
+        "Stage failed or errored and was retried or skipped",
+        "Task was merged or preserved, then re-opened for review",
+        "Another task ran concurrently in the same shared worktree",
+        "I don't know"
+      ],
       "required": false,
       "showIf": null
     },
@@ -52,15 +87,30 @@
       "id": "q6",
       "type": "single",
       "text": "When you checked out the branch (Copy Checkout / git log / git diff), what did you see?",
-      "options": ["Commits on the task branch with code changes vs its base", "Branch exists but has no new commits vs its base", "Checkout failed or branch not found on the remote", "I never checked out the branch", "I don't know"],
+      "options": [
+        "Commits on the task branch with code changes vs its base",
+        "Branch exists but has no new commits vs its base",
+        "Checkout failed or branch not found on the remote",
+        "I never checked out the branch",
+        "I don't know"
+      ],
       "required": false,
-      "showIf": { "questionId": "q2", "value": "Yes — I saw commits or edits on the task branch elsewhere (git log / Files & Repo / upstream)" }
+      "showIf": {
+        "questionId": "q2",
+        "value": "Yes — I saw commits or edits on the task branch elsewhere (git log / Files & Repo / upstream)"
+      }
     },
     {
       "id": "q7",
       "type": "single",
       "text": "When did the blank-review behavior start?",
-      "options": ["Always — since I first used review views", "After I changed a pipeline base branch / pipeline destination", "After concurrent tasks or shared-worktree use", "After a merge, preserve, or history rewrite", "I don't know"],
+      "options": [
+        "Always — since I first used review views",
+        "After I changed a pipeline base branch / pipeline destination",
+        "After concurrent tasks or shared-worktree use",
+        "After a merge, preserve, or history rewrite",
+        "I don't know"
+      ],
       "required": false,
       "showIf": null
     },
@@ -68,7 +118,13 @@
       "id": "q8",
       "type": "single",
       "text": "What was in the REPORTS tab for those MRs?",
-      "options": ["Reports list code files the agent edited", "Reports only contain stage docs (no code edits listed)", "Reports tab was empty too", "I didn't open Reports", "I don't know"],
+      "options": [
+        "Reports list code files the agent edited",
+        "Reports only contain stage docs (no code edits listed)",
+        "Reports tab was empty too",
+        "I didn't open Reports",
+        "I don't know"
+      ],
       "required": false,
       "showIf": null
     },
@@ -76,7 +132,12 @@
       "id": "q9",
       "type": "single",
       "text": "Which pipelines / repos are affected?",
-      "options": ["Single project / single pipeline", "Multiple pipelines in one project", "Multiple projects", "I don't know"],
+      "options": [
+        "Single project / single pipeline",
+        "Multiple pipelines in one project",
+        "Multiple projects",
+        "I don't know"
+      ],
       "required": false,
       "showIf": null
     },
@@ -84,11 +145,79 @@
       "id": "q10",
       "type": "single",
       "text": "What happens on reload, or what does the review API return?",
-      "options": ["Reload still blank", "Reload fixed it (transient)", "Review payload / API returns files but the UI still shows empty", "I never checked", "I don't know"],
+      "options": [
+        "Reload still blank",
+        "Reload fixed it (transient)",
+        "Review payload / API returns files but the UI still shows empty",
+        "I never checked",
+        "I don't know"
+      ],
       "required": false,
       "showIf": null
     }
   ],
-  "answers": {}
+  "answers": {
+    "q1": {
+      "selected": [
+        "All MRs / every task I open"
+      ],
+      "notes": "Well every human review stage"
+    },
+    "q2": {
+      "selected": [
+        "Yes — I saw commits or edits on the task branch elsewhere (git log / Files & Repo / upstream)"
+      ],
+      "notes": ""
+    },
+    "q3": {
+      "selected": [
+        "I don't know"
+      ],
+      "notes": ""
+    },
+    "q4": {
+      "selected": [
+        "I don't know"
+      ],
+      "notes": ""
+    },
+    "q5": {
+      "selected": [
+        "Agent ran a code-editing stage and exited successfully",
+        "Agent ran a docs-only stage (plan, survey, question — no code)"
+      ],
+      "notes": ""
+    },
+    "q6": {
+      "selected": [
+        "I never checked out the branch"
+      ],
+      "notes": ""
+    },
+    "q7": {
+      "selected": [
+        "I don't know"
+      ],
+      "notes": ""
+    },
+    "q8": {
+      "selected": [
+        "Reports only contain stage docs (no code edits listed)"
+      ],
+      "notes": "including new docs etc "
+    },
+    "q9": {
+      "selected": [
+        "Multiple projects"
+      ],
+      "notes": ""
+    },
+    "q10": {
+      "selected": [
+        "Reload still blank"
+      ],
+      "notes": ""
+    }
+  }
 }
 ```
