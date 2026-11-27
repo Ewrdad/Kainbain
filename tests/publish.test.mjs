@@ -184,6 +184,25 @@ describe("publish.sh", () => {
 		const second = spawnSync("./publish.sh", ["--runner", "--fast"], { cwd: dir, encoding: "utf8", env: process.env });
 		assert.equal(second.status, 0, second.stderr + second.stdout);
 		assert.match(second.stdout, /already exists/);
+		// A new runner commit after runner-v0.2.0 auto-bumps runner/version.json
+		// to 0.2.1, pushes main, and cuts + pushes runner-v0.2.1.
+		fs.writeFileSync(path.join(dir, "runner", "daemon.js"), "// changed\n");
+		git(dir, "add", "runner/daemon.js");
+		git(dir, "-c", "user.email=publish-tag@test", "-c", "user.name=publish-tag", "commit", "-qm", "runner change");
+		git(dir, "push", "origin", "main");
+		const plannedBump = spawnSync("./publish.sh", ["--dry-run", "--runner"], { cwd: dir, encoding: "utf8", env: process.env });
+		assert.equal(plannedBump.status, 0, plannedBump.stderr + plannedBump.stdout);
+		assert.match(plannedBump.stdout, /would bump runner\/version\.json: 0\.2\.0 -> 0\.2\.1/);
+		assert.match(plannedBump.stdout, /would run: git tag -a runner-v0\.2\.1/);
+		const third = spawnSync("./publish.sh", ["--runner", "--fast"], { cwd: dir, encoding: "utf8", env: process.env });
+		assert.equal(third.status, 0, third.stderr + third.stdout);
+		assert.match(third.stdout, /auto-bumped runner\/version\.json: 0\.2\.0 -> 0\.2\.1/);
+		assert.match(third.stdout, /tagged \+ pushed runner-v0\.2\.1/);
+		const bumpedVer = JSON.parse(fs.readFileSync(path.join(dir, "runner", "version.json"), "utf8")).runnerVersion;
+		assert.equal(bumpedVer, "0.2.1");
+		const peeled2 = spawnSync("git", ["--git-dir", remote, "rev-parse", "runner-v0.2.1^{}"], { encoding: "utf8" });
+		assert.equal(peeled2.status, 0);
+		assert.equal(peeled2.stdout.trim(), git(dir, "rev-parse", "HEAD"), "runner-v0.2.1 points at the auto-bumped commit");
 	});
 	it("fast-forwards a behind local main ref when publishing from a kb/* branch", () => {
 		// Same fixture shape, but origin/main advances past the local main

@@ -132,8 +132,8 @@ reload ignoring cache) to prove the final state comes from the server.
   (new disposable project, no tasks).
 - Expected: no horizontal scroll or overlapping header/footer at either
   size; empty board shows an intentional empty state, not an error.
-  (The deployed title may read `[Paused] KainBain - Orchestrator` when
-  the engine is paused — that prefix alone is not a failure.)
+  (The tab title carries no engine-status prefix — it reads
+  `Kainbain - <project> - <page>` whether the engine runs or not.)
 - Cleanup: delete the empty disposable project (MT-PROJ-08 pattern);
   restore desktop viewport; leave Project A selected.
 

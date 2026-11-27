@@ -89,6 +89,79 @@ export function classifyAgyRunTimeout({ printTimeout, watchdogMs } = {}) {
 	};
 }
 
+/***
+ * MARK: classifyAgyEmptyRun
+ * @description Builds the classified error for an agy run that reported
+ *   SUCCESS yet did no work: an empty `response`, no accumulated assistant
+ *   deltas, and zero tool events. A spawned-but-idle run is an engine-level
+ *   failure (silent skips hide broken stages), never a pass — the code
+ *   `AGY_EMPTY_RUN` tells the verdict to fail the stage with the fix hint.
+ * @example classifyAgyEmptyRun().code => "AGY_EMPTY_RUN"
+ * @returns {{code: string, message: string, hint: string}} The classified error.
+ ***/
+export function classifyAgyEmptyRun() {
+	return {
+		code: "AGY_EMPTY_RUN",
+		message:
+			"agy exited SUCCESS with an empty response and no tool calls — the run did no work",
+		hint: "Check auth/model/quota (run `agy models` by hand), then re-run the stage; if a real prompt returns nothing, the CLI install may be broken.",
+	};
+}
+
+/** `finished_reason` values naming a ceiling/timeout rather than a completion. */
+const PARTIAL_FINISH_REASONS = new Set([
+	"print_timeout",
+	"timeout",
+	"deadline_exceeded",
+	"max_turns",
+	"max_tokens",
+	"context_exceeded",
+	"cancelled",
+	"canceled",
+]);
+
+/***
+ * MARK: isAgyPartialResult
+ * @description Whether a `result` payload is a PARTIAL run wearing a SUCCESS
+ *   status: the CLI hit a ceiling (`finished_reason: "print_timeout"` et al)
+ *   but still reported SUCCESS. Partial output is not a completed run — the
+ *   caller must report it as a run_error (timeout classification), never as
+ *   `run_finished`. Pure (no spawns, no clock), unit-testable.
+ * @example isAgyPartialResult({ status: "SUCCESS", finished_reason: "print_timeout" }) => true
+ * @example isAgyPartialResult({ status: "SUCCESS", response: "done" }) => false
+ * @param {Object} [payload] - The parsed `result` payload.
+ * @returns {boolean} True when the row is a partial run masquerading as SUCCESS.
+ ***/
+export function isAgyPartialResult(payload) {
+	if (!payload || typeof payload !== "object") return false;
+	if (payload.status !== "SUCCESS") return false;
+	const reason = payload.finished_reason ?? payload.finishedReason;
+	if (typeof reason !== "string" || !reason.trim()) return false;
+	return PARTIAL_FINISH_REASONS.has(reason.trim().toLowerCase());
+}
+
+/***
+ * MARK: classifyAgyPartialTimeout
+ * @description Builds the classified error for a PARTIAL run wearing a
+ *   SUCCESS status (`isAgyPartialResult`): the CLI hit a ceiling
+ *   (`finished_reason: "print_timeout"` et al) but still reported SUCCESS.
+ *   Ceiling-hit output is not a completed run — it reports under the
+ *   existing `AGY_RUN_TIMEOUT` code so reliability buckets agree with the
+ *   watchdog path, with the finished_reason named so the operator knows
+ *   which ceiling tripped.
+ * @example classifyAgyPartialTimeout({ finished_reason: "print_timeout" }).code => "AGY_RUN_TIMEOUT"
+ * @param {Object} [payload] - The parsed `result` payload.
+ * @returns {{code: string, message: string, hint: string}} The classified error.
+ ***/
+export function classifyAgyPartialTimeout(payload) {
+	const reason = payload?.finished_reason ?? payload?.finishedReason ?? "unknown ceiling";
+	return {
+		code: "AGY_RUN_TIMEOUT",
+		message: `agy reported SUCCESS but the run was partial (finished_reason: ${String(reason).trim() || "unknown ceiling"}) — the response is incomplete`,
+		hint: "Raise KAINBAIN_AGY_PRINT_TIMEOUT for long runs (the engine watchdog derives from it), or simplify the prompt so it fits the ceiling.",
+	};
+}
+
 /** Stderr shapes that mean the CLI never authenticated (not a crash). */
 const AUTH_PATTERN =
 	/authenticat|auth login|not logged in|login required|unauthorized|unauthorised|unauthenticated|invalid credential|expired credential|missing credential|api[ -]?key/i;

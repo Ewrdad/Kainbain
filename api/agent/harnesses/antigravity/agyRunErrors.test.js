@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
 	classifyAgyCrashExit,
+	classifyAgyEmptyRun,
+	classifyAgyPartialTimeout,
 	classifyAgyRunTimeout,
 	classifyAgySpawnError,
 	formatAgyRunError,
+	isAgyPartialResult,
 } from "./agyRunErrors.js";
 
 /**
@@ -116,5 +119,73 @@ describe("formatAgyRunError", () => {
 	it("handles undefined or null safely", () => {
 		const text = formatAgyRunError(null);
 		expect(text).toBe("agy run failed [AGY_RUN_FAILED]");
+	});
+});
+
+describe("classifyAgyEmptyRun", () => {
+	it("reports AGY_EMPTY_RUN with a did-no-work message and the auth/model/quota fix", () => {
+		const classified = classifyAgyEmptyRun();
+		expect(classified.code).toBe("AGY_EMPTY_RUN");
+		expect(classified.message).toMatch(/SUCCESS.*no work|did no work/);
+		expect(classified.hint).toContain("agy models");
+	});
+
+	it("renders through formatAgyRunError carrying the code", () => {
+		expect(formatAgyRunError(classifyAgyEmptyRun())).toContain("[AGY_EMPTY_RUN]");
+	});
+});
+
+describe("isAgyPartialResult", () => {
+	it("traps SUCCESS rows carrying a ceiling finished_reason", () => {
+		for (const finished_reason of [
+			"print_timeout",
+			"timeout",
+			"deadline_exceeded",
+			"max_turns",
+			"max_tokens",
+			"context_exceeded",
+			"PRINT_TIMEOUT",
+		]) {
+			expect(
+				isAgyPartialResult({ status: "SUCCESS", finished_reason, response: "partial" }),
+				finished_reason,
+			).toBe(true);
+		}
+	});
+
+	it("passes genuine SUCCESS rows without a ceiling reason", () => {
+		expect(isAgyPartialResult({ status: "SUCCESS", response: "done" })).toBe(false);
+		expect(isAgyPartialResult({ status: "SUCCESS" })).toBe(false);
+		expect(
+			isAgyPartialResult({ status: "SUCCESS", finished_reason: "completed" }),
+		).toBe(false);
+	});
+
+	it("ignores non-SUCCESS rows (their status already decides the mapping)", () => {
+		expect(
+			isAgyPartialResult({ status: "ERROR", finished_reason: "print_timeout" }),
+		).toBe(false);
+		expect(isAgyPartialResult(null)).toBe(false);
+		expect(isAgyPartialResult(undefined)).toBe(false);
+		expect(isAgyPartialResult("SUCCESS")).toBe(false);
+	});
+});
+
+describe("classifyAgyPartialTimeout", () => {
+	it("reports AGY_RUN_TIMEOUT naming the finished_reason ceiling", () => {
+		const classified = classifyAgyPartialTimeout({
+			status: "SUCCESS",
+			finished_reason: "print_timeout",
+		});
+		expect(classified.code).toBe("AGY_RUN_TIMEOUT");
+		expect(classified.message).toContain("print_timeout");
+		expect(classified.message).toMatch(/partial/i);
+		expect(classified.hint).toContain("KAINBAIN_AGY_PRINT_TIMEOUT");
+	});
+
+	it("falls back gracefully when the reason is missing", () => {
+		const classified = classifyAgyPartialTimeout({ status: "SUCCESS" });
+		expect(classified.code).toBe("AGY_RUN_TIMEOUT");
+		expect(classified.message).toContain("unknown ceiling");
 	});
 });

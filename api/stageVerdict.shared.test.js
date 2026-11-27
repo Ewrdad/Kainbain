@@ -271,3 +271,156 @@ describe("stageVerdict — decision precedence matrix (S2)", () => {
 		expect(decision.failed).toBe(true);
 	});
 });
+
+describe("stageVerdict — latched sessionError precedence (S3)", () => {
+	const SESSION_ERROR = {
+		error: "agy exited with code 1 without a result: auth login required [AGY_AUTH_REQUIRED]",
+		code: "AGY_AUTH_REQUIRED",
+		hint: "Run `agy auth login` in a terminal, then retry the stage.",
+	};
+
+	it("fails an agent stage on a latched sessionError even with PASS text", () => {
+		const decision = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "all good\nKAINBAIN_VERDICT: PASS",
+			failStageRequest: null,
+			sessionError: SESSION_ERROR,
+		});
+		expect(decision.failed).toBe(true);
+		expect(decision.failureReason).toBe(
+			"[Harness Run Error] agy exited with code 1 without a result: auth login required [AGY_AUTH_REQUIRED] Run `agy auth login` in a terminal, then retry the stage.",
+		);
+		expect(decision.failOpenWarning).toBeNull();
+	});
+
+	it("fails on sessionError with empty output (spawned-but-idle runs never pass open)", () => {
+		const decision = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "",
+			failStageRequest: null,
+			sessionError: SESSION_ERROR,
+		});
+		expect(decision.failed).toBe(true);
+		expect(decision.failureReason).toContain("[Harness Run Error]");
+		expect(decision.failOpenWarning).toBeNull();
+	});
+
+	it("an explicit fail_stage call still wins over the sessionError", () => {
+		const decision = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "done",
+			failStageRequest: { reason: "human review found a blocker" },
+			sessionError: SESSION_ERROR,
+		});
+		expect(decision.failed).toBe(true);
+		expect(decision.failureReason).toBe(
+			"[Agent Review Rejection] human review found a blocker",
+		);
+		expect(decision.failOpenWarning).toBeNull();
+	});
+
+	it("a well-formed FAIL block is shadowed by the sessionError (engine failure, not a verdict)", () => {
+		const decision = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: `Deep review complete.\n${FAIL_BLOCK}`,
+			failStageRequest: null,
+			sessionError: SESSION_ERROR,
+		});
+		expect(decision.failed).toBe(true);
+		expect(decision.failureReason).toContain("[Harness Run Error]");
+		expect(decision.failureReason).not.toContain("[Agent Review Rejection]");
+	});
+
+	it("appends the code segment only when the message does not already carry it", () => {
+		const withCode = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "done",
+			sessionError: { error: "plain failure", code: "AGY_CRASHED", hint: "retry it" },
+		});
+		expect(withCode.failureReason).toBe(
+			"[Harness Run Error] plain failure [AGY_CRASHED] retry it",
+		);
+		const withoutCode = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "done",
+			sessionError: { error: "plain failure", hint: "retry it" },
+		});
+		expect(withoutCode.failureReason).toBe(
+			"[Harness Run Error] plain failure retry it",
+		);
+	});
+
+	it("never prints the code or hint twice when the message already carries them", () => {
+		// Harness error strings render as `… [AGY_*] <hint>` already; the
+		// latch carries code/hint separately for structured consumers, but
+		// the reason line must not duplicate either.
+		const decision = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "",
+			sessionError: {
+				error: "agy run timed out [AGY_RUN_TIMEOUT] Raise the ceiling.",
+				code: "AGY_RUN_TIMEOUT",
+				hint: "Raise the ceiling.",
+			},
+		});
+		expect(decision.failureReason).toBe(
+			"[Harness Run Error] agy run timed out [AGY_RUN_TIMEOUT] Raise the ceiling.",
+		);
+	});
+
+	it("formats a bare-string sessionError without code/hint segments", () => {
+		const decision = decideAgentStageVerdict({
+			stage: { type: "agent" },
+			output: "done",
+			sessionError: "boom",
+		});
+		expect(decision.failed).toBe(true);
+		expect(decision.failureReason).toBe("[Harness Run Error] boom");
+	});
+
+	it("falls back to a generic reason when the latch carries no message", () => {
+		for (const sessionError of [{}, { code: "AGY_CRASHED" }, "   "]) {
+			const decision = decideAgentStageVerdict({
+				stage: { type: "agent" },
+				output: "done",
+				sessionError,
+			});
+			expect(decision.failed, JSON.stringify(sessionError)).toBe(true);
+			expect(decision.failureReason, JSON.stringify(sessionError)).toContain(
+				"[Harness Run Error]",
+			);
+		}
+	});
+
+	it("non-agent stages ignore the sessionError (agent-stage-gated like the text verdict)", () => {
+		for (const type of ["human", "ci", "deploy", "merge", "review", "script"]) {
+			const decision = decideAgentStageVerdict({
+				stage: { type },
+				output: "done",
+				failStageRequest: null,
+				sessionError: SESSION_ERROR,
+			});
+			expect(decision, type).toEqual({
+				failed: false,
+				failureReason: null,
+				failOpenWarning: null,
+			});
+		}
+	});
+
+	it("a falsy sessionError is no signal (old callers behave byte-identically)", () => {
+		for (const sessionError of [null, undefined, "", 0, false]) {
+			const decision = decideAgentStageVerdict({
+				stage: { type: "agent" },
+				output: "done",
+				failStageRequest: null,
+				sessionError,
+			});
+			expect(decision, String(sessionError)).toEqual({
+				failed: false,
+				failureReason: null,
+				failOpenWarning: null,
+			});
+		}
+	});
+});

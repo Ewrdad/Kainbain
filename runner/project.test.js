@@ -1291,3 +1291,50 @@ describe("runner hook-bypass scope", () => {
 		assert.deepEqual(offenders, []);
 	});
 });
+
+describe("prepareWorkdir fresh remote branch checkout", () => {
+	it("checks out origin/kb/<taskId> (with its pushed assets) instead of forking from main", async () => {
+		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "kb-fresh-remote-"));
+		const origin = path.join(tmp, "origin.git");
+		const seed = path.join(tmp, "seed");
+		const workRoot = path.join(tmp, "work");
+		fs.mkdirSync(workRoot, { recursive: true });
+		try {
+			execFileSync("git", ["init", "-q", "--bare", origin], { stdio: "ignore" });
+			execFileSync("git", ["clone", "-q", origin, seed], { stdio: "ignore" });
+			git(seed, ["config", "user.email", "t@t.t"]);
+			git(seed, ["config", "user.name", "t"]);
+			git(seed, ["checkout", "-qb", "main"]);
+			fs.writeFileSync(path.join(seed, "README.md"), "main\n");
+			git(seed, ["add", "."]);
+			git(seed, ["commit", "-qm", "init main"]);
+			git(seed, ["push", "-q", "-u", "origin", "main"]);
+			execFileSync("git", ["--git-dir", origin, "symbolic-ref", "HEAD", "refs/heads/main"], { stdio: "ignore" });
+
+			git(seed, ["checkout", "-qb", "kb/task-remote-assets"]);
+			const assetDir = path.join(seed, "docs", "tasks", "task-remote-assets", "assets");
+			fs.mkdirSync(assetDir, { recursive: true });
+			fs.writeFileSync(path.join(assetDir, "shot.png"), "png-bytes");
+			git(seed, ["add", "."]);
+			git(seed, ["commit", "-qm", "add task assets"]);
+			git(seed, ["push", "-q", "-u", "origin", "kb/task-remote-assets"]);
+			const expectedSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: seed, encoding: "utf8" }).trim();
+
+			const prep = await prepareWorkdir({
+				repoUrl: origin,
+				workRoot,
+				taskId: "task-remote-assets",
+			});
+			assert.equal(prep.reused, false);
+			assert.equal(prep.baseSha, expectedSha);
+			const workdirHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: prep.workdir, encoding: "utf8" }).trim();
+			assert.equal(workdirHead, expectedSha, "fresh worktree HEAD must match origin/kb/<taskId>, not main");
+			assert.equal(
+				fs.readFileSync(path.join(prep.workdir, "docs", "tasks", "task-remote-assets", "assets", "shot.png"), "utf8"),
+				"png-bytes",
+			);
+		} finally {
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+});

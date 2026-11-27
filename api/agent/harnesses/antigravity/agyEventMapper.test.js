@@ -240,6 +240,29 @@ describe("agy event mapper — mapping table", () => {
 		expect(fallback).toEqual({ type: "run_error", error: "agy run failed with status INVALID" });
 	});
 
+	it("maps SUCCESS + ceiling finished_reason to run_error AGY_RUN_TIMEOUT (never success)", () => {
+		const [event] = createAgyEventMapper().map(
+			row("result", {
+				payload: { status: "SUCCESS", response: "partial…", finished_reason: "print_timeout" },
+				conversationId: "conv-1",
+			}),
+		);
+		expect(event.type).toBe("run_error");
+		expect(event.code).toBe("AGY_RUN_TIMEOUT");
+		expect(event.error).toContain("[AGY_RUN_TIMEOUT]");
+		expect(event.error).toContain("print_timeout");
+		expect(event.hint).toContain("KAINBAIN_AGY_PRINT_TIMEOUT");
+	});
+
+	it("maps SUCCESS + non-ceiling finished_reason to run_finished (tolerated)", () => {
+		const [event] = createAgyEventMapper().map(
+			row("result", {
+				payload: { status: "SUCCESS", response: "done", finished_reason: "completed" },
+			}),
+		);
+		expect(event.type).toBe("run_finished");
+	});
+
 	it("returns no events for null/garbage rows", () => {
 		const mapper = createAgyEventMapper();
 		expect(mapper.map(null)).toEqual([]);

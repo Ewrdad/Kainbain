@@ -277,6 +277,83 @@ if [ "$FAST" = "1" ]; then
   case " $COMPONENTS " in *" frontend "*) run npm run build:frontend || exit 1 ;; esac
 fi
 
+# Auto-bump runner/version.json when publishing runner changes on a newer
+# commit than the existing runner-v<version> tag, so every deploy that
+# changes the runner automatically cuts a fresh semver release (and
+# triggers runner-release.yml). Manual bumps (tag does not exist yet) and
+# re-publishing the exact same commit (tag already points at HEAD) are
+# left untouched.
+PLANNED_RUNNER_VERSION=""
+auto_bump_runner_version_if_needed() {
+  local ver tag tag_sha next_ver default_branch
+  ver="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion)' 2>/dev/null || echo "")"
+  ver="${ver#v}"
+  if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    return 0
+  fi
+  PLANNED_RUNNER_VERSION="$ver"
+  tag="runner-v$ver"
+  tag_sha="$(git rev-parse -q --verify "${tag}^{}" 2>/dev/null || true)"
+  if [ -z "$tag_sha" ]; then
+    tag_sha="$(git ls-remote --tags origin "refs/tags/${tag}^{}" "refs/tags/${tag}" 2>/dev/null | awk 'NR==1{first=$1} /\^\{\}$/{peeled=$1} END{print (peeled ? peeled : first)}')"
+  fi
+  if [ -z "$tag_sha" ] || [ "$tag_sha" = "$FULLSHA" ]; then
+    return 0
+  fi
+  local all_tags
+  all_tags="$( { git tag -l 'runner-v*' 2>/dev/null; git ls-remote --tags origin 'refs/tags/runner-v*' 2>/dev/null | awk '{print $2}' | sed -e 's@^refs/tags/@@' -e 's@\^{}$@@'; } | sort -u )"
+  next_ver="$(ALL_TAGS="$all_tags" CUR_VER="$ver" node -e '
+    const parse = (s) => {
+      const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(s || "").trim().replace(/^runner-v|^v/, ""));
+      return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+    };
+    const cmp = (a, b) => (a[0] - b[0]) || (a[1] - b[1]) || (a[2] - b[2]);
+    let best = parse(process.env.CUR_VER.replace(/-.*$/, "")) || [0, 1, 0];
+    for (const line of (process.env.ALL_TAGS || "").split(/\r?\n/)) {
+      const p = parse(line);
+      if (p && cmp(p, best) > 0) best = p;
+    }
+    console.log(`${best[0]}.${best[1]}.${best[2] + 1}`);
+  ')"
+  if [ -z "$next_ver" ]; then
+    echo "publish.sh: failed to compute next runnerVersion from '$ver'" >&2
+    return 1
+  fi
+  PLANNED_RUNNER_VERSION="$next_ver"
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "would bump runner/version.json: $ver -> $next_ver (new commits since $tag)"
+    return 0
+  fi
+  NEXT_VER="$next_ver" node -e '
+    const fs = require("fs");
+    const raw = fs.readFileSync("runner/version.json", "utf8");
+    const updated = raw.replace(/("runnerVersion"\s*:\s*")[^"]+(")/, `$1${process.env.NEXT_VER}$2`);
+    if (updated === raw) throw new Error("runnerVersion field not found in runner/version.json");
+    fs.writeFileSync("runner/version.json", updated);
+  ' || return 1
+  default_branch="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
+  if [ -z "$default_branch" ]; then
+    if git show-ref --verify --quiet refs/heads/main 2>/dev/null; then default_branch="main"
+    elif git show-ref --verify --quiet refs/heads/master 2>/dev/null; then default_branch="master"
+    else default_branch="main"; fi
+  fi
+  git add runner/version.json || return 1
+  if git config user.email >/dev/null 2>&1 && git config user.name >/dev/null 2>&1; then
+    git commit -m "chore(runner): bump runnerVersion to $next_ver" || return 1
+  else
+    git -c user.name="KainBain Publish" -c user.email="kainbain-publish@local" commit -m "chore(runner): bump runnerVersion to $next_ver" || return 1
+  fi
+  git push origin "HEAD:refs/heads/$default_branch" || return 1
+  FULLSHA="$(git rev-parse HEAD)"
+  SHORTSHA="$(git rev-parse --short HEAD)"
+  log "auto-bumped runner/version.json: $ver -> $next_ver (pushed to origin/$default_branch at $SHORTSHA)"
+}
+case " $COMPONENTS " in
+  *" runner "*)
+    auto_bump_runner_version_if_needed || { echo "publish.sh: runner version auto-bump failed — nothing published" >&2; exit 1; }
+    ;;
+esac
+
 # Bundle git history into the backend image: the container has no .git and
 # the host $PROD_DIR/changelog.json is not mounted into it, so the API serves
 # api/bundled-changelog.json (COPY api/ in the Dockerfile) as its changelog.
@@ -319,7 +396,7 @@ if [ "$DRY_RUN" = "1" ]; then
         echo "would run: docker push docker.io/$KAINBAIN_DOCKERHUB_NAMESPACE/kainbain-$c:latest"
         ;;
       runner)
-        RUNNER_V="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion)' 2>/dev/null || echo unknown)"
+        RUNNER_V="${PLANNED_RUNNER_VERSION:-$(node -e 'console.log(JSON.parse(require("fs").readFileSync("runner/version.json","utf8")).runnerVersion)' 2>/dev/null || echo unknown)}"
         echo "would run: git tag -a runner-v${RUNNER_V#v} -m <release notes> $FULLSHA"
         echo "would run: git push origin runner-v${RUNNER_V#v}"
         ;;

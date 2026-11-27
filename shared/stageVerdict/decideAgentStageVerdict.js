@@ -1,3 +1,4 @@
+import { formatSessionErrorReason } from "./formatSessionErrorReason.js";
 import { parseStageVerdict } from "./parseStageVerdict.js";
 import { stageExpectsAgentVerdict } from "./stageExpectsAgentVerdict.js";
 
@@ -8,8 +9,9 @@ import { stageExpectsAgentVerdict } from "./stageExpectsAgentVerdict.js";
  *   (`api/agentRunner.js`), the Runner daemon (`runner/daemon.js`), and the
  *   backend double-check (`api/flow/execution/applyRunnerReport.js`) so the
  *   paths cannot drift again. Precedence is the embedded order, first match
- *   wins: an explicit `fail_stage` tool call > a well-formed FAIL text block
- *   with reason AND fix guidance > pass. A reasonless FAIL, a malformed
+ *   wins: an explicit `fail_stage` tool call > a latched harness
+ *   `sessionError` (a `run_error` the session emitted) > a well-formed FAIL
+ *   text block with reason AND fix guidance > pass. A reasonless FAIL, a malformed
  *   block, prose verdicts, and runs with no verdict at all pass open
  *   (fail-open: KainBain never fails a stage without guidance to fix); an
  *   ignored FAIL returns its warning text in `failOpenWarning` so the caller
@@ -32,9 +34,19 @@ import { stageExpectsAgentVerdict } from "./stageExpectsAgentVerdict.js";
  * @param {Object|string|null} [opts.failStageRequest] - The latched
  *   `fail_stage` tool call (`{ reason }`, or the bare reason string); null
  *   when the agent never called the tool.
+ * @param {Object|string|null} [opts.sessionError] - The latched harness
+ *   `run_error` (`{ error, code, hint }`, or the bare error string); null
+ *   when the session reported no engine-level failure. A present
+ *   sessionError fails agent stages BELOW an explicit `fail_stage` call
+ *   (deliberate agent decisions still win) and ABOVE the fail-open text
+ *   verdict (an engine failure is not a verdict — a PASS block or empty
+ *   output alongside it still fails). Agent-stage-gated like the text
+ *   verdict: non-agent stages have no session to fail them. Callers that
+ *   pass no sessionError (the embedded path, the backend double-check)
+ *   behave byte-identically to before.
  * @returns {{failed: boolean, failureReason: string|null, failOpenWarning: string|null}} The decision.
  ***/
-export function decideAgentStageVerdict({ stage, output, failStageRequest } = {}) {
+export function decideAgentStageVerdict({ stage, output, failStageRequest, sessionError = null } = {}) {
 	// An explicit fail_stage decision wins over any coincidental text
 	// verdict — even a PASS block: the agent actively decided the stage
 	// should fail, so this is review feedback, not a blip.
@@ -52,6 +64,18 @@ export function decideAgentStageVerdict({ stage, output, failStageRequest } = {}
 		return {
 			failed: true,
 			failureReason: `[Agent Review Rejection] ${reason}`,
+			failOpenWarning: null,
+		};
+	}
+	// A latched harness run_error fails the stage even when the final text
+	// says PASS (or is empty): the engine — not the agent — reported that
+	// the run itself broke (missing binary, auth, crash, timeout, empty
+	// run), so there is no agent verdict to honour. Fail-closed, with the
+	// harness code + fix hint in the reason so the failure is actionable.
+	if (sessionError && stageExpectsAgentVerdict(stage)) {
+		return {
+			failed: true,
+			failureReason: formatSessionErrorReason(sessionError),
 			failOpenWarning: null,
 		};
 	}

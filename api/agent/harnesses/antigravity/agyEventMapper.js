@@ -1,4 +1,9 @@
 import { normalizedAgentEvent } from "../../sessionEvents.js";
+import {
+	classifyAgyPartialTimeout,
+	formatAgyRunError,
+	isAgyPartialResult,
+} from "./agyRunErrors.js";
 
 /**
  * MARK: agyEventMapper
@@ -22,6 +27,7 @@ import { normalizedAgentEvent } from "../../sessionEvents.js";
  *     | step_update user_input / checkpoint               | harness_log     | one `[AGY] …` line per step (never dropped) |
  *     | step_update unknown step types                      | harness_log     | one `[AGY] …` line (forward tolerance) |
  *     | result, status SUCCESS                                    | run_finished    | status, usage, durationSeconds, conversationId, runFacts? |
+ *     | result, SUCCESS + ceiling finished_reason (partial)       | run_error       | error, code AGY_RUN_TIMEOUT, hint (never success) |
  *     | result, status INTERRUPTED / CANCELED                     | run_finished    | same, plus interrupted: true |
  *     | result, any other status (ERROR, INVALID, …)              | run_error       | error (CLI error field, else a status message) |
  *
@@ -198,6 +204,19 @@ export function createAgyEventMapper({ runFacts } = {}) {
 			...(runFacts ? { runFacts: { ...runFacts } } : {}),
 		};
 		if (status === "SUCCESS") {
+			// A ceiling-hit run wearing SUCCESS (finished_reason:
+			// print_timeout et al) is not a completed run — report the
+			// timeout, never run_finished.
+			if (isAgyPartialResult(payload)) {
+				const classified = classifyAgyPartialTimeout(payload);
+				return [
+					normalizedAgentEvent("run_error", {
+						error: formatAgyRunError(classified),
+						code: classified.code,
+						hint: classified.hint,
+					}),
+				];
+			}
 			return [normalizedAgentEvent("run_finished", meta)];
 		}
 		if (INTERRUPTED_STATUSES.has(status)) {

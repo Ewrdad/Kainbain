@@ -436,4 +436,150 @@ describe("antigravity resolveInitialModel (project default, mock agy)", () => {
 		expect(resolved).toBeNull();
 		expect(logged.some((a) => String(a).includes("no-such-model-xyz"))).toBe(true);
 	});
+
+	it("parses the live nested wire shape: deltas + tool events flow, not harness_log", async () => {
+		const workspace = makeWorkspace("nested");
+		trackWorkspace(workspace);
+		const nestedFixture = path.join(
+			path.dirname(fileURLToPath(import.meta.url)),
+			"fixtures",
+			"nested-success.ndjson",
+		);
+		const h = makeHarness({});
+		const session = await h.createSession({ id: "proj-nested", cwd: workspace }, {});
+		const seen = [];
+		session.subscribe((event) => seen.push(event));
+
+		process.env.AGY_MOCK_FIXTURE = nestedFixture;
+		let reply;
+		try {
+			reply = await session.prompt("Read the file");
+		} finally {
+			delete process.env.AGY_MOCK_FIXTURE;
+		}
+
+		expect(reply).toBe("File contents received.\n");
+		const types = seen.map((event) => event?.type);
+		// Deltas and tool lifecycle arrive as first-class events (before the
+		// nested-framing fix every step_update degraded to harness_log).
+		expect(types).toContain("message_started");
+		expect(types).toContain("assistant_delta");
+		expect(types).toContain("tool_started");
+		expect(types).toContain("tool_finished");
+		expect(types).toContain("run_finished");
+		expect(types).not.toContain("run_error");
+		const finished = seen.find((event) => event?.type === "tool_finished");
+		expect(finished.toolName).toBe("read_file");
+		expect(finished.result).toBe("3 lines, 24 bytes");
+		expect(seen.filter((event) => event?.type === "harness_log")).toHaveLength(1); // user_input only
+	});
+
+	it("still parses the legacy flat wire shape end to end (backward tolerance)", async () => {
+		const workspace = makeWorkspace("flat-wire");
+		trackWorkspace(workspace);
+		const h = makeHarness({});
+		const session = await h.createSession({ id: "proj-flat-wire", cwd: workspace }, {});
+		const seen = [];
+		session.subscribe((event) => seen.push(event));
+
+		process.env.AGY_MOCK_WIRE = "flat";
+		let reply;
+		try {
+			reply = await session.prompt("Say hello flat");
+		} finally {
+			delete process.env.AGY_MOCK_WIRE;
+		}
+
+		expect(reply).toContain("Say hello flat");
+		const types = seen.map((event) => event?.type);
+		expect(types).toContain("message_started");
+		expect(types).toContain("assistant_delta");
+		expect(types).toContain("run_finished");
+		expect(types).not.toContain("run_error");
+	});
+
+	it("leaves empty SUCCESS runs passing only with explicit failOnEmptyRun: false", async () => {
+		const workspace = makeWorkspace("empty-off");
+		trackWorkspace(workspace);
+		const emptyFixture = path.join(
+			path.dirname(fileURLToPath(import.meta.url)),
+			"fixtures",
+			"empty-success.ndjson",
+		);
+		const h = makeHarness({ failOnEmptyRun: false });
+		expect(h.settings.failOnEmptyRun).toBe(false);
+		const session = await h.createSession({ id: "proj-empty-off", cwd: workspace }, {});
+		const seen = [];
+		session.subscribe((event) => seen.push(event));
+
+		process.env.AGY_MOCK_FIXTURE = emptyFixture;
+		let reply;
+		try {
+			reply = await session.prompt("Say nothing");
+		} finally {
+			delete process.env.AGY_MOCK_FIXTURE;
+		}
+
+		expect(reply).toBe("");
+		const types = seen.map((event) => event?.type);
+		expect(types).toContain("run_finished");
+		expect(types).not.toContain("run_error");
+	});
+
+	it("delivers run_error AGY_EMPTY_RUN for empty SUCCESS runs by default", async () => {
+		const workspace = makeWorkspace("empty-on");
+		trackWorkspace(workspace);
+		const emptyFixture = path.join(
+			path.dirname(fileURLToPath(import.meta.url)),
+			"fixtures",
+			"empty-success.ndjson",
+		);
+		const h = makeHarness({});
+		expect(h.settings.failOnEmptyRun).toBe(true);
+		const session = await h.createSession({ id: "proj-empty-on", cwd: workspace }, {});
+		const seen = [];
+		session.subscribe((event) => seen.push(event));
+
+		process.env.AGY_MOCK_FIXTURE = emptyFixture;
+		let reply;
+		try {
+			reply = await session.prompt("Say nothing");
+		} finally {
+			delete process.env.AGY_MOCK_FIXTURE;
+		}
+
+		expect(reply).toBe("");
+		const types = seen.map((event) => event?.type);
+		expect(types).not.toContain("run_finished");
+		const errorEvent = seen.find((event) => event?.type === "run_error");
+		expect(errorEvent).toBeTruthy();
+		expect(errorEvent.code).toBe("AGY_EMPTY_RUN");
+		expect(errorEvent.error).toContain("[AGY_EMPTY_RUN]");
+		expect(errorEvent.hint).toBeTruthy();
+	});
+
+	it("does not flag runs with tool calls as empty when failOnEmptyRun is on", async () => {
+		const workspace = makeWorkspace("empty-tools");
+		trackWorkspace(workspace);
+		const nestedFixture = path.join(
+			path.dirname(fileURLToPath(import.meta.url)),
+			"fixtures",
+			"nested-success.ndjson",
+		);
+		const h = makeHarness({});
+		const session = await h.createSession({ id: "proj-empty-tools", cwd: workspace }, {});
+		const seen = [];
+		session.subscribe((event) => seen.push(event));
+
+		process.env.AGY_MOCK_FIXTURE = nestedFixture;
+		try {
+			await session.prompt("Read the file");
+		} finally {
+			delete process.env.AGY_MOCK_FIXTURE;
+		}
+
+		const types = seen.map((event) => event?.type);
+		expect(types).toContain("run_finished");
+		expect(types).not.toContain("run_error");
+	});
 });

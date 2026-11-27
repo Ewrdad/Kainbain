@@ -4,11 +4,13 @@
  * @description A deterministic mock of the `agy` (Antigravity) CLI used by the
  *   antigravity harness tests — no real CLI install, no network, no model
  *   credentials required. It speaks the `--output-format stream-json` wire
- *   format documented at antigravity.google/docs/cli/headless:
+ *   format of the live CLI (verified against agy 1.5.18): `init` keeps a
+ *   top-level `conversation_id` with its payload nested under `init`, while
+ *   `step_update` / `result` nest EVERYTHING under the event-named key:
  *
  *     {"event":"init",        "conversation_id", "init": {...}}
- *     {"event":"step_update", "conversation_id", "step_index", "state", "step_type", "text_delta"?, "tool_info"?}
- *     {"event":"result",      "conversation_id", "status", "response", "error"?, "duration_seconds", "usage"}
+ *     {"event":"step_update", "step_update": {"conversation_id", "step_index", "state", "step_type", "text_delta"?, "tool_info"?}}
+ *     {"event":"result",      "result": {"conversation_id", "status", "response", "error"?, "duration_seconds", "usage"}}
  *
  *   Behavior is selected with environment variables (they flow through the
  *   harness's child-env allowlist because they are AGY_-prefixed):
@@ -16,6 +18,8 @@
  *     AGY_MOCK_MODE         success (default) | error | auth | crash | hang | utf8split
  *     AGY_MOCK_MODELS_MODE  success (default) | hang | auth | error | unparseable | empty — behavior of the `models` subcommand
  *     AGY_MOCK_FIXTURE      path to a .ndjson fixture to replay verbatim
+ *     AGY_MOCK_WIRE         nested (default, live shape) | flat (legacy flat
+ *                           framing — tolerance tests only)
  *     AGY_MOCK_CHUNK_DELAY_MS  delay between stdout writes (default 0)
  *     AGY_MOCK_ARGV_LOG     when set, the received argv is appended (JSON line)
  *                           so tests can assert the exact spawn arguments
@@ -30,9 +34,9 @@ import fs from "node:fs";
 
 const FORBIDDEN_FLAG = "--dangerously-skip-permissions";
 const MODELS_LIST = [
-	"gemini-3.8-flash-high    Fast everyday reasoning model",
-	"gemini-3.1-pro-high      Most capable reasoning model",
-	"claude-sonnet-4-6        Anthropic Claude Sonnet 4.6",
+	"gemini-3.8-flash-high\tFast everyday reasoning model",
+	"gemini-3.1-pro-high\tMost capable reasoning model",
+	"claude-sonnet-4-6\tAnthropic Claude Sonnet 4.6",
 ].join("\n");
 
 const argv = process.argv.slice(2);
@@ -45,6 +49,21 @@ function writeLine(line) {
 function sleep(ms) {
 	if (ms <= 0) return;
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Wire shape switch: nested (live, default) nests step_update/result
+ *  fields under the event-named key; flat keeps the legacy top-level
+ *  framing for tolerance tests. */
+const wireNested = (process.env.AGY_MOCK_WIRE || "nested") !== "flat";
+
+/** Emits one stream-json line in the selected wire shape (`init` is
+ *  identical in both shapes: top-level conversation_id + nested init). */
+function emit(event, fields) {
+	if (event === "init" || !wireNested) {
+		writeLine(JSON.stringify({ event, ...fields }));
+	} else {
+		writeLine(JSON.stringify({ event, [event]: fields }));
+	}
 }
 
 /** Approval-mode mirror: the bypass flag flips the reported permission mode. */
@@ -124,7 +143,15 @@ function replayFixture() {
 		if (!trimmed) continue;
 		try {
 			const parsed = JSON.parse(trimmed);
-			if (parsed?.event === "result") status = parsed.status ?? "SUCCESS";
+			if (parsed?.event === "result") {
+				// Nested fixtures carry status under the result key; flat
+				// fixtures carry it at the top level.
+				const nested = parsed.result;
+				status =
+					(nested && typeof nested === "object" ? nested.status : null) ??
+					parsed.status ??
+					"SUCCESS";
+			}
 		} catch {
 			// Fixture lines are trusted to be valid JSON; ignore parse noise.
 		}
@@ -160,45 +187,36 @@ function successStream() {
 	const deltas = response.match(/.{1,12}/gs) || [response];
 	let stepIndex = 2;
 	deltas.forEach((delta) => {
-		writeLine(
-			JSON.stringify({
-				event: "step_update",
-				conversation_id: conversationId,
-				step_index: stepIndex,
-				state: "ACTIVE",
-				step_type: "agent_response",
-				text_delta: delta,
-			}),
-		);
-		sleep(chunkDelay);
-	});
-	writeLine(
-		JSON.stringify({
-			event: "step_update",
+		emit("step_update", {
 			conversation_id: conversationId,
 			step_index: stepIndex,
-			state: "DONE",
+			state: "ACTIVE",
 			step_type: "agent_response",
-		}),
-	);
+			text_delta: delta,
+		});
+		sleep(chunkDelay);
+	});
+	emit("step_update", {
+		conversation_id: conversationId,
+		step_index: stepIndex,
+		state: "DONE",
+		step_type: "agent_response",
+	});
 	sleep(chunkDelay);
-	writeLine(
-		JSON.stringify({
-			event: "result",
-			conversation_id: conversationId,
-			status: "SUCCESS",
-			response,
-			duration_seconds: 0.1,
-			num_turns: 1,
-			usage: {
-				input_tokens: 100,
-				output_tokens: 20,
-				thinking_tokens: 0,
-				cache_read_tokens: 0,
-				total_tokens: 120,
-			},
-		}),
-	);
+	emit("result", {
+		conversation_id: conversationId,
+		status: "SUCCESS",
+		response,
+		duration_seconds: 0.1,
+		num_turns: 1,
+		usage: {
+			input_tokens: 100,
+			output_tokens: 20,
+			thinking_tokens: 0,
+			cache_read_tokens: 0,
+			total_tokens: 120,
+		},
+	});
 	process.exit(0);
 }
 
@@ -219,14 +237,16 @@ function utf8SplitStream() {
 	);
 	sleep(chunkDelay);
 	const text = "héllo 日本語 🚀 done";
-	const line = JSON.stringify({
-		event: "step_update",
+	const stepFields = {
 		conversation_id: conversationId,
 		step_index: 2,
 		state: "ACTIVE",
 		step_type: "agent_response",
 		text_delta: text,
-	});
+	};
+	const line = wireNested
+		? JSON.stringify({ event: "step_update", step_update: stepFields })
+		: JSON.stringify({ event: "step_update", ...stepFields });
 	const bytes = Buffer.from(`${line}\n`, "utf8");
 	// Split right after the lead byte of the first multi-byte char ('é' =
 	// 0xC3 0xA9 — the first byte >= 0x80 in this ASCII-framed JSON line), with
@@ -236,23 +256,20 @@ function utf8SplitStream() {
 	sleep(60);
 	fs.writeSync(1, bytes.subarray(leadByteIndex + 1));
 	sleep(chunkDelay);
-	writeLine(
-		JSON.stringify({
-			event: "result",
-			conversation_id: conversationId,
-			status: "SUCCESS",
-			response: text,
-			duration_seconds: 0.1,
-			num_turns: 1,
-			usage: {
-				input_tokens: 10,
-				output_tokens: 5,
-				thinking_tokens: 0,
-				cache_read_tokens: 0,
-				total_tokens: 15,
-			},
-		}),
-	);
+	emit("result", {
+		conversation_id: conversationId,
+		status: "SUCCESS",
+		response: text,
+		duration_seconds: 0.1,
+		num_turns: 1,
+		usage: {
+			input_tokens: 10,
+			output_tokens: 5,
+			thinking_tokens: 0,
+			cache_read_tokens: 0,
+			total_tokens: 15,
+		},
+	});
 	process.exit(0);
 }
 
@@ -270,34 +287,28 @@ function errorStream() {
 			},
 		}),
 	);
-	writeLine(
-		JSON.stringify({
-			event: "step_update",
-			conversation_id: conversationId,
-			step_index: 2,
-			state: "ACTIVE",
-			step_type: "agent_response",
-			text_delta: "Partial output before the failure.",
-		}),
-	);
-	writeLine(
-		JSON.stringify({
-			event: "result",
-			conversation_id: conversationId,
-			status: "ERROR",
-			error: "Model quota exceeded",
-			response: "",
-			duration_seconds: 0.2,
-			num_turns: 1,
-			usage: {
-				input_tokens: 10,
-				output_tokens: 2,
-				thinking_tokens: 0,
-				cache_read_tokens: 0,
-				total_tokens: 12,
-			},
-		}),
-	);
+	emit("step_update", {
+		conversation_id: conversationId,
+		step_index: 2,
+		state: "ACTIVE",
+		step_type: "agent_response",
+		text_delta: "Partial output before the failure.",
+	});
+	emit("result", {
+		conversation_id: conversationId,
+		status: "ERROR",
+		error: "Model quota exceeded",
+		response: "",
+		duration_seconds: 0.2,
+		num_turns: 1,
+		usage: {
+			input_tokens: 10,
+			output_tokens: 2,
+			thinking_tokens: 0,
+			cache_read_tokens: 0,
+			total_tokens: 12,
+		},
+	});
 	process.exit(1);
 }
 
@@ -328,16 +339,13 @@ switch (mode) {
 				},
 			}),
 		);
-		writeLine(
-			JSON.stringify({
-				event: "step_update",
-				conversation_id: conversationId,
-				step_index: 2,
-				state: "ACTIVE",
-				step_type: "agent_response",
-				text_delta: "Starting up…",
-			}),
-		);
+		emit("step_update", {
+			conversation_id: conversationId,
+			step_index: 2,
+			state: "ACTIVE",
+			step_type: "agent_response",
+			text_delta: "Starting up…",
+		});
 		sleep(chunkDelay);
 		fs.writeSync(2, "mock-agy: simulated hard crash (no result line follows)\n");
 		process.exit(1);
