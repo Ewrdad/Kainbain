@@ -21,6 +21,12 @@ import { createAcpEventMapper } from "./AcpEventMapper.js";
  *     hook once after `session/new` (and re-applied after a `switchModel`),
  *     and the prompt params carry no model. Absent, the current behavior
  *     (model on `session/prompt`) is unchanged.
+ *   - `inspectEmptyTurn({ text, toolCalls })` is the OPTIONAL empty-turn
+ *     seam: after a clean prompt resolution it classifies a turn that
+ *     produced no assistant text and no tool calls (a spawned-but-idle
+ *     turn) into a `{ code, message, hint, error }` run_error; null/undefined
+ *     means "not empty, resolve normally". Absent, empty turns resolve ""
+ *     exactly as before.
  *   - `onUsage(usage)` receives the live `usage_update` telemetry the agent
  *     streams mid-turn (token counters, cost, steps, context-window use) so
  *     every flavor gets live feedback logging for free.
@@ -54,6 +60,7 @@ export class AcpSessionWrapper {
 		log,
 		permissionPolicy,
 		inspectAssistantText,
+		inspectEmptyTurn,
 		applySessionModel,
 		onUsage,
 		initialModel = null,
@@ -72,6 +79,10 @@ export class AcpSessionWrapper {
 		this.inspectAssistantText = typeof inspectAssistantText === "function"
 			? inspectAssistantText
 			: null;
+		this.inspectEmptyTurn = typeof inspectEmptyTurn === "function" ? inspectEmptyTurn : null;
+		/** Tool calls observed in the CURRENT turn (reset per prompt): the
+		 *  empty-turn seam's "did real work" signal. */
+		this.turnToolCalls = 0;
 		this.applySessionModel = typeof applySessionModel === "function" ? applySessionModel : null;
 		this.onUsage = typeof onUsage === "function" ? onUsage : null;
 		this.runLabel = runLabel;
@@ -195,6 +206,15 @@ export class AcpSessionWrapper {
 				this.lastAssistantText += event.delta;
 				this.chunkCallback?.(event.delta);
 			}
+			// Any tool lifecycle event counts as "did real work" (an agent
+			// that only ever sends update/end kinds still worked).
+			if (
+				event.type === "tool_started" ||
+				event.type === "tool_updated" ||
+				event.type === "tool_finished"
+			) {
+				this.turnToolCalls += 1;
+			}
 			this.deliver(event);
 		}
 	}
@@ -243,6 +263,7 @@ export class AcpSessionWrapper {
 		this.lastAssistantText = "";
 		this.chunkCallback = typeof onChunk === "function" ? onChunk : null;
 		this.mapper.resetTurn();
+		this.turnToolCalls = 0;
 		this.turnCount += 1;
 		this.deliver({ type: "run_started", turn: this.turnCount, runLabel: this.runLabel });
 
@@ -272,6 +293,22 @@ export class AcpSessionWrapper {
 			const trapped = this.inspectAssistantText?.(this.lastAssistantText);
 			if (trapped) {
 				this.deliver({ type: "run_error", error: trapped.error || trapped.message || String(trapped) });
+				return this.lastAssistantText;
+			}
+			// Spawned-but-idle turns (no text, no tool calls) are engine
+			// failures when the flavor says so — trap them before the
+			// success mapping below, so no run_finished is delivered.
+			const empty = this.inspectEmptyTurn?.({
+				text: this.lastAssistantText,
+				toolCalls: this.turnToolCalls,
+			});
+			if (empty) {
+				this.deliver({
+					type: "run_error",
+					error: empty.error || empty.message || String(empty),
+					...(empty.code ? { code: empty.code } : {}),
+					...(empty.hint ? { hint: empty.hint } : {}),
+				});
 				return this.lastAssistantText;
 			}
 			for (const event of this.mapper.mapPromptResult(response)) {

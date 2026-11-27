@@ -431,8 +431,9 @@ export function createAgyModelCatalog({
 	};
 }
 
-/** Effort suffixes the stage model ref may carry (`<slug>:high` convention). */
-const EFFORT_LEVELS = new Set(["low", "medium", "high"]);
+/** Effort suffixes the stage model ref may carry (`<slug>:high` convention) —
+ *  the full `--effort` value set the CLI accepts (verified live, agy 1.5.18). */
+const EFFORT_LEVELS = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 /***
  * MARK: parseAgyModelRef

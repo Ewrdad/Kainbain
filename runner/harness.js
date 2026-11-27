@@ -20,7 +20,13 @@
  * @param {Function} [opts.onLog] - Called with each log string, in order.
  * @param {Function} [opts.onEvent] - Called with each normalized session event, in order.
  * @param {Function} [opts.onSession] - Called with the live session after creation (steering delivery, WP-3.4).
- * @returns {Promise<Object>} `{ output }` — the final assistant text.
+ * @returns {Promise<Object>} `{ output, sessionError }` — the final
+ *   assistant text plus the FIRST `run_error` the session delivered
+ *   (`{ error, code, hint }`, null when the run reported no engine-level
+ *   failure). The field is additive: callers that read only `output` are
+ *   unaffected. The daemon feeds `sessionError` into the shared verdict so
+ *   a harness failure (missing binary, auth, crash, timeout, empty run)
+ *   fails the stage instead of passing open on empty output.
  ***/
 export async function runHarnessStage({
 	harness,
@@ -54,8 +60,24 @@ export async function runHarnessStage({
 		}
 	}
 	const seen = new Set();
+	// First-wins latch for the session's engine-level failure: a harness
+	// that emits run_error and then resolves "" (the agy contract: prompt()
+	// never rejects) must still fail the stage — the daemon decides on
+	// this latch, not on the output text. Latched beside (not inside) the
+	// onEvent observer so a throwing observer can never lose the signal.
+	let sessionError = null;
 	const unsubscribe = session.subscribe((event) => {
 		if (!event || typeof event !== "object") return;
+		if (event.type === "run_error" && !sessionError) {
+			sessionError = {
+				error:
+					typeof event.error === "string"
+						? event.error
+						: (event.error?.message ?? event.message ?? "harness run failed"),
+				...(typeof event.code === "string" && event.code ? { code: event.code } : {}),
+				...(typeof event.hint === "string" && event.hint ? { hint: event.hint } : {}),
+			};
+		}
 		// Structured transport first: every normalized event reaches onEvent
 		// in subscription order. A throwing observer must never break the
 		// run (same observer-only contract as onSession below).
@@ -78,9 +100,9 @@ export async function runHarnessStage({
 		const output = await session.prompt(prompt);
 		if (typeof session.getLastAssistantText === "function") {
 			const last = session.getLastAssistantText();
-			if (typeof last === "string" && last) return { output: last };
+			if (typeof last === "string" && last) return { output: last, sessionError };
 		}
-		return { output: typeof output === "string" ? output : "" };
+		return { output: typeof output === "string" ? output : "", sessionError };
 	} catch (err) {
 		// Mark prompt-phase throws as stage failures: the backend's
 		// routeStageError classifies them (infrastructure vs stage failure),

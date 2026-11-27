@@ -80,7 +80,7 @@ describe("agy argv builder (operator-chosen YOLO surface)", () => {
 	});
 
 	it("throws if the permission-bypass flag is ever constructed", () => {
-		expect(() => assertSafeAgyArgs([FORBIDDEN_AGY_FLAG])).toThrow(/never auto-approves/);
+		expect(() => assertSafeAgyArgs([FORBIDDEN_AGY_FLAG])).toThrow(/sanctioned buildAgyArgs/);
 		// Even hidden inside another argument (defensive: joined scan).
 		expect(() => assertSafeAgyArgs(["--model", `${FORBIDDEN_AGY_FLAG}-x`])).toThrow();
 		expect(() => buildAgyArgs({ prompt: "x", printTimeout: "10m" })).not.toThrow();

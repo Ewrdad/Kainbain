@@ -2228,7 +2228,7 @@ async function executeAssignment({
 					sendLogs(text).catch(() => {});
 				},
 			});
-			const { output } = await runHarnessStage({
+			const { output, sessionError } = await runHarnessStage({
 				harness,
 				project: { ...project, cwd: workdir },
 				workdir,
@@ -2310,10 +2310,14 @@ async function executeAssignment({
 			}
 			// Agent-failure detection (shared verdict contract — the same
 			// decision the embedded path makes): a latched fail_stage tool
-			// call, or a well-formed FAIL block with reason AND fix guidance,
-			// reports failed/rejected so the backend routes through
-			// routeStageError (failback per stage config) instead of
-			// advancing. A reasonless FAIL still passes open with a warning.
+			// call, a latched harness run_error, or a well-formed FAIL block
+			// with reason AND fix guidance, reports failed so the backend
+			// routes through routeStageError (failback per stage config)
+			// instead of advancing. A reasonless FAIL still passes open with a
+			// warning. A sessionError failure is infrastructure (the run
+			// itself broke: missing binary, auth, crash, timeout, empty run),
+			// mirroring the embedded path's classification — never "rejected",
+			// which is reserved for deliberate agent decisions.
 			// Position is the primary agent-only guard: `integrate` returns
 			// early above and `ci` takes the CI branch, so only agent work
 			// reaches this check. The synthesized stage is belt-and-braces —
@@ -2324,8 +2328,14 @@ async function executeAssignment({
 				stage: { type: kind || "agent" },
 				output: String(output || ""),
 				failStageRequest,
+				sessionError,
 			});
 			if (verdictDecision.failed) {
+				// The shared verdict prefers fail_stage over sessionError over
+				// text: without a latched tool call, a failed decision beside a
+				// sessionError was decided BY that error (even beside a FAIL
+				// block — an engine failure shadows the text verdict).
+				const failedBySessionError = !failStageRequest && Boolean(sessionError);
 				return await client.complete({
 					taskId: taskId,
 					projectId: projectId,
@@ -2336,7 +2346,7 @@ async function executeAssignment({
 					posture: formatPosture({ tiers: config.tiers, harness: servingHarnessId, model: servedModel }),
 					model: servedModel,
 					outcome: "failed",
-					failureKind: "rejected",
+					failureKind: failedBySessionError ? "infrastructure" : "rejected",
 					failureReason: verdictDecision.failureReason,
 					...(configHash ? { configHash } : {}),
 					committed: !skipped,

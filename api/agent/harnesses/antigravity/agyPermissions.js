@@ -46,7 +46,7 @@ export function assertSafeAgyArgs(args) {
 	const joined = args.join(" ");
 	if (args.includes(FORBIDDEN_AGY_FLAG) || joined.includes(FORBIDDEN_AGY_FLAG)) {
 		throw new Error(
-			`Refusing to spawn agy with ${FORBIDDEN_AGY_FLAG}: KainBain never auto-approves tool calls`,
+			`Refusing to spawn agy with ${FORBIDDEN_AGY_FLAG} outside the sanctioned buildAgyArgs({ skipPermissions }) path — the flag may only come from the explicit KAINBAIN_AGY_SKIP_PERMISSIONS setting, never hardcoded or derived from prompt text`,
 		);
 	}
 	return true;
@@ -58,12 +58,13 @@ export function assertSafeAgyArgs(args) {
  *   stream-json output, the print-timeout ceiling, optional sandbox, model pin
  *   and effort, and conversation continuation. The permission-bypass guard runs
  *   on the result, so the flag can never be constructed through this builder.
- * @example buildAgyArgs({ prompt: "hi" }) => ["-p", "hi", "--output-format", "stream-json", "--print-timeout", "10m", "--dangerously-skip-permissions"]
+ * @example buildAgyArgs({ prompt: "hi", printTimeout: "10m" }) => ["-p", "hi", "--output-format", "stream-json", "--print-timeout", "10m"]
+ * @example buildAgyArgs({ prompt: "hi", printTimeout: "10m", skipPermissions: true }) => ["-p", "hi", "--output-format", "stream-json", "--print-timeout", "10m", "--dangerously-skip-permissions"]
  * @param {Object} opts
  * @param {string} opts.prompt - The stage prompt text (passed via -p).
  * @param {string|null} [opts.conversationId] - agy conversation id to continue.
  * @param {string|null} [opts.modelSlug] - Model slug pinned via --model.
- * @param {string|null} [opts.effort] - Reasoning effort (--effort low|medium|high).
+ * @param {string|null} [opts.effort] - Reasoning effort (--effort low|medium|high|xhigh|max).
  * @param {string} opts.printTimeout - Duration for --print-timeout (e.g. "10m").
  * @param {boolean} [opts.sandbox=false] - Whether to pass --sandbox.
  * @param {boolean} [opts.skipPermissions=false] - Whether to pass

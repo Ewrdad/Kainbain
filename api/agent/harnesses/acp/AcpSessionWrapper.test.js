@@ -434,4 +434,80 @@ describe("AcpSessionWrapper session (fake runtime)", () => {
 		await expect(wrapper.switchModel("m2")).resolves.toBeNull();
 		expect(await wrapper.getActiveModel()).toMatchObject({ id: "m1" });
 	});
+
+	it("leaves empty turns resolving normally without inspectEmptyTurn (seam default)", async () => {
+		const { wrapper } = makeWrapper({ fake: { promptImpl: () => ({ stopReason: "end_turn" }) } });
+		const seen = [];
+		wrapper.subscribe((event) => seen.push(event));
+		await expect(wrapper.prompt("silent turn")).resolves.toBe("");
+		const types = seen.map((event) => event?.type);
+		expect(types).toContain("run_finished");
+		expect(types).not.toContain("run_error");
+	});
+
+	it("reports run_error through inspectEmptyTurn when a turn produces nothing", async () => {
+		const inspected = [];
+		const { wrapper } = makeWrapper({
+			fake: { promptImpl: () => ({ stopReason: "end_turn" }) },
+			wrapper: {
+				inspectEmptyTurn: ({ text, toolCalls }) => {
+					inspected.push({ text, toolCalls });
+					if (!text && toolCalls === 0) {
+						return {
+							code: "AGY_EMPTY_RUN",
+							message: "empty turn",
+							hint: "retry it",
+							error: "empty turn [AGY_EMPTY_RUN] retry it",
+						};
+					}
+					return null;
+				},
+			},
+		});
+		const seen = [];
+		wrapper.subscribe((event) => seen.push(event));
+		await expect(wrapper.prompt("silent turn")).resolves.toBe("");
+		expect(inspected).toEqual([{ text: "", toolCalls: 0 }]);
+		const types = seen.map((event) => event?.type);
+		expect(types).not.toContain("run_finished");
+		const errorEvent = seen.find((event) => event?.type === "run_error");
+		expect(errorEvent).toBeTruthy();
+		expect(errorEvent.code).toBe("AGY_EMPTY_RUN");
+		expect(errorEvent.hint).toBe("retry it");
+	});
+
+	it("counts tool calls per turn for inspectEmptyTurn (a tool turn is not empty)", async () => {
+		const inspected = [];
+		const { wrapper } = makeWrapper({
+			fake: {
+				promptImpl: (parts, opts, hooks) => {
+					hooks.onNotification("session/update", {
+						sessionId: "fake-session-1",
+						update: {
+							sessionUpdate: "tool_call",
+							toolCallId: "call-1",
+							kind: "start",
+							title: "read_file",
+							content: [{ type: "text", text: "{}" }],
+						},
+					});
+					return { stopReason: "end_turn" };
+				},
+			},
+			wrapper: {
+				inspectEmptyTurn: ({ text, toolCalls }) => {
+					inspected.push({ text, toolCalls });
+					return !text && toolCalls === 0 ? { error: "empty" } : null;
+				},
+			},
+		});
+		const seen = [];
+		wrapper.subscribe((event) => seen.push(event));
+		await wrapper.prompt("tool turn");
+		expect(inspected).toEqual([{ text: "", toolCalls: 1 }]);
+		const types = seen.map((event) => event?.type);
+		expect(types).toContain("tool_started");
+		expect(types).toContain("run_finished");
+		expect(types).not.toContain("run_error");
+	});
 });

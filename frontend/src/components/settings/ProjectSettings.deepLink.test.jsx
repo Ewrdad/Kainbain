@@ -162,9 +162,13 @@ describe('ProjectSettings section deep link', () => {
         );
       });
       // The tab stays (and keeps the draft); the URL must name the visible
-      // tab again instead of stranding the blocked section.
+      // tab again instead of stranding the blocked section. The rewrite
+      // navigates after the guard rejects, so the location settles async —
+      // wait for it instead of asserting the pre-navigation URL.
       expect(screen.getByLabelText('Project Name')).toHaveValue('Draft Name');
-      expect(screen.getByTestId('location-probe')).toHaveTextContent('/settings/project');
+      await waitFor(() => {
+        expect(screen.getByTestId('location-probe')).toHaveTextContent('/settings/project');
+      });
     } finally {
       window.confirm = originalConfirm;
     }

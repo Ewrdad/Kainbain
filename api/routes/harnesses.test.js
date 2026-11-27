@@ -197,7 +197,7 @@ describe("/harnesses API", () => {
 				},
 				modelSelection: "list",
 				modelFlag: null,
-				reasoningLevels: ["low", "medium", "high"],
+				reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 				isDefault: false,
 				supportTier: "2",
 				supportTierLabel: "Tier 2",

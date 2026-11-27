@@ -1,0 +1,14 @@
+PASS  version: agy --version answers with a version — agy 1.5.18
+PASS  help: agy --help answers — 3444 bytes
+PASS  argv: every flag buildAgyArgs constructs exists in agy --help — --output-format --print-timeout --sandbox --model --effort --conversation --dangerously-skip-permissions
+PASS  argv: 'models' subcommand listed in agy --help
+PASS  argv: 'acp' subcommand listed in agy --help
+PASS  argv: --effort accepts the harness's full level set (low|medium|high|xhigh|max) — --effort                        Reasoning effort for the current CLI session (low|medium|high|xhigh|max)
+PASS  models: agy models parses to a non-empty list — 27 models (e.g. gemini-4-neon-high)
+PASS  live: canned stream-json run completes with real output — exit=0 rows=5 events=run_started,harness_log,message_started,assistant_delta,assistant_delta,run_finished deltas="OK\n"
+PASS  live: deltas stream as assistant_delta (framing parses — not harness_log) — events=run_started,harness_log,message_started,assistant_delta,assistant_delta,run_finished
+PASS  live: forced print-timeout run reports run_error (never run_finished) — exit=3 events=run_started,harness_log,run_error
+PASS  acp: initialize with protocolVersion 1 is accepted — protocolVersion=1
+PASS  acp: session/new with the harness params returns a sessionId — answer={"jsonrpc":"2.0","result":{"sessionId":"ddbc2cdd-477b-4e89-80fc-21baa184f9ee","models":{"availableModels":[{"modelId":"gemini-4-neon-high","name":"Gemini 4 Neon
+
+12/12 conformance checks passed (captures in /tmp/agy-conf).
